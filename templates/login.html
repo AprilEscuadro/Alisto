@@ -1,0 +1,67 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Login - ALISTO</title>
+    <link
+      href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Nunito:wght@400;600;700;800&display=swap"
+      rel="stylesheet"
+    />
+    <link
+      rel="stylesheet"
+      href="{{ url_for('static', filename='css/auth.css') }}"
+    />
+  </head>
+  <body>
+    <!-- SIMPLE NAVBAR (auth pages) -->
+    <nav class="navbar-simple">
+      <div class="container navbar-simple-inner">
+        <a href="{{ url_for('landing') }}" class="logo">
+          <img
+            src="{{ url_for('static', filename='images/alistoLogo.png') }}"
+            alt="ALISTO Logo"
+            class="logo-img"
+          />
+          <span>Alisto</span>
+        </a>
+        <div class="nav-actions">
+          <a href="{{ url_for('login') }}" class="nav-login">Login</a>
+          <a href="{{ url_for('register') }}" class="nav-register">Register</a>
+        </div>
+      </div>
+    </nav>
+
+    <div class="auth-wrapper">
+      <div class="auth-card">
+        <div class="auth-logo">ALISTO</div>
+        <h1>Welcome Back</h1>
+        <p class="auth-subtitle">Login to your ALISTO dashboard</p>
+
+        {% with messages = get_flashed_messages(with_categories=true) %} {% if
+        messages %} {% for category, message in messages %}
+        <div class="alert alert-{{ category }}">{{ message }}</div>
+        {% endfor %} {% endif %} {% endwith %}
+
+        <form method="POST" action="{{ url_for('login') }}">
+          <div class="form-group">
+            <label for="email">Email Address</label>
+            <input type="email" id="email" name="email" required />
+          </div>
+
+          <div class="form-group">
+            <label for="password">Password</label>
+            <input type="password" id="password" name="password" required />
+          </div>
+
+          <button type="submit" class="btn-submit">Login</button>
+        </form>
+
+        <p class="auth-footer">
+          Wala pa kay account?
+          <a href="{{ url_for('register') }}">Register here</a>
+        </p>
+      </div>
+    </div>
+  </body>
+</html>

@@ -1,0 +1,127 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Register - ALISTO</title>
+    <link
+      href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Nunito:wght@400;600;700;800&display=swap"
+      rel="stylesheet"
+    />
+    <link
+      rel="stylesheet"
+      href="{{ url_for('static', filename='css/auth.css') }}"
+    />
+  </head>
+  <body>
+    <!-- SIMPLE NAVBAR (auth pages) -->
+    <nav class="navbar-simple">
+      <div class="container navbar-simple-inner">
+        <a href="{{ url_for('landing') }}" class="logo">
+          <img
+            src="{{ url_for('static', filename='images/alistoLogo.png') }}"
+            alt="ALISTO Logo"
+            class="logo-img"
+          />
+          <span>Alisto</span>
+        </a>
+        <div class="nav-actions">
+          <a href="{{ url_for('login') }}" class="nav-login">Login</a>
+          <a href="{{ url_for('register') }}" class="nav-register">Register</a>
+        </div>
+      </div>
+    </nav>
+
+    <div class="auth-wrapper">
+      <div class="auth-card">
+        <div class="auth-logo">ALISTO</div>
+        <h1>Create an Account</h1>
+        <p class="auth-subtitle">
+          For Family Members, Barangay Health Workers, and Administrators
+        </p>
+
+        {% with messages = get_flashed_messages(with_categories=true) %} {% if
+        messages %} {% for category, message in messages %}
+        <div class="alert alert-{{ category }}">{{ message }}</div>
+        {% endfor %} {% endif %} {% endwith %}
+
+        <form method="POST" action="{{ url_for('register') }}">
+          <div class="form-group">
+            <label for="full_name">Full Name</label>
+            <input type="text" id="full_name" name="full_name" required />
+          </div>
+
+          <div class="form-group">
+            <label for="email">Email Address</label>
+            <input type="email" id="email" name="email" required />
+          </div>
+
+          <div class="form-group">
+            <label for="contact_number">Contact Number</label>
+            <input
+              type="text"
+              id="contact_number"
+              name="contact_number"
+              placeholder="09XX XXX XXXX"
+            />
+          </div>
+
+          <div class="form-group">
+            <label for="role">I am registering as</label>
+            <select
+              id="role"
+              name="role"
+              required
+              onchange="toggleBarangayField()"
+            >
+              <option value="">-- Select Role --</option>
+              <option value="family">Family Member</option>
+              <option value="bhw">Barangay Health Worker (BHW)</option>
+              <option value="admin">Administrator</option>
+            </select>
+          </div>
+
+          <div class="form-group" id="barangayField" style="display: none">
+            <label for="barangay_assigned">Barangay Assigned</label>
+            <input
+              type="text"
+              id="barangay_assigned"
+              name="barangay_assigned"
+              value="Sudlon II"
+            />
+          </div>
+
+          <div class="form-group">
+            <label for="password">Password</label>
+            <input
+              type="password"
+              id="password"
+              name="password"
+              required
+              minlength="6"
+            />
+          </div>
+
+          <div class="form-group">
+            <label for="confirm_password">Confirm Password</label>
+            <input
+              type="password"
+              id="confirm_password"
+              name="confirm_password"
+              required
+              minlength="6"
+            />
+          </div>
+
+          <button type="submit" class="btn-submit">Register</button>
+        </form>
+
+        <p class="auth-footer">
+          Naa na kay account? <a href="{{ url_for('login') }}">Login here</a>
+        </p>
+      </div>
+    </div>
+
+    <script src="{{ url_for('static', filename='js/auth.js') }}"></script>
+  </body>
+</html>

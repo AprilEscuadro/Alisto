@@ -1,0 +1,474 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>ALISTO - Emergency Response for Elderly</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <script src="https://unpkg.com/lucide@latest/dist/umd/lucide.js"></script>
+    <link
+      href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Nunito:wght@400;600;700;800&display=swap"
+      rel="stylesheet"
+    />
+    <link
+      rel="stylesheet"
+      href="{{ url_for('static', filename='css/landing.css') }}"
+    />
+  </head>
+  <body>
+    <!-- NAVBAR -->
+    <nav class="navbar">
+      <div class="container navbar-inner">
+        <a href="{{ url_for('landing') }}" class="logo">
+          <img
+            src="{{ url_for('static', filename='images/alistoLogo.png') }}"
+            alt="ALISTO Logo"
+            class="logo-img"
+          />
+          <span>Alisto</span>
+        </a>
+        <ul class="nav-links" id="navLinks">
+          <li><a href="#home" class="nav-link" data-section="home">Home</a></li>
+          <li>
+            <a href="#about" class="nav-link" data-section="about">About</a>
+          </li>
+          <li>
+            <a href="#how-it-works" class="nav-link" data-section="how-it-works"
+              >How It Works</a
+            >
+          </li>
+          <li>
+            <a href="#goals" class="nav-link" data-section="goals">Goals</a>
+          </li>
+          <li>
+            <a href="#download-app" class="nav-link" data-section="download-app"
+              >Download App</a
+            >
+          </li>
+        </ul>
+        <div class="nav-actions">
+          <a href="{{ url_for('login') }}" class="nav-login">Login</a>
+          <a href="{{ url_for('register') }}" class="nav-register">Sign In</a>
+        </div>
+        <button class="nav-toggle" id="navToggle">☰</button>
+      </div>
+    </nav>
+
+    <!-- HERO SECTION -->
+    <section class="hero" id="home">
+      <div class="container hero-inner">
+        <div class="hero-text">
+          <h1>
+            Help, Always <br />
+            within reach.
+          </h1>
+          <p>
+            ALISTO is an offline emergency response system that helps elderly
+            individuals quickly alert their loved ones and Barangay Health
+            Workers using voice commands or an emergency button.
+          </p>
+          <div class="hero-buttons">
+            <a href="login" class="btn btn-primary">Get Started</a>
+            <a href="#about" class="btn btn-secondary">
+              <i data-lucide="shield-check"></i>
+              Learn More
+            </a>
+          </div>
+        </div>
+
+        <div class="hero-image">
+          <div class="device-showcase">
+            <svg
+              class="connector-ring"
+              viewBox="0 0 460 460"
+              xmlns="http://www.w3.org/2000/svg"
+            >
+              <circle
+                cx="230"
+                cy="230"
+                r="195"
+                fill="none"
+                stroke="#c9d9fb"
+                stroke-width="1.5"
+                stroke-dasharray="136.2 340.4 748.8"
+              />
+            </svg>
+
+            <img
+              src="{{ url_for('static', filename='images/device.png') }}"
+              alt="ALISTO Device"
+              class="device-img"
+            />
+
+            <div class="badge badge-top">
+              <div class="badge-icon"><i data-lucide="shield-check"></i></div>
+              <span>Safety First</span>
+            </div>
+
+            <div class="badge badge-left">
+              <div class="badge-icon">
+                <i data-lucide="heart-handshake"></i>
+              </div>
+              <span>Compassion</span>
+            </div>
+
+            <div class="badge badge-right">
+              <div class="badge-icon"><i data-lucide="check-circle"></i></div>
+              <span>Reliability</span>
+            </div>
+
+            <div class="badge badge-bottom-left">
+              <div class="badge-icon"><i data-lucide="lock"></i></div>
+              <div class="badge-text"><span>Privacy</span></div>
+            </div>
+
+            <div class="badge badge-bottom-right">
+              <div class="badge-icon"><i data-lucide="users"></i></div>
+              <span>Community</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ABOUT SECTION -->
+    <section class="about" id="about">
+      <div class="container">
+        <div class="about-header">
+          <span class="about-badge">ABOUT ALISTO</span>
+        </div>
+
+        <div class="about-grid">
+          <div class="about-card">
+            <div class="about-icon"><i data-lucide="cpu"></i></div>
+            <div class="about-text">
+              <h3>What ALISTO is</h3>
+              <p>
+                An offline voice-activated emergency response system combining
+                an IoT device with a role-based web dashboard for families,
+                Barangay Health Workers and administrators.
+              </p>
+            </div>
+          </div>
+
+          <div class="about-card">
+            <div class="about-icon"><i data-lucide="heart-pulse"></i></div>
+            <div class="about-text">
+              <h3>Why it was developed</h3>
+              <p>
+                Many elderly residents in Cebu City live alone, speak only
+                Cebuano, and are not comfortable with smartphones. In a medical
+                emergency, those minutes spent unlocking an app are the ones
+                that matter most.
+              </p>
+            </div>
+          </div>
+
+          <div class="about-card">
+            <div class="about-icon"><i data-lucide="wifi-off"></i></div>
+            <div class="about-text">
+              <h3>The problem it solves</h3>
+              <p>
+                Existing medical alert apps assume stable internet and digital
+                literacy. ALISTO removes both requirements: it listens locally
+                and alerts over SMS.
+              </p>
+            </div>
+          </div>
+
+          <div class="about-card">
+            <div class="about-icon"><i data-lucide="users"></i></div>
+            <div class="about-text">
+              <h3>Who benefits</h3>
+              <p>
+                Elderly residents, their families, Barangay Health Workers, and
+                barangay administrators coordinating community-wide emergency
+                response.
+              </p>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- HOW IT WORKS -->
+    <section class="how-it-works" id="how-it-works">
+      <div class="container container-wide">
+        <div class="section-header">
+          <span class="about-badge">HOW IT WORKS</span>
+        </div>
+
+        <div class="process-flow">
+          <div class="process-card">
+            <div class="process-number">1</div>
+            <div class="process-img">
+              <img
+                src="{{ url_for('static', filename='images/step1-trigger.png') }}"
+                alt="Emergency Trigger"
+              />
+            </div>
+          </div>
+
+          <div class="process-card">
+            <div class="process-number">2</div>
+            <div class="process-img">
+              <img
+                src="{{ url_for('static', filename='images/step2-detection.png') }}"
+                alt="Offline Detection"
+              />
+            </div>
+          </div>
+
+          <div class="process-card">
+            <div class="process-number">3</div>
+            <div class="process-img">
+              <img
+                src="{{ url_for('static', filename='images/step3-notified.png') }}"
+                alt="Family and BHW Notified"
+              />
+            </div>
+          </div>
+
+          <div class="process-card">
+            <div class="process-number">4</div>
+            <div class="process-img">
+              <img
+                src="{{ url_for('static', filename='images/step4-response.png') }}"
+                alt="Emergency Response"
+              />
+            </div>
+          </div>
+
+          <div class="process-card">
+            <div class="process-number">5</div>
+            <div class="process-img">
+              <img
+                src="{{ url_for('static', filename='images/step5-monitoring.png') }}"
+                alt="Live Monitoring"
+              />
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- MISSION & VISION -->
+    <section class="mission-vision" id="goals">
+      <div class="container">
+        <div class="mv-header">
+          <span class="about-badge">OUR GOALS</span>
+        </div>
+
+        <div class="mv-grid">
+          <div class="mv-card">
+            <div class="mv-icon"><i data-lucide="target"></i></div>
+            <h3>Our Mission</h3>
+            <p>
+              To provide a reliable and easy-to-use emergency response system
+              that empowers the elderly to seek help anytime, even without
+              internet connection.
+            </p>
+          </div>
+
+          <div class="mv-illustration">
+            <img
+              src="{{ url_for('static', filename='images/mission-illustration.png') }}"
+              alt="Elderly couple using ALISTO device"
+            />
+          </div>
+
+          <div class="mv-card">
+            <div class="mv-icon"><i data-lucide="eye"></i></div>
+            <h3>Our Vision</h3>
+            <p>
+              A community where every elderly individual feels safe, cared for,
+              and never alone — with help always within reach.
+            </p>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- OUR VALUES -->
+    <section class="values">
+      <div class="container">
+        <h2 class="section-title values-title">Our Values</h2>
+        <div class="values-grid">
+          <div class="value-card">
+            <div class="value-icon value-blue">
+              <i data-lucide="shield-check"></i>
+            </div>
+            <h4>Safety First</h4>
+            <p>We prioritize the safety and well-being of every user.</p>
+          </div>
+          <div class="value-card">
+            <div class="value-icon value-red">
+              <i data-lucide="heart-handshake"></i>
+            </div>
+            <h4>Compassion</h4>
+            <p>We care deeply and design with empathy.</p>
+          </div>
+          <div class="value-card">
+            <div class="value-icon value-green">
+              <i data-lucide="check-circle"></i>
+            </div>
+            <h4>Reliability</h4>
+            <p>We build solutions you can always count on.</p>
+          </div>
+          <div class="value-card">
+            <div class="value-icon value-yellow">
+              <i data-lucide="lock"></i>
+            </div>
+            <h4>Privacy</h4>
+            <p>We respect and protect the privacy of our users.</p>
+          </div>
+          <div class="value-card">
+            <div class="value-icon value-purple">
+              <i data-lucide="users"></i>
+            </div>
+            <h4>Community</h4>
+            <p>
+              We work together with families and barangays for a safer society.
+            </p>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- DOWNLOAD APP -->
+    <section class="download-app" id="download-app">
+      <div class="container">
+        <div class="section-header">
+          <span class="about-badge">GET THE APP</span>
+          <h2 class="download-title">
+            Download the <span class="text-accent">Alisto App</span>
+          </h2>
+          <p class="section-subtitle">
+            Manage your device, contacts, medicines and receive alerts.
+          </p>
+        </div>
+
+        <div class="download-grid">
+          <div class="download-card">
+            <div class="download-card-header">
+              <div class="download-icon android-icon">
+                <img
+                  src="{{ url_for('static', filename='images/android-icon.png') }}"
+                  alt="Android"
+                />
+              </div>
+              <div>
+                <h3>Android App (APK)</h3>
+                <p>
+                  Download and install the APK file for your Android device.
+                </p>
+              </div>
+            </div>
+            <div class="qr-placeholder">
+              <img
+                src="{{ url_for('static', filename='images/temp-qr.png') }}"
+                alt="QR Code"
+              />
+            </div>
+            <a href="#" class="btn btn-download btn-apk">
+              <i data-lucide="download"></i>
+              Download APK
+            </a>
+            <p class="download-meta">Version 1.0.0 &bull; 15 MB</p>
+          </div>
+
+          <div class="download-card">
+            <div class="download-card-header">
+              <div class="download-icon play-icon">
+                <img
+                  src="{{ url_for('static', filename='images/googleplay-icon.png') }}"
+                  alt="Google Play"
+                />
+              </div>
+              <div>
+                <h3>Get it on Google Play</h3>
+                <p>
+                  Download the Alisto app from <br />
+                  Google Play Store.
+                </p>
+              </div>
+            </div>
+            <div class="qr-placeholder">
+              <img
+                src="{{ url_for('static', filename='images/temp-qr.png') }}"
+                alt="QR Code"
+              />
+            </div>
+            <a href="#" class="btn btn-download btn-playstore">
+              <img
+                src="{{ url_for('static', filename='images/googleplay-icon.png') }}"
+                alt=""
+                class="btn-icon-img"
+              />
+              Get on Google Play
+            </a>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- FOOTER -->
+    <footer id="contact">
+      <div class="container footer-main">
+        <div class="footer-brand">
+          <a href="{{ url_for('landing') }}" class="logo">
+            <img
+              src="{{ url_for('static', filename='images/alistoLogo.png') }}"
+              alt="ALISTO Logo"
+              class="logo-img"
+            />
+            <span>ALISTO</span>
+          </a>
+          <p>
+            Offline voice-activated emergency response for Cebuano-speaking
+            elderly residents in Cebu City.
+          </p>
+          <div class="footer-contact">
+            <p>support@alisto.ph</p>
+            <p>+63 32 000 0000</p>
+            <p>Cebu City, Philippines</p>
+          </div>
+        </div>
+
+        <div class="footer-col">
+          <h4>ALISTO</h4>
+          <a href="#about">About ALISTO</a>
+          <a href="#how-it-works">How it works</a>
+        </div>
+
+        <div class="footer-col">
+          <h4>Resources</h4>
+          <a href="#">Documentation</a>
+          <a href="#">System requirements</a>
+          <a href="#">Device registration</a>
+          <a href="#">Support</a>
+        </div>
+
+        <div class="footer-col">
+          <h4>Legal</h4>
+          <a href="#">Privacy Policy</a>
+          <a href="#">Terms & Conditions</a>
+          <a href="#">Data protection</a>
+          <a href="#">Accessibility</a>
+        </div>
+      </div>
+
+      <div class="container footer-bottom-bar">
+        <p>&copy; 2026 ALISTO. All rights reserved.</p>
+        <div class="footer-social">
+          <a href="#" aria-label="Facebook">FB</a>
+          <a href="#" aria-label="X">X</a>
+          <a href="#" aria-label="Instagram">IG</a>
+          <a href="#" aria-label="LinkedIn">IN</a>
+        </div>
+      </div>
+    </footer>
+
+    <script src="{{ url_for('static', filename='js/landing.js') }}"></script>
+  </body>
+</html>
