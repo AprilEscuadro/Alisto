@@ -383,20 +383,24 @@ section {
 
 .process-flow {
     display: grid;
-    grid-template-columns: repeat(5, 1fr);
-    align-items: start;
+    grid-template-columns: repeat(5, 250px);  /* fixed width per column, gikan sa 1fr */
+    justify-content: center;                   /* i-center ang grid kung dili mo-fill ang buong container-wide */
+    align-items: stretch;
     gap: 32px;
     margin-top: 64px;
 }
 
 .process-card {
+    width: 250px;
+    height: 460px;
     background: #fff;
     border-radius: 20px;
-    padding: 44px 20px 32px;
+    padding: 0;
     box-shadow: 0 6px 24px rgba(20, 40, 90, 0.08);
     position: relative;
     text-align: center;
     min-height: 380px;
+    overflow: visible;
     display: flex;
     flex-direction: column;
 }
@@ -421,15 +425,18 @@ section {
 
 .process-img {
     width: 100%;
-    height: 100%;
-    margin-bottom: 0;
+    flex: 1;
+    margin: 0;
     padding: 0;
+    border-radius: 20px;
+    overflow: hidden;
 }
 
 .process-img img {
     width: 100%;
     height: 100%;
     object-fit: cover;
+    object-position: top;
     display: block;
 }
 
