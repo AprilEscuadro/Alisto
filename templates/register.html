@@ -8,6 +8,7 @@
       href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Nunito:wght@400;600;700;800&display=swap"
       rel="stylesheet"
     />
+    <script src="https://unpkg.com/lucide@latest/dist/umd/lucide.js"></script>
     <link
       rel="stylesheet"
       href="{{ url_for('static', filename='css/auth.css') }}"
@@ -32,12 +33,23 @@
       </div>
     </nav>
 
+    <!-- DUGANGAN NI NGA BAG-O -->
+    <div class="auth-decor">
+      <span class="decor-plus decor-plus-1">+</span>
+      <span class="decor-plus decor-plus-2">+</span>
+      <span class="decor-plus decor-plus-3">+</span>
+      <span class="decor-plus decor-plus-4">+</span>
+      <span class="decor-plus decor-plus-5">+</span>
+      <span class="decor-plus decor-plus-6">+</span>
+      <span class="decor-plus decor-plus-7">+</span>
+      <span class="decor-plus decor-plus-8">+</span>
+    </div>
+
     <div class="auth-wrapper">
-      <div class="auth-card">
-        <div class="auth-logo">ALISTO</div>
-        <h1>Create an Account</h1>
+      <div class="auth-card auth-card-wide">
+        <h1>Create Your Account</h1>
         <p class="auth-subtitle">
-          For Family Members, Barangay Health Workers, and Administrators
+          Register to continue with your Alisto account.
         </p>
 
         {% with messages = get_flashed_messages(with_categories=true) %} {% if
@@ -46,82 +58,160 @@
         {% endfor %} {% endif %} {% endwith %}
 
         <form method="POST" action="{{ url_for('register') }}">
-          <div class="form-group">
-            <label for="full_name">Full Name</label>
-            <input type="text" id="full_name" name="full_name" required />
+          <div class="form-row">
+            <div class="form-group">
+              <div class="input-icon-wrap">
+                <i data-lucide="user" class="input-icon"></i>
+                <input
+                  type="text"
+                  id="full_name"
+                  name="full_name"
+                  placeholder="Full Name"
+                  required
+                />
+              </div>
+            </div>
+
+            <div class="form-group">
+              <div class="input-icon-wrap">
+                <i data-lucide="mail" class="input-icon"></i>
+                <input
+                  type="text"
+                  id="email"
+                  name="email"
+                  placeholder="Email or Phone Number"
+                  required
+                />
+              </div>
+            </div>
           </div>
 
-          <div class="form-group">
-            <label for="email">Email Address</label>
-            <input type="email" id="email" name="email" required />
-          </div>
+          <div class="form-row">
+            <div class="form-group">
+              <div class="input-icon-wrap">
+                <i data-lucide="phone" class="input-icon"></i>
+                <input
+                  type="text"
+                  id="contact_number"
+                  name="contact_number"
+                  placeholder="09XX XXX XXXX"
+                />
+              </div>
+            </div>
 
-          <div class="form-group">
-            <label for="contact_number">Contact Number</label>
-            <input
-              type="text"
-              id="contact_number"
-              name="contact_number"
-              placeholder="09XX XXX XXXX"
-            />
-          </div>
-
-          <div class="form-group">
-            <label for="role">I am registering as</label>
-            <select
-              id="role"
-              name="role"
-              required
-              onchange="toggleBarangayField()"
-            >
-              <option value="">-- Select Role --</option>
-              <option value="family">Family Member</option>
-              <option value="bhw">Barangay Health Worker (BHW)</option>
-              <option value="admin">Administrator</option>
-            </select>
+            <div class="form-group">
+              <select
+                id="role"
+                name="role"
+                required
+                onchange="toggleBarangayField()"
+              >
+                <option value="">-- I am registering as --</option>
+                <option value="family">Family Member</option>
+                <option value="bhw">Barangay Health Worker (BHW)</option>
+                <option value="admin">Administrator</option>
+              </select>
+            </div>
           </div>
 
           <div class="form-group" id="barangayField" style="display: none">
-            <label for="barangay_assigned">Barangay Assigned</label>
-            <input
-              type="text"
-              id="barangay_assigned"
-              name="barangay_assigned"
-              value="Sudlon II"
-            />
+            <div class="input-icon-wrap">
+              <i data-lucide="map-pin" class="input-icon"></i>
+              <input
+                type="text"
+                id="barangay_assigned"
+                name="barangay_assigned"
+                value="Sudlon II"
+                placeholder="Barangay Assigned"
+              />
+            </div>
           </div>
 
-          <div class="form-group">
-            <label for="password">Password</label>
-            <input
-              type="password"
-              id="password"
-              name="password"
-              required
-              minlength="6"
-            />
+          <div class="form-row">
+            <div class="form-group">
+              <div class="input-icon-wrap">
+                <i data-lucide="lock" class="input-icon"></i>
+                <input
+                  type="password"
+                  id="password"
+                  name="password"
+                  placeholder="Password"
+                  required
+                  minlength="6"
+                />
+                <button
+                  type="button"
+                  class="toggle-password"
+                  onclick="togglePassword('password', 'eyeIcon1')"
+                >
+                  <i data-lucide="eye" id="eyeIcon1"></i>
+                </button>
+              </div>
+            </div>
+
+            <div class="form-group">
+              <div class="input-icon-wrap">
+                <i data-lucide="lock" class="input-icon"></i>
+                <input
+                  type="password"
+                  id="confirm_password"
+                  name="confirm_password"
+                  placeholder="Confirm Password"
+                  required
+                  minlength="6"
+                />
+                <button
+                  type="button"
+                  class="toggle-password"
+                  onclick="togglePassword('confirm_password', 'eyeIcon2')"
+                >
+                  <i data-lucide="eye" id="eyeIcon2"></i>
+                </button>
+              </div>
+            </div>
           </div>
 
-          <div class="form-group">
-            <label for="confirm_password">Confirm Password</label>
-            <input
-              type="password"
-              id="confirm_password"
-              name="confirm_password"
-              required
-              minlength="6"
-            />
+          <div class="terms-row">
+            <input type="checkbox" id="terms" name="terms" required />
+            <label for="terms">
+              I agree to the <a href="#">Terms</a> and
+              <a href="#">Privacy Policy</a>.
+            </label>
           </div>
 
           <button type="submit" class="btn-submit">Register</button>
         </form>
 
+        <div class="auth-divider"><span>or</span></div>
+
         <p class="auth-footer">
-          Naa na kay account? <a href="{{ url_for('login') }}">Login here</a>
+          Already have an account?
+          <a href="{{ url_for('login') }}">Sign In</a>
         </p>
       </div>
     </div>
 
-    <script src="{{ url_for('static', filename='js/auth.js') }}"></script>
+    <script>
+      lucide.createIcons();
+
+      function togglePassword(inputId, iconId) {
+        const input = document.getElementById(inputId);
+        const icon = document.getElementById(iconId);
+        if (input.type === "password") {
+          input.type = "text";
+          icon.setAttribute("data-lucide", "eye-off");
+        } else {
+          input.type = "password";
+          icon.setAttribute("data-lucide", "eye");
+        }
+        lucide.createIcons();
+      }
+
+      function toggleBarangayField() {
+        const role = document.getElementById("role").value;
+        const barangayField = document.getElementById("barangayField");
+        barangayField.style.display = role === "bhw" ? "block" : "none";
+      }
+    </script>
   </body>
 </html>
