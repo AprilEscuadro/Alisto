@@ -76,14 +76,24 @@ body {
     pointer-events: none;
 }
 
-.form-group input {
+.form-group input,
+.form-group select {
     width: 100%;
-    padding: 13px 14px 13px 44px;
+    padding: 13px 14px;    /* normal padding, walay reserved left space */
     border: 1px solid #e2e5eb;
     border-radius: 10px;
     font-size: 15px;
     min-height: 48px;
     background: #fafbfc;
+}
+
+.input-icon-wrap input {
+    padding-left: 44px;   /* diri ra ma-apply ang icon spacing, dili sa tanan input */
+}
+
+.icon-right input {
+    padding-left: 14px !important;
+    padding-right: 44px !important;
 }
 
 .form-group input::placeholder {
@@ -411,3 +421,467 @@ select:focus {
     position: relative;
     z-index: 2;
 }
+
+/* PROGRESS STEPS */
+.step-progress {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 32px;
+}
+
+.step-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: #dfe4ec;
+    transition: 0.3s;
+}
+
+.step-dot.active {
+    background: var(--primary);
+    width: 24px;
+    border-radius: 4px;
+}
+
+.step-dot.done {
+    background: var(--success);
+}
+
+/* STEP HEADER ICON */
+.step-icon-header {
+    width: 56px;
+    height: 56px;
+    border-radius: 50%;
+    background: var(--primary-light);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    margin: 0 auto 16px;
+    color: var(--primary);
+}
+
+.step-icon-header svg {
+    width: 26px;
+    height: 26px;
+}
+
+/* QR BOX */
+.qr-box {
+    width: 200px;
+    height: 200px;
+    margin: 0 auto 20px;
+    background: #f5f6fa;
+    border: 1px solid #e3e6ec;
+    border-radius: 12px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    overflow: hidden;
+}
+
+.qr-box img,
+.qr-box svg {
+    width: 100%;
+    height: 100%;
+    object-fit: contain;
+}
+
+.device-id-label {
+    text-align: center;
+    font-size: 15px;
+    color: #333;
+    margin-bottom: 16px;
+}
+
+.info-note {
+    display: flex;
+    gap: 10px;
+    background: var(--primary-light);
+    border-radius: 10px;
+    padding: 14px 16px;
+    margin-bottom: 24px;
+    font-size: 13.5px;
+    color: #444;
+    line-height: 1.5;
+}
+
+.info-note svg {
+    width: 18px;
+    height: 18px;
+    color: var(--primary);
+    flex-shrink: 0;
+    margin-top: 1px;
+}
+
+/* FIELD LABEL STYLE (para sa steps 3 & 4) */
+.field-label {
+    display: block;
+    font-weight: 600;
+    font-size: 14.5px;
+    color: #333;
+    margin-bottom: 6px;
+}
+
+.optional-tag {
+    color: #999;
+    font-weight: 400;
+    font-size: 13px;
+}
+
+/* REVIEW PAGE */
+.review-section {
+    margin-bottom: 20px;
+}
+
+.review-section h4 {
+    font-size: 14px;
+    color: var(--primary);
+    font-weight: 700;
+    margin-bottom: 10px;
+    text-transform: uppercase;
+    letter-spacing: 0.4px;
+}
+
+.review-row {
+    display: flex;
+    justify-content: space-between;
+    padding: 8px 0;
+    border-bottom: 1px solid #f0f2f6;
+    font-size: 14.5px;
+}
+
+.review-row span:first-child {
+    color: #777;
+}
+
+.review-row span:last-child {
+    color: #1a1a1a;
+    font-weight: 600;
+    text-align: right;
+}
+
+.edit-link {
+    font-size: 13px;
+    color: var(--primary);
+    text-decoration: none;
+    font-weight: 600;
+    margin-left: 8px;
+}
+
+/* STEP NAV BUTTONS */
+.step-btn-row {
+    display: flex;
+    gap: 12px;
+}
+
+.btn-back {
+    flex: 0 0 auto;
+    padding: 14px 20px;
+    background: #f2f4f8;
+    color: #444;
+    border: none;
+    border-radius: 12px;
+    font-size: 15px;
+    font-weight: 700;
+    cursor: pointer;
+    min-height: 48px;
+}
+
+.btn-back:hover {
+    background: #e5e8ee;
+}
+
+.step-btn-row .btn-submit {
+    flex: 1;
+}
+
+/* SUCCESS CHECK (final step) */
+.success-check {
+    width: 72px;
+    height: 72px;
+    border-radius: 50%;
+    background: #e3f6ea;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    margin: 0 auto 20px;
+    color: var(--success);
+}
+
+.success-check svg {
+    width: 36px;
+    height: 36px;
+}
+
+.wizard-step {
+    display: none;
+}
+
+.wizard-step.active {
+    display: block;
+}
+
+.select-icon-wrap {
+    position: relative;
+    display: flex;
+    align-items: center;
+}
+
+.select-icon-wrap .input-icon {
+    position: absolute;
+    left: 14px;
+    width: 18px;
+    height: 18px;
+    color: #999;
+    pointer-events: none;
+    z-index: 1;
+}
+
+.select-icon-wrap select {
+    padding-left: 44px;
+}
+
+/* Date input - native icon na lang, walay custom overlay */
+input[type="date"] {
+    padding-right: 14px;
+}
+
+
+      /* Modal Overlay */
+      .modal-overlay {
+        display: none;
+        position: fixed;
+        top: 0;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        background: rgba(0, 0, 0, 0.5);
+        z-index: 1000;
+        align-items: center;
+        justify-content: center;
+        padding: 1rem;
+      }
+
+      .modal-overlay.active {
+        display: flex;
+      }
+
+      /* Modal Card */
+      .modal-card {
+        background: white;
+        border-radius: 16px;
+        width: 100%;
+        max-width: 600px;
+        max-height: 80vh;
+        display: flex;
+        flex-direction: column;
+        box-shadow: 0 20px 60px rgba(80, 136, 254, 0.3);
+        animation: slideUp 0.3s ease-out;
+      }
+
+      @keyframes slideUp {
+        from {
+          transform: translateY(30px);
+          opacity: 0;
+        }
+        to {
+          transform: translateY(0);
+          opacity: 1;
+        }
+      }
+
+      /* Modal Header */
+      .modal-header {
+        background: linear-gradient(135deg, #5088fe 0%, #7ca3ff 100%);
+        color: white;
+        padding: 1.5rem;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        border-radius: 16px 16px 0 0;
+      }
+
+      .modal-header h2 {
+        font-size: 1.5rem;
+        margin: 0;
+      }
+
+      .modal-close {
+        background: none;
+        border: none;
+        color: white;
+        font-size: 2rem;
+        cursor: pointer;
+        padding: 0;
+        width: 40px;
+        height: 40px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        transition: transform 0.2s ease;
+      }
+
+      .modal-close:hover {
+        transform: scale(1.2);
+      }
+
+      /* Modal Content */
+      .modal-content {
+        flex: 1;
+        overflow-y: auto;
+        padding: 2rem;
+        color: #333;
+      }
+
+      .modal-content h3 {
+        color: #5088fe;
+        font-size: 1.2rem;
+        margin: 1.5rem 0 0.75rem 0;
+        font-weight: 600;
+      }
+
+      .modal-content h4 {
+        color: #1a3a52;
+        font-size: 1rem;
+        margin: 1rem 0 0.5rem 0;
+        font-weight: 600;
+      }
+
+      .modal-content p {
+        color: #555;
+        font-size: 0.95rem;
+        margin-bottom: 0.75rem;
+        line-height: 1.6;
+      }
+
+      .modal-content ul,
+      .modal-content ol {
+        margin-left: 1.5rem;
+        margin-bottom: 1rem;
+        color: #555;
+        font-size: 0.95rem;
+      }
+
+      .modal-content li {
+        margin-bottom: 0.4rem;
+        line-height: 1.5;
+      }
+
+      .modal-warning {
+        background: #fff5f0;
+        border-left: 4px solid #ff6b6b;
+        padding: 1rem;
+        margin: 1rem 0;
+        border-radius: 6px;
+        font-size: 0.95rem;
+        color: #555;
+      }
+
+      .modal-highlight {
+        background: #f0f5ff;
+        border-left: 4px solid #5088fe;
+        padding: 1rem;
+        margin: 1rem 0;
+        border-radius: 6px;
+        font-size: 0.95rem;
+        color: #555;
+      }
+
+      .modal-highlight p {
+        margin-bottom: 0.5rem;
+      }
+
+      .crossmark {
+        color: #ff6b6b;
+        font-weight: bold;
+        margin-right: 0.5rem;
+      }
+
+      /* Modal Footer */
+      .modal-footer {
+        padding: 1.5rem;
+        display: flex;
+        gap: 1rem;
+        justify-content: flex-end;
+        border-top: 1px solid #e8f0fe;
+        background: #fafbff;
+        border-radius: 0 0 16px 16px;
+      }
+
+      .modal-btn-close {
+        padding: 0.75rem 1.5rem;
+        background: #e8f0fe;
+        color: #5088fe;
+        border: none;
+        border-radius: 6px;
+        font-weight: 600;
+        cursor: pointer;
+        transition: all 0.3s ease;
+        font-size: 0.95rem;
+      }
+
+      .modal-btn-close:hover {
+        background: #d0dffe;
+      }
+
+      .modal-btn-accept {
+        padding: 0.75rem 2rem;
+        background: linear-gradient(135deg, #5088fe 0%, #7ca3ff 100%);
+        color: white;
+        border: none;
+        border-radius: 6px;
+        font-weight: 600;
+        cursor: pointer;
+        transition: all 0.3s ease;
+        font-size: 0.95rem;
+      }
+
+      .modal-btn-accept:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 8px 20px rgba(80, 136, 254, 0.4);
+      }
+
+      /* Scrollbar styling */
+      .modal-content::-webkit-scrollbar {
+        width: 6px;
+      }
+
+      .modal-content::-webkit-scrollbar-track {
+        background: #f0f5ff;
+        border-radius: 10px;
+      }
+
+      .modal-content::-webkit-scrollbar-thumb {
+        background: #5088fe;
+        border-radius: 10px;
+      }
+
+      .modal-content::-webkit-scrollbar-thumb:hover {
+        background: #3060ff;
+      }
+
+      /* Responsive */
+      @media (max-width: 600px) {
+        .modal-card {
+          max-height: 90vh;
+        }
+
+        .modal-header h2 {
+          font-size: 1.25rem;
+        }
+
+        .modal-content {
+          padding: 1.5rem;
+        }
+
+        .modal-footer {
+          flex-direction: column;
+        }
+
+        .modal-btn-close,
+        .modal-btn-accept {
+          width: 100%;
+        }
+      }

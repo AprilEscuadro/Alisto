@@ -9,6 +9,7 @@
       rel="stylesheet"
     />
     <script src="https://unpkg.com/lucide@latest/dist/umd/lucide.js"></script>
+    <script src="{{ url_for('static', filename='js/auth.js') }}"></script>
     <link
       rel="stylesheet"
       href="{{ url_for('static', filename='css/auth.css') }}"
@@ -33,7 +34,6 @@
       </div>
     </nav>
 
-    <!-- DUGANGAN NI NGA BAG-O -->
     <div class="auth-decor">
       <span class="decor-plus decor-plus-1">+</span>
       <span class="decor-plus decor-plus-2">+</span>
@@ -46,172 +46,994 @@
     </div>
 
     <div class="auth-wrapper">
-      <div class="auth-card auth-card-wide">
-        <h1>Create Your Account</h1>
-        <p class="auth-subtitle">
-          Register to continue with your Alisto account.
-        </p>
+      <div class="auth-card auth-card-wide" id="authCard">
+        <div class="step-progress" id="stepProgress">
+          <span class="step-dot active" data-step="1"></span>
+          <span class="step-dot" data-step="2"></span>
+          <span class="step-dot" data-step="3"></span>
+          <span class="step-dot" data-step="4"></span>
+          <span class="step-dot" data-step="5"></span>
+        </div>
 
         {% with messages = get_flashed_messages(with_categories=true) %} {% if
         messages %} {% for category, message in messages %}
         <div class="alert alert-{{ category }}">{{ message }}</div>
         {% endfor %} {% endif %} {% endwith %}
 
-        <form method="POST" action="{{ url_for('register') }}">
-          <div class="form-row">
+        <form
+          id="registerForm"
+          method="POST"
+          action="{{ url_for('register') }}"
+        >
+          <!-- STEP 1: ACCOUNT INFO -->
+          <div class="wizard-step active" data-step="1">
+            <h1>Create Your Account</h1>
+            <p class="auth-subtitle">
+              Register to continue with your Alisto account.
+            </p>
+
+            <div class="form-row">
+              <div class="form-group">
+                <div class="input-icon-wrap">
+                  <i data-lucide="user" class="input-icon"></i>
+                  <input
+                    type="text"
+                    id="full_name"
+                    name="full_name"
+                    placeholder="Full Name"
+                    required
+                  />
+                </div>
+              </div>
+
+              <div class="form-group">
+                <div class="input-icon-wrap">
+                  <i data-lucide="mail" class="input-icon"></i>
+                  <input
+                    type="text"
+                    id="email"
+                    name="email"
+                    placeholder="Email"
+                    required
+                  />
+                </div>
+              </div>
+            </div>
+
+            <div class="form-row">
+              <div class="form-group">
+                <div class="input-icon-wrap">
+                  <i data-lucide="phone" class="input-icon"></i>
+                  <input
+                    type="text"
+                    id="contact_number"
+                    name="contact_number"
+                    placeholder="09XX XXX XXXX"
+                  />
+                </div>
+              </div>
+
+              <div class="form-group">
+                <div class="select-icon-wrap">
+                  <i data-lucide="user-cog" class="input-icon"></i>
+                  <select
+                    id="role"
+                    name="role"
+                    required
+                    onchange="toggleBarangayField()"
+                  >
+                    <option value="">-- I am registering as --</option>
+                    <option value="family">Family Member</option>
+                    <option value="bhw">Barangay Health Worker (BHW)</option>
+                  </select>
+                </div>
+              </div>
+            </div>
+
+            <div class="form-group" id="barangayField" style="display: none">
+              <div class="input-icon-wrap">
+                <i data-lucide="map-pin" class="input-icon"></i>
+                <input
+                  type="text"
+                  id="barangay_assigned"
+                  name="barangay_assigned"
+                  value="Sudlon II"
+                  placeholder="Barangay Assigned"
+                />
+              </div>
+            </div>
+
+            <div class="form-row">
+              <div class="form-group">
+                <div class="input-icon-wrap">
+                  <i data-lucide="lock" class="input-icon"></i>
+                  <input
+                    type="password"
+                    id="password"
+                    name="password"
+                    placeholder="Password"
+                    required
+                    minlength="6"
+                  />
+                  <button
+                    type="button"
+                    class="toggle-password"
+                    onclick="togglePassword('password', 'eyeIcon1')"
+                  >
+                    <i data-lucide="eye" id="eyeIcon1"></i>
+                  </button>
+                </div>
+              </div>
+
+              <div class="form-group">
+                <div class="input-icon-wrap">
+                  <i data-lucide="lock" class="input-icon"></i>
+                  <input
+                    type="password"
+                    id="confirm_password"
+                    name="confirm_password"
+                    placeholder="Confirm Password"
+                    required
+                    minlength="6"
+                  />
+                  <button
+                    type="button"
+                    class="toggle-password"
+                    onclick="togglePassword('confirm_password', 'eyeIcon2')"
+                  >
+                    <i data-lucide="eye" id="eyeIcon2"></i>
+                  </button>
+                </div>
+              </div>
+            </div>
+
+            <div class="terms-row">
+              <input type="checkbox" id="terms" name="terms" required />
+              <label for="terms">
+                I agree to the
+                <a
+                  href="#"
+                  onclick="
+                    openTermsModal();
+                    return false;
+                  "
+                  >Terms</a
+                >
+                and
+                <a
+                  href="#"
+                  onclick="
+                    openPrivacyModal();
+                    return false;
+                  "
+                  >Privacy Policy</a
+                >.
+              </label>
+            </div>
+
+            <button type="button" class="btn-submit" onclick="nextStep(1)">
+              Continue
+            </button>
+
+            <div class="auth-divider"><span>or</span></div>
+
+            <p class="auth-footer">
+              Already have an account?
+              <a href="{{ url_for('login') }}">Sign In</a>
+            </p>
+          </div>
+
+          <!-- STEP 2: DEVICE ID -->
+          <div class="wizard-step" data-step="2">
+            <div class="step-icon-header"><i data-lucide="qr-code"></i></div>
+            <h1>Enter Device ID</h1>
+            <p class="auth-subtitle">
+              Link your loved one's device to your account.
+            </p>
+
+            <div class="qr-box">
+              <img
+                src="{{ url_for('static', filename='images/temp-qr.png') }}"
+                alt="Scan QR"
+              />
+            </div>
+
+            <label class="device-id-label"
+              >Enter the Device ID of your loved one's ALISTO device.</label
+            >
+
             <div class="form-group">
+              <div class="input-icon-wrap icon-right">
+                <input
+                  type="text"
+                  id="device_id"
+                  name="device_id"
+                  placeholder="Enter Device ID"
+                  required
+                />
+                <i
+                  data-lucide="scan-line"
+                  class="input-icon"
+                  style="left: auto; right: 14px"
+                ></i>
+              </div>
+            </div>
+
+            <div class="info-note">
+              <i data-lucide="info"></i>
+              <span
+                >You can find the Device ID on the ALISTO device package or on
+                the device itself.</span
+              >
+            </div>
+
+            <div class="step-btn-row">
+              <button type="button" class="btn-back" onclick="prevStep(2)">
+                Back
+              </button>
+              <button type="button" class="btn-submit" onclick="nextStep(2)">
+                Continue
+              </button>
+            </div>
+          </div>
+
+          <!-- STEP 3: PERSONAL INFORMATION -->
+          <div class="wizard-step" data-step="3">
+            <h1>Personal Information</h1>
+            <p class="auth-subtitle">Tell us about your loved one.</p>
+
+            <div class="form-group">
+              <label class="field-label">Full Name</label>
               <div class="input-icon-wrap">
                 <i data-lucide="user" class="input-icon"></i>
                 <input
                   type="text"
-                  id="full_name"
-                  name="full_name"
-                  placeholder="Full Name"
+                  id="senior_full_name"
+                  name="senior_full_name"
+                  placeholder="Enter full name"
                   required
                 />
               </div>
             </div>
 
             <div class="form-group">
+              <label class="field-label">Date of Birth</label>
               <div class="input-icon-wrap">
-                <i data-lucide="mail" class="input-icon"></i>
-                <input
-                  type="text"
-                  id="email"
-                  name="email"
-                  placeholder="Email or Phone Number"
-                  required
-                />
-              </div>
-            </div>
-          </div>
-
-          <div class="form-row">
-            <div class="form-group">
-              <div class="input-icon-wrap">
-                <i data-lucide="phone" class="input-icon"></i>
-                <input
-                  type="text"
-                  id="contact_number"
-                  name="contact_number"
-                  placeholder="09XX XXX XXXX"
-                />
+                <i data-lucide="calendar" class="input-icon"></i>
+                <input type="date" id="dob" name="dob" required />
               </div>
             </div>
 
             <div class="form-group">
-              <select
-                id="role"
-                name="role"
-                required
-                onchange="toggleBarangayField()"
+              <label class="field-label">Relationship</label>
+              <div class="select-icon-wrap">
+                <i data-lucide="users-round" class="input-icon"></i>
+                <select id="relationship" name="relationship" required>
+                  <option value="">Select relationship</option>
+                  <option value="child">Son/Daughter</option>
+                  <option value="spouse">Spouse</option>
+                  <option value="sibling">Sibling</option>
+                  <option value="grandchild">Grandchild</option>
+                  <option value="caregiver">Caregiver</option>
+                  <option value="other">Other</option>
+                </select>
+              </div>
+            </div>
+
+            <div class="form-group">
+              <label class="field-label"
+                >Occupation <span class="optional-tag">(Optional)</span></label
               >
-                <option value="">-- I am registering as --</option>
-                <option value="family">Family Member</option>
-                <option value="bhw">Barangay Health Worker (BHW)</option>
-                <option value="admin">Administrator</option>
-              </select>
-            </div>
-          </div>
-
-          <div class="form-group" id="barangayField" style="display: none">
-            <div class="input-icon-wrap">
-              <i data-lucide="map-pin" class="input-icon"></i>
-              <input
-                type="text"
-                id="barangay_assigned"
-                name="barangay_assigned"
-                value="Sudlon II"
-                placeholder="Barangay Assigned"
-              />
-            </div>
-          </div>
-
-          <div class="form-row">
-            <div class="form-group">
               <div class="input-icon-wrap">
-                <i data-lucide="lock" class="input-icon"></i>
+                <i data-lucide="briefcase" class="input-icon"></i>
                 <input
-                  type="password"
-                  id="password"
-                  name="password"
-                  placeholder="Password"
-                  required
-                  minlength="6"
+                  type="text"
+                  id="occupation"
+                  name="occupation"
+                  placeholder="Enter your occupation"
                 />
-                <button
-                  type="button"
-                  class="toggle-password"
-                  onclick="togglePassword('password', 'eyeIcon1')"
-                >
-                  <i data-lucide="eye" id="eyeIcon1"></i>
-                </button>
               </div>
             </div>
 
-            <div class="form-group">
-              <div class="input-icon-wrap">
-                <i data-lucide="lock" class="input-icon"></i>
-                <input
-                  type="password"
-                  id="confirm_password"
-                  name="confirm_password"
-                  placeholder="Confirm Password"
-                  required
-                  minlength="6"
-                />
-                <button
-                  type="button"
-                  class="toggle-password"
-                  onclick="togglePassword('confirm_password', 'eyeIcon2')"
-                >
-                  <i data-lucide="eye" id="eyeIcon2"></i>
-                </button>
-              </div>
+            <div class="step-btn-row">
+              <button type="button" class="btn-back" onclick="prevStep(3)">
+                Back
+              </button>
+              <button type="button" class="btn-submit" onclick="nextStep(3)">
+                Continue
+              </button>
             </div>
           </div>
 
-          <div class="terms-row">
-            <input type="checkbox" id="terms" name="terms" required />
-            <label for="terms">
-              I agree to the <a href="#">Terms</a> and
-              <a href="#">Privacy Policy</a>.
-            </label>
+          <!-- STEP 4: HOME ADDRESS -->
+          <div class="wizard-step" data-step="4">
+            <div class="step-icon-header"><i data-lucide="home"></i></div>
+            <h1>Home Address</h1>
+            <p class="auth-subtitle">Enter your complete home address.</p>
+
+            <div class="form-row">
+              <div class="form-group">
+                <label class="field-label">House / Building No.</label>
+                <div class="input-icon-wrap">
+                  <i data-lucide="building-2" class="input-icon"></i>
+                  <input
+                    type="text"
+                    id="house_no"
+                    name="house_no"
+                    placeholder="Enter house or building no."
+                    required
+                  />
+                </div>
+              </div>
+              <div class="form-group">
+                <label class="field-label">Street</label>
+                <div class="input-icon-wrap">
+                  <i data-lucide="signpost" class="input-icon"></i>
+                  <input
+                    type="text"
+                    id="street"
+                    name="street"
+                    placeholder="Enter street"
+                    required
+                  />
+                </div>
+              </div>
+            </div>
+
+            <div class="form-row">
+              <div class="form-group">
+                <label class="field-label">Barangay</label>
+                <div class="select-icon-wrap">
+                  <i data-lucide="map" class="input-icon"></i>
+                  <select id="barangay" name="barangay" required>
+                    <option value="">Select barangay</option>
+                    <option value="Sudlon II">Sudlon II</option>
+                  </select>
+                </div>
+              </div>
+              <div class="form-group">
+                <label class="field-label">City / Municipality</label>
+                <div class="select-icon-wrap">
+                  <i data-lucide="building" class="input-icon"></i>
+                  <select id="city" name="city" required>
+                    <option value="">Select city / municipality</option>
+                    <option value="Cebu City">Cebu City</option>
+                  </select>
+                </div>
+              </div>
+            </div>
+
+            <div class="form-row">
+              <div class="form-group">
+                <label class="field-label">Province</label>
+                <div class="select-icon-wrap">
+                  <i data-lucide="map-pinned" class="input-icon"></i>
+                  <select id="province" name="province" required>
+                    <option value="">Select province</option>
+                    <option value="Cebu">Cebu</option>
+                  </select>
+                </div>
+              </div>
+              <div class="form-group">
+                <label class="field-label">Zip Code</label>
+                <div class="input-icon-wrap">
+                  <i data-lucide="mail-open" class="input-icon"></i>
+                  <input
+                    type="text"
+                    id="zip_code"
+                    name="zip_code"
+                    placeholder="Enter zip code"
+                    required
+                  />
+                </div>
+              </div>
+            </div>
+
+            <div class="step-btn-row">
+              <button type="button" class="btn-back" onclick="prevStep(4)">
+                Back
+              </button>
+              <button type="button" class="btn-submit" onclick="nextStep(4)">
+                Continue
+              </button>
+            </div>
           </div>
 
-          <button type="submit" class="btn-submit">Register</button>
+          <!-- STEP 5: REVIEW -->
+          <div class="wizard-step" data-step="5">
+            <h1>Review Your Information</h1>
+            <p class="auth-subtitle">
+              Please check everything before submitting.
+            </p>
+
+            <div class="review-section">
+              <h4>Account</h4>
+              <div class="review-row">
+                <span>Full Name</span><span id="rev_account_name">—</span>
+              </div>
+              <div class="review-row">
+                <span>Email</span><span id="rev_email">—</span>
+              </div>
+              <div class="review-row">
+                <span>Role</span><span id="rev_role">—</span>
+              </div>
+            </div>
+
+            <div class="review-section">
+              <h4>Device</h4>
+              <div class="review-row">
+                <span>Device ID</span><span id="rev_device_id">—</span>
+              </div>
+            </div>
+
+            <div class="review-section">
+              <h4>Personal Information</h4>
+              <div class="review-row">
+                <span>Full Name</span><span id="rev_full_name">—</span>
+              </div>
+              <div class="review-row">
+                <span>Date of Birth</span><span id="rev_dob">—</span>
+              </div>
+              <div class="review-row">
+                <span>Relationship</span><span id="rev_relationship">—</span>
+              </div>
+              <div class="review-row">
+                <span>Occupation</span><span id="rev_occupation">—</span>
+              </div>
+            </div>
+
+            <div class="review-section">
+              <h4>Home Address</h4>
+              <div class="review-row">
+                <span>Address</span><span id="rev_address">—</span>
+              </div>
+            </div>
+
+            <div class="step-btn-row">
+              <button type="button" class="btn-back" onclick="prevStep(5)">
+                Back
+              </button>
+              <button type="submit" class="btn-submit">
+                Submit &amp; Complete
+              </button>
+            </div>
+          </div>
+
+          <!-- STEP 6: SUCCESS -->
+          <div class="wizard-step" data-step="6">
+            <div class="success-check"><i data-lucide="check"></i></div>
+            <h1 style="text-align: center">Registration Complete!</h1>
+            <p class="auth-subtitle" style="text-align: center">
+              Your ALISTO account and device are now linked.
+            </p>
+            <a
+              href="{{ url_for('login') }}"
+              class="btn-submit"
+              style="
+                display: block;
+                text-align: center;
+                text-decoration: none;
+                line-height: 20px;
+              "
+            >
+              Go to Login
+            </a>
+          </div>
         </form>
-
-        <div class="auth-divider"><span>or</span></div>
-
-        <p class="auth-footer">
-          Already have an account?
-          <a href="{{ url_for('login') }}">Sign In</a>
-        </p>
       </div>
     </div>
 
-    <script>
-      lucide.createIcons();
+    <!-- ====================================== -->
+    <!-- TERMS MODAL -->
+    <!-- ====================================== -->
+    <div id="termsModal" class="modal-overlay">
+      <div class="modal-card">
+        <div class="modal-header">
+          <h2>Terms of Use</h2>
+          <button class="modal-close" onclick="closeModal('termsModal')">
+            &times;
+          </button>
+        </div>
 
-      function togglePassword(inputId, iconId) {
-        const input = document.getElementById(inputId);
-        const icon = document.getElementById(iconId);
-        if (input.type === "password") {
-          input.type = "text";
-          icon.setAttribute("data-lucide", "eye-off");
-        } else {
-          input.type = "password";
-          icon.setAttribute("data-lucide", "eye");
-        }
-        lucide.createIcons();
-      }
+        <div class="modal-content">
+          <h3>1. Introduction</h3>
+          <p>
+            Welcome to ALISTO (Offline AI-Powered Voice Health Assistant with
+            Emergency Response System for Elderly in Cebu City). These Terms of
+            Use ("Terms") govern your use of the ALISTO mobile application, IoT
+            device, and related system features ("System"). By creating an
+            account, registering an ALISTO device, or using the System, you
+            acknowledge that you have read, understood, and agreed to these
+            Terms.
+          </p>
 
-      function toggleBarangayField() {
-        const role = document.getElementById("role").value;
-        const barangayField = document.getElementById("barangayField");
-        barangayField.style.display = role === "bhw" ? "block" : "none";
-      }
-    </script>
+          <h3>2. Purpose of ALISTO</h3>
+          <p>
+            ALISTO is designed to provide an additional means of requesting
+            emergency assistance through voice-based emergency detection and
+            communication. The system is intended to assist elderly users,
+            particularly those who may have limited access to smartphones or
+            internet connectivity.
+          </p>
+
+          <div class="modal-warning">
+            <strong>🚨 IMPORTANT:</strong> ALISTO IS NOT A REPLACEMENT FOR
+            PROFESSIONAL MEDICAL SERVICES, EMERGENCY RESPONDERS, DOCTORS, OR
+            HOSPITALS. In a life-threatening situation, users should contact
+            appropriate emergency services directly.
+          </div>
+
+          <h3>3. System Functionality & Limitations</h3>
+
+          <h4>3.1 Offline Voice Detection</h4>
+          <p>
+            ALISTO is designed to process configured emergency voice phrases
+            without requiring an internet connection. Voice recognition may be
+            affected by background noise, unclear speech, microphone
+            limitations, pronunciation, or other environmental conditions.
+          </p>
+
+          <h4>3.2 Emergency Alerts</h4>
+          <p>
+            When ALISTO detects a configured emergency phrase, the system may
+            initiate an emergency alert and send a notification or SMS to
+            registered emergency contacts.
+          </p>
+
+          <p>Emergency information may include:</p>
+          <ul>
+            <li>User's name</li>
+            <li>Detected emergency message or phrase</li>
+            <li>Registered address or location</li>
+            <li>Date and time of the alert</li>
+          </ul>
+
+          <h4>3.3 Cellular and SMS Requirements</h4>
+          <p>
+            Although ALISTO's voice detection is designed to work offline,
+            emergency SMS delivery requires a functioning cellular network,
+            compatible SIM card, sufficient device power, and proper device
+            configuration.
+          </p>
+
+          <ul>
+            <li>SMS delivery times are not guaranteed.</li>
+            <li>
+              Emergency alerts may fail when cellular service is unavailable.
+            </li>
+            <li>Device battery failure may prevent emergency communication.</li>
+            <li>
+              Incorrect or outdated emergency contact information may prevent
+              successful notification.
+            </li>
+          </ul>
+
+          <h4>3.4 False Alarms and Missed Detection</h4>
+          <p>
+            ALISTO may occasionally produce false alerts or fail to recognize an
+            emergency phrase because of technical limitations, background noise,
+            unclear speech, hardware problems, or other unexpected conditions.
+            Users should verify that the device is properly configured and
+            functioning before relying on it.
+          </p>
+
+          <h3>4. User Responsibilities</h3>
+
+          <h4>4.1 Device Owner / Elderly User</h4>
+          <ul>
+            <li>Keep the ALISTO device charged and accessible.</li>
+            <li>Keep registered information accurate and up to date.</li>
+            <li>Keep emergency contact information current.</li>
+            <li>
+              Report device problems to the appropriate administrator or family
+              member.
+            </li>
+            <li>Regularly test the device to confirm proper operation.</li>
+          </ul>
+
+          <h4>4.2 Family Members and Responders</h4>
+          <ul>
+            <li>Maintain accurate contact information.</li>
+            <li>Respond appropriately to emergency notifications.</li>
+            <li>Keep their ALISTO account credentials secure.</li>
+            <li>
+              Use received emergency information only for legitimate response
+              purposes.
+            </li>
+          </ul>
+
+          <h3>5. Acceptable Use</h3>
+          <p>Users agree NOT to:</p>
+          <ul>
+            <li>Deliberately trigger false emergency alerts.</li>
+            <li>Access another user's account without authorization.</li>
+            <li>Attempt to bypass or disable system security features.</li>
+            <li>Modify, damage, or tamper with ALISTO hardware or software.</li>
+            <li>Use ALISTO for unlawful or abusive purposes.</li>
+            <li>Share account credentials with unauthorized individuals.</li>
+            <li>
+              Use emergency information to harass, threaten, or harm another
+              person.
+            </li>
+          </ul>
+
+          <h3>6. System Availability</h3>
+          <p>
+            ALISTO is developed as an emergency-assistance system and capstone
+            project. While reasonable efforts are made to maintain system
+            functionality, uninterrupted or error-free operation cannot be
+            guaranteed.
+          </p>
+
+          <h3>7. Limitation of Liability</h3>
+          <div class="modal-warning">
+            <strong>Important Notice:</strong>
+            ALISTO is provided as an assistive emergency communication system.
+            To the extent permitted by applicable law, the developers are not
+            responsible for emergency response delays, unsuccessful SMS
+            delivery, network interruptions, hardware failure, power failure,
+            inaccurate information, or other circumstances beyond the reasonable
+            control of the system.
+          </div>
+
+          <h3>8. Privacy</h3>
+          <p>
+            ALISTO respects the privacy of its users. Personal information,
+            emergency information, and other data collected through the System
+            will be handled in accordance with the
+            <strong>ALISTO Privacy Policy</strong> and applicable Philippine
+            data protection laws.
+          </p>
+
+          <h3>9. Changes to These Terms</h3>
+          <p>
+            These Terms may be updated when necessary to reflect changes to the
+            ALISTO system, features, or applicable requirements. Significant
+            changes may be communicated to users when appropriate.
+          </p>
+
+          <h3>10. Acceptance</h3>
+          <p>
+            By selecting "I agree" to the Terms and Privacy Policy, you confirm
+            that you have read, understood, and agreed to these Terms of Use.
+          </p>
+
+          <p><strong>Last Updated: August 2026</strong></p>
+        </div>
+
+        <div class="modal-footer">
+          <button class="modal-btn-close" onclick="closeModal('termsModal')">
+            Close
+          </button>
+          <button class="modal-btn-accept" onclick="acceptTerms()">
+            I Understand
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- ====================================== -->
+    <!-- PRIVACY MODAL -->
+    <!-- ====================================== -->
+    <div id="privacyModal" class="modal-overlay">
+      <div class="modal-card">
+        <div class="modal-header">
+          <h2>Privacy Policy</h2>
+          <button class="modal-close" onclick="closeModal('privacyModal')">
+            &times;
+          </button>
+        </div>
+
+        <div class="modal-content">
+          <h3>1. Introduction</h3>
+          <p>
+            ALISTO ("we," "us," "our," or "System") respects your privacy and is
+            committed to protecting the personal information processed through
+            the ALISTO application, IoT device, and related services.
+          </p>
+
+          <p>
+            This Privacy Policy explains what information may be collected, why
+            it is used, how it may be shared, and how users may exercise their
+            privacy rights.
+          </p>
+
+          <h3>2. Information We Collect</h3>
+
+          <h4>2.1 Account Information</h4>
+          <ul>
+            <li>Full name</li>
+            <li>Mobile number</li>
+            <li>Email address, when applicable</li>
+            <li>Registered address or location</li>
+            <li>User role or account type</li>
+            <li>Account credentials and authentication information</li>
+          </ul>
+
+          <h4>2.2 Emergency Information</h4>
+          <ul>
+            <li>Emergency alerts</li>
+            <li>Detected emergency phrases or emergency messages</li>
+            <li>Date and time of emergency alerts</li>
+            <li>Emergency contact information</li>
+            <li>Emergency alert history</li>
+          </ul>
+
+          <h4>2.3 Device Information</h4>
+          <ul>
+            <li>ALISTO device serial number</li>
+            <li>Device registration information</li>
+            <li>Device configuration information</li>
+            <li>Device status information, when applicable</li>
+          </ul>
+
+          <h4>2.4 Voice Information</h4>
+          <p>
+            ALISTO may process spoken input to identify configured emergency
+            phrases such as "Tabang," "Sakit akong dughan," or other emergency
+            commands supported by the system.
+          </p>
+
+          <p>
+            Voice processing is intended for emergency phrase detection. ALISTO
+            does not intentionally retain voice recordings unless such storage
+            is specifically implemented and disclosed to the user.
+          </p>
+
+          <h3>3. How We Use Your Information</h3>
+
+          <h4>3.1 Primary Purposes</h4>
+          <ul>
+            <li>
+              <strong>Emergency Response:</strong> To identify emergency events
+              and send alerts to authorized emergency contacts.
+            </li>
+            <li>
+              <strong>System Operation:</strong> To provide the voice detection,
+              alert, and communication functions of ALISTO.
+            </li>
+            <li>
+              <strong>Device Management:</strong> To register and associate an
+              ALISTO device with an authorized account.
+            </li>
+            <li>
+              <strong>Account Management:</strong> To create, authenticate, and
+              maintain user accounts.
+            </li>
+            <li>
+              <strong>Alert History:</strong> To allow authorized users to
+              review previous emergency alerts.
+            </li>
+          </ul>
+
+          <h4>3.2 What We Will NOT Do</h4>
+          <div class="modal-highlight">
+            <p>
+              <span class="crossmark">❌</span>
+              <strong>Will NOT Sell</strong> personal information to third
+              parties.
+            </p>
+
+            <p>
+              <span class="crossmark">❌</span>
+              <strong>Will NOT Use</strong> personal information for commercial
+              marketing unrelated to ALISTO's intended purpose.
+            </p>
+
+            <p>
+              <span class="crossmark">❌</span>
+              <strong>Will NOT Share</strong> personal information with
+              unauthorized individuals.
+            </p>
+
+            <p>
+              <span class="crossmark">❌</span>
+              <strong>Will NOT Use</strong> emergency information for purposes
+              unrelated to the operation of the emergency response system.
+            </p>
+          </div>
+
+          <h3>4. Data Sharing & Authorized Recipients</h3>
+          <p>
+            ALISTO may share information only when necessary to provide its
+            emergency-response functions or when required or permitted by
+            applicable law.
+          </p>
+
+          <p><strong>Authorized recipients may include:</strong></p>
+
+          <ul>
+            <li>
+              <strong>Device Owner:</strong> May access their own account,
+              registered device information, and emergency history.
+            </li>
+
+            <li>
+              <strong>Family / Emergency Contact:</strong> May receive emergency
+              alerts and information necessary to respond to an emergency.
+            </li>
+
+            <li>
+              <strong>Barangay Health Worker:</strong> May receive emergency
+              alerts for users assigned or authorized to their response group.
+            </li>
+
+            <li>
+              <strong>System Administrator:</strong> May access information
+              necessary to manage and maintain the ALISTO system, subject to
+              appropriate access restrictions.
+            </li>
+          </ul>
+
+          <h3>5. Emergency SMS Communication</h3>
+          <p>
+            When an emergency alert is triggered, ALISTO may use GSM/SMS
+            communication to transmit necessary emergency information to
+            registered contacts.
+          </p>
+
+          <p>
+            SMS communication depends on the availability and performance of the
+            applicable cellular network. ALISTO does not control the delivery
+            time or reliability of third-party telecommunications networks.
+          </p>
+
+          <h3>6. Data Retention</h3>
+          <p>
+            Personal information will only be retained for as long as reasonably
+            necessary to fulfill the purposes for which it was collected,
+            maintain the ALISTO system, address legitimate concerns, or comply
+            with applicable requirements.
+          </p>
+
+          <p>
+            Where specific retention periods are implemented in the ALISTO
+            system, these periods should be communicated to users and followed
+            consistently.
+          </p>
+
+          <p>
+            When information is no longer necessary, it may be securely deleted,
+            anonymized, or otherwise disposed of in accordance with applicable
+            requirements.
+          </p>
+
+          <h3>7. Data Security</h3>
+          <p>
+            ALISTO applies reasonable technical and organizational measures to
+            protect personal information against unauthorized access,
+            disclosure, alteration, loss, or misuse.
+          </p>
+
+          <p>Security measures may include:</p>
+          <ul>
+            <li>Account authentication and access controls</li>
+            <li>Restricted access to personal information</li>
+            <li>Secure handling of account and emergency information</li>
+            <li>Device authorization and registration controls</li>
+          </ul>
+
+          <p>
+            While reasonable safeguards are implemented, no electronic system
+            can guarantee absolute security.
+          </p>
+
+          <h3>8. Your Privacy Rights</h3>
+          <p>
+            Subject to applicable Philippine data protection laws, users may
+            have rights concerning their personal information, including:
+          </p>
+
+          <ul>
+            <li>
+              <strong>Right to Be Informed:</strong> Know how personal
+              information is collected and processed.
+            </li>
+
+            <li>
+              <strong>Right to Access:</strong> Request access to personal
+              information held by the system.
+            </li>
+
+            <li>
+              <strong>Right to Correction:</strong> Request correction of
+              inaccurate or outdated information.
+            </li>
+
+            <li>
+              <strong>Right to Object:</strong> Object to certain processing of
+              personal information where applicable.
+            </li>
+
+            <li>
+              <strong>Right to Erasure or Blocking:</strong> Request deletion or
+              blocking of personal information when applicable.
+            </li>
+
+            <li>
+              <strong>Right to File a Complaint:</strong> Raise privacy concerns
+              with the appropriate authority when applicable.
+            </li>
+          </ul>
+
+          <h3>9. Data Breach</h3>
+          <p>
+            If a security incident involving personal information occurs, ALISTO
+            will take reasonable steps to investigate, contain, and address the
+            incident and will provide notifications when required by applicable
+            privacy regulations.
+          </p>
+
+          <h3>10. Third-Party Services</h3>
+          <p>
+            ALISTO may rely on third-party technologies or services required for
+            system operation, such as cellular/SMS communication, hosting,
+            authentication, or database services.
+          </p>
+
+          <p>
+            Where applicable, information shared with these services will be
+            limited to what is reasonably necessary for the intended function of
+            ALISTO.
+          </p>
+
+          <h3>11. Emergency System Disclaimer</h3>
+          <div class="modal-warning">
+            <strong>Important:</strong> ALISTO is designed to assist with
+            emergency communication. It does not diagnose medical conditions or
+            provide professional medical advice. Users should not rely solely on
+            ALISTO when immediate professional emergency assistance is required.
+          </div>
+
+          <h3>12. Changes to This Privacy Policy</h3>
+          <p>
+            This Privacy Policy may be updated when necessary to reflect changes
+            in the ALISTO system, features, data-processing practices, or
+            applicable requirements. Significant changes may be communicated to
+            users when appropriate.
+          </p>
+
+          <h3>13. Contact Information</h3>
+
+          <p>
+            <strong>ALISTO Development Team</strong><br />
+            University of Cebu, College of Computer Studies<br />
+            Cebu City, Philippines
+          </p>
+
+          <p>
+            <strong>Project Manager:</strong> Engel Bellita<br />
+            <strong>Database Designer:</strong> Neo Ylaya<br />
+            <strong>UI/UX Designer:</strong> April Dianne D. Escuadro<br />
+            <strong>Programmer:</strong> Lemuel Alonso
+          </p>
+
+          <p>
+            For questions, concerns, or requests regarding this Privacy Policy
+            or the handling of personal information, please contact the ALISTO
+            Development Team through the official contact information provided
+            by the project.
+          </p>
+
+          <p>
+            For questions, concerns, or requests regarding this Privacy Policy
+            or the handling of personal information, please contact the ALISTO
+            Development Team through the official contact information provided
+            by the project.
+          </p>
+
+          <p><strong>Last Updated: August 2026</strong></p>
+        </div>
+
+        <div class="modal-footer">
+          <button class="modal-btn-close" onclick="closeModal('privacyModal')">
+            Close
+          </button>
+          <button class="modal-btn-accept" onclick="acceptPrivacy()">
+            I Understand
+          </button>
+        </div>
+      </div>
+    </div>
   </body>
 </html>

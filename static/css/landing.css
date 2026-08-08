@@ -877,11 +877,12 @@ footer {
     background: #ffffff;
 }
 
+#home,
 #about,
 #how-it-works,
 #goals,
 #download-app {
-    scroll-margin-top: 75px;
+    scroll-margin-top: 60px;
 }
 
 .mv-grid {
