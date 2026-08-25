@@ -46,12 +46,14 @@ CREATE TABLE IF NOT EXISTS family_elder_link (
 -- DEVICE
 CREATE TABLE IF NOT EXISTS device (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
-    elder_id INTEGER NOT NULL,
+    elder_id INTEGER,
     serial_number TEXT UNIQUE NOT NULL,
     sim_number TEXT,
     battery_level INTEGER DEFAULT 100,
     led_status TEXT DEFAULT 'green',
-    registered_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    is_registered INTEGER DEFAULT 0,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    registered_at TIMESTAMP,
     FOREIGN KEY (elder_id) REFERENCES elder_profile (id)
 );
 

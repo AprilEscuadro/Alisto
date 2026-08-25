@@ -10,6 +10,7 @@
     />
     <script src="https://unpkg.com/lucide@latest/dist/umd/lucide.js"></script>
     <script src="{{ url_for('static', filename='js/auth.js') }}"></script>
+    <script src="https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.js"></script>
     <link
       rel="stylesheet"
       href="{{ url_for('static', filename='css/auth.css') }}"
@@ -251,11 +252,14 @@
                   placeholder="Enter Device ID"
                   required
                 />
-                <i
-                  data-lucide="scan-line"
-                  class="input-icon"
-                  style="left: auto; right: 14px"
-                ></i>
+                <button
+                  type="button"
+                  id="scanBtn"
+                  class="scan-btn"
+                  onclick="openScanner()"
+                >
+                  <i data-lucide="scan-line"></i>
+                </button>
               </div>
             </div>
 
@@ -271,7 +275,11 @@
               <button type="button" class="btn-back" onclick="prevStep(2)">
                 Back
               </button>
-              <button type="button" class="btn-submit" onclick="nextStep(2)">
+              <button
+                type="button"
+                class="btn-submit"
+                onclick="nextStep(2, this)"
+              >
                 Continue
               </button>
             </div>
@@ -279,7 +287,7 @@
 
           <!-- STEP 3: PERSONAL INFORMATION -->
           <div class="wizard-step" data-step="3">
-            <h1>Personal Information</h1>
+            <h1>Loved one's Personal Information</h1>
             <p class="auth-subtitle">Tell us about your loved one.</p>
 
             <div class="form-group">
@@ -305,19 +313,50 @@
             </div>
 
             <div class="form-group">
-              <label class="field-label">Relationship</label>
-              <div class="select-icon-wrap">
-                <i data-lucide="users-round" class="input-icon"></i>
-                <select id="relationship" name="relationship" required>
-                  <option value="">Select relationship</option>
-                  <option value="child">Son/Daughter</option>
-                  <option value="spouse">Spouse</option>
-                  <option value="sibling">Sibling</option>
-                  <option value="grandchild">Grandchild</option>
-                  <option value="caregiver">Caregiver</option>
-                  <option value="other">Other</option>
-                </select>
+              <div class="form-group">
+                <label class="field-label">Relationship</label>
+                <div class="select-icon-wrap">
+                  <i data-lucide="users-round" class="input-icon"></i>
+                  <select
+                    id="relationship_select"
+                    required
+                    onchange="handleRelationshipChange()"
+                  >
+                    <option value="">Select relationship</option>
+                    <option value="child">Son/Daughter</option>
+                    <option value="spouse">Spouse</option>
+                    <option value="sibling">Sibling</option>
+                    <option value="grandchild">Grandchild</option>
+                    <option value="caregiver">Caregiver</option>
+                    <option value="other">Other</option>
+                  </select>
+                </div>
               </div>
+
+              <div
+                class="form-group"
+                id="relationshipOtherField"
+                style="display: none"
+              >
+                <label class="field-label">Please specify</label>
+                <div class="input-icon-wrap">
+                  <i data-lucide="pencil" class="input-icon"></i>
+                  <input
+                    type="text"
+                    id="relationship_other_input"
+                    placeholder="e.g. Girlfriend, Boyfriend, Neighbor"
+                    oninput="updateRelationshipValue()"
+                  />
+                </div>
+              </div>
+
+              <!-- Kani ang actual field nga ma-submit sa form -->
+              <input
+                type="hidden"
+                id="relationship"
+                name="relationship"
+                value=""
+              />
             </div>
 
             <div class="form-group">
@@ -467,7 +506,7 @@
             </div>
 
             <div class="review-section">
-              <h4>Personal Information</h4>
+              <h4>Loved one's Personal Information</h4>
               <div class="review-row">
                 <span>Full Name</span><span id="rev_full_name">—</span>
               </div>
@@ -1033,6 +1072,23 @@
             I Understand
           </button>
         </div>
+      </div>
+    </div>
+
+    <div id="qrScannerModal" class="modal-overlay">
+      <div class="modal-card scanner-card">
+        <div class="modal-header">
+          <h2>Scan Device QR</h2>
+          <button class="modal-close" onclick="closeScanner()">&times;</button>
+        </div>
+        <div class="scanner-body">
+          <video id="qrVideo" autoplay playsinline muted></video>
+          <canvas id="qrCanvas" style="display: none"></canvas>
+          <div class="scan-frame"></div>
+        </div>
+        <p class="scanner-hint" id="scannerHint">
+          Point your camera at the QR code on the device.
+        </p>
       </div>
     </div>
   </body>
