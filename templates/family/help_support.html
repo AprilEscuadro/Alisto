@@ -1,0 +1,286 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Help &amp; Support - ALISTO</title>
+    <link
+      href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Nunito:wght@400;600;700;800&display=swap"
+      rel="stylesheet"
+    />
+    <script src="https://unpkg.com/lucide@latest/dist/umd/lucide.js"></script>
+    <link
+      rel="stylesheet"
+      href="{{ url_for('static', filename='css/dashboard.css') }}"
+    />
+    <link
+      rel="stylesheet"
+      href="{{ url_for('static', filename='css/help_support.css') }}"
+    />
+  </head>
+  <body>
+    <div class="app-shell">
+      <!-- ============ SIDEBAR ============ -->
+      <aside class="sidebar">
+        <a href="{{ url_for('dashboard') }}" class="sidebar-logo">
+          <img
+            src="{{ url_for('static', filename='images/alistoLogo.png') }}"
+            alt="ALISTO Logo"
+            class="logo-mark-img"
+          />
+        </a>
+
+        <nav class="sidebar-nav">
+          <a href="{{ url_for('dashboard') }}" class="nav-item">
+            <i data-lucide="layout-dashboard"></i>
+            <span>Dashboard</span>
+          </a>
+          <a href="{{ url_for('my_loved_ones') }}" class="nav-item">
+            <i data-lucide="users-round"></i>
+            <span>My Loved Ones</span>
+          </a>
+          <a href="{{ url_for('alerts') }}" class="nav-item">
+            <i data-lucide="bell-ring"></i>
+            <span>Alerts</span>
+          </a>
+          <a href="{{ url_for('medication_reminders') }}" class="nav-item">
+            <i data-lucide="pill"></i>
+            <span>Medication Reminders</span>
+          </a>
+          <a href="{{ url_for('history') }}" class="nav-item">
+            <i data-lucide="history"></i>
+            <span>History</span>
+          </a>
+          <a href="{{ url_for('settings') }}" class="nav-item">
+            <i data-lucide="settings"></i>
+            <span>Settings</span>
+          </a>
+          <a href="{{ url_for('help_support') }}" class="nav-item active">
+            <i data-lucide="circle-help"></i>
+            <span>Help &amp; Support</span>
+          </a>
+        </nav>
+
+        <div class="care-plan-card">
+          <div class="care-plan-top">
+            <span class="care-plan-title">Alisto Care Plan</span>
+            <span class="badge badge-active">
+              <i data-lucide="check-circle-2"></i> Active
+            </span>
+          </div>
+          <div class="care-plan-row">
+            <i data-lucide="calendar-clock"></i>
+            <span
+              >Renews in {{ care_plan.days_left }} days<br /><small
+                >{{ care_plan.renew_date }}</small
+              ></span
+            >
+          </div>
+          <div class="care-plan-price">
+            ₱{{ care_plan.price }} <span>/ month</span>
+          </div>
+          <button type="button" class="care-plan-btn">
+            <i data-lucide="credit-card"></i> Pay / Renew Now
+          </button>
+        </div>
+      </aside>
+
+      <!-- ============ MAIN ============ -->
+      <main class="main-wrapper">
+        <!-- ---- TOP HEADER ---- -->
+        <header class="top-header">
+          <div class="header-left">
+            <button class="menu-toggle">
+              <i data-lucide="menu"></i>
+            </button>
+            <div class="header-breadcrumb">
+              <span class="org-name">Emergency Response System</span>
+              <h2 class="system-title">ALISTO</h2>
+            </div>
+          </div>
+
+          <div class="header-right">
+            <button type="button" class="icon-btn" aria-label="Notifications">
+              <i data-lucide="bell"></i>
+              {% if notification_count %}
+              <span class="notif-dot">{{ notification_count }}</span>
+              {% endif %}
+            </button>
+
+            <button type="button" class="profile-pill">
+              <span class="avatar">{{ full_name[:1] }}</span>
+              <span class="profile-text">
+                <strong>{{ full_name }}</strong>
+                <small>{{ role|capitalize }}</small>
+              </span>
+              <i data-lucide="chevron-down"></i>
+            </button>
+          </div>
+        </header>
+
+        <!-- ---- MAIN CONTENT ---- -->
+        <div class="main">
+          <div class="page-header">
+            <div>
+              <h1 class="page-title">Help &amp; Support</h1>
+              <p class="page-subtitle">
+                We're here to help you. Find answers or contact us anytime.
+              </p>
+            </div>
+          </div>
+
+          <!-- ---- FAQ + CONTACT CARD ---- -->
+          <section class="help-top-grid">
+            <div class="panel faq-panel">
+              <h3 class="panel-title">Frequently Asked Questions</h3>
+              <div class="faq-list" id="faqList">
+                {% for item in faqs %}
+                <div class="faq-item">
+                  <button type="button" class="faq-question">
+                    <i data-lucide="circle-help"></i>
+                    <span>{{ item.question }}</span>
+                    <i data-lucide="chevron-down" class="faq-chevron"></i>
+                  </button>
+                  <div class="faq-answer">
+                    <p>{{ item.answer }}</p>
+                  </div>
+                </div>
+                {% endfor %}
+              </div>
+              <a href="{{ url_for('faqs') }}" class="panel-link left-aligned">
+                View more FAQs <i data-lucide="chevron-right"></i>
+              </a>
+            </div>
+
+            <div class="panel contact-card">
+              <div class="contact-card-icon">
+                <i data-lucide="headphones"></i>
+              </div>
+              <h3 class="contact-card-title">Need more help?</h3>
+              <p class="contact-card-text">
+                If you can't find the answer you're looking for, our support
+                team is ready to assist you.
+              </p>
+              <a
+                href="{{ url_for('contact_support') }}"
+                class="panel-btn primary"
+              >
+                <i data-lucide="mail"></i> Contact Support
+              </a>
+              <p class="contact-card-note">
+                We usually respond within <strong>24 hours</strong>
+              </p>
+            </div>
+          </section>
+
+          <!-- ---- OTHER WAYS TO GET HELP ---- -->
+          <h3 class="section-heading">Other Ways to Get Help</h3>
+          <section class="help-options-grid">
+            <div class="help-option-card">
+              <div class="help-option-icon success">
+                <i data-lucide="book-open"></i>
+              </div>
+              <strong>User Guide</strong>
+              <p>Learn how to use Alisto with our step-by-step user guide.</p>
+              <a
+                href="{{ url_for('user_guide') }}"
+                class="help-option-btn success"
+              >
+                View User Guide
+              </a>
+            </div>
+
+            <div class="help-option-card">
+              <div class="help-option-icon warning">
+                <i data-lucide="triangle-alert"></i>
+              </div>
+              <strong>Report a Problem</strong>
+              <p>Found a problem? Let us know so we can fix it.</p>
+              <a
+                href="{{ url_for('report_issue') }}"
+                class="help-option-btn warning"
+              >
+                Report Issue
+              </a>
+            </div>
+
+            <div class="help-option-card">
+              <div class="help-option-icon purple">
+                <i data-lucide="info"></i>
+              </div>
+              <strong>About Alisto</strong>
+              <p>Learn more about Alisto and its mission.</p>
+              <a href="{{ url_for('about') }}" class="help-option-btn purple">
+                Learn More
+              </a>
+            </div>
+          </section>
+
+          <!-- ---- CONTACT INFORMATION ---- -->
+          <section class="contact-info-row">
+            <div class="contact-info-item">
+              <div class="contact-info-icon primary">
+                <i data-lucide="phone"></i>
+              </div>
+              <div>
+                <span class="contact-info-label">Phone</span>
+                <strong>{{ contact_info.phone }}</strong>
+                <small>{{ contact_info.phone_hours }}</small>
+              </div>
+            </div>
+
+            <div class="contact-info-item">
+              <div class="contact-info-icon primary">
+                <i data-lucide="mail"></i>
+              </div>
+              <div>
+                <span class="contact-info-label">Email</span>
+                <strong>{{ contact_info.email }}</strong>
+                <small>We respond within 24 hours</small>
+              </div>
+            </div>
+
+            <div class="contact-info-item">
+              <div class="contact-info-icon primary">
+                <i data-lucide="map-pin"></i>
+              </div>
+              <div>
+                <span class="contact-info-label">Address</span>
+                <strong>{{ contact_info.address_line1 }}</strong>
+                <small>{{ contact_info.address_line2 }}</small>
+              </div>
+            </div>
+          </section>
+
+          <footer class="main-footer">
+            &copy; {{ current_year }} Alisto. All rights reserved.
+          </footer>
+        </div>
+      </main>
+    </div>
+
+    <script>
+      lucide.createIcons();
+
+      // Menu toggle (mobile)
+      const menuToggle = document.querySelector(".menu-toggle");
+      const sidebar = document.querySelector(".sidebar");
+      if (menuToggle) {
+        menuToggle.addEventListener("click", () => {
+          sidebar.classList.toggle("open");
+        });
+      }
+
+      // FAQ accordion
+      const faqItems = document.querySelectorAll("#faqList .faq-item");
+      faqItems.forEach((item) => {
+        const question = item.querySelector(".faq-question");
+        question.addEventListener("click", () => {
+          const isOpen = item.classList.contains("open");
+          faqItems.forEach((i) => i.classList.remove("open"));
+          if (!isOpen) item.classList.add("open");
+        });
+      });
+    </script>
+  </body>
+</html>

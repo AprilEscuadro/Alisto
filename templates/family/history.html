@@ -1,0 +1,383 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>History - ALISTO</title>
+    <link
+      href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Nunito:wght@400;600;700;800&display=swap"
+      rel="stylesheet"
+    />
+    <script src="https://unpkg.com/lucide@latest/dist/umd/lucide.js"></script>
+    <link
+      rel="stylesheet"
+      href="{{ url_for('static', filename='css/dashboard.css') }}"
+    />
+    <link
+      rel="stylesheet"
+      href="{{ url_for('static', filename='css/history.css') }}"
+    />
+  </head>
+  <body>
+    <div class="app-shell">
+      <!-- ============ SIDEBAR ============ -->
+      <aside class="sidebar">
+        <a href="{{ url_for('dashboard') }}" class="sidebar-logo">
+          <img
+            src="{{ url_for('static', filename='images/alistoLogo.png') }}"
+            alt="ALISTO Logo"
+            class="logo-mark-img"
+          />
+        </a>
+
+        <nav class="sidebar-nav">
+          <a href="{{ url_for('dashboard') }}" class="nav-item">
+            <i data-lucide="layout-dashboard"></i>
+            <span>Dashboard</span>
+          </a>
+          <a href="{{ url_for('my_loved_ones') }}" class="nav-item">
+            <i data-lucide="users-round"></i>
+            <span>My Loved Ones</span>
+          </a>
+          <a href="{{ url_for('alerts') }}" class="nav-item">
+            <i data-lucide="bell-ring"></i>
+            <span>Alerts</span>
+          </a>
+          <a href="{{ url_for('medication_reminders') }}" class="nav-item">
+            <i data-lucide="pill"></i>
+            <span>Medication Reminders</span>
+          </a>
+          <a href="{{ url_for('history') }}" class="nav-item active">
+            <i data-lucide="history"></i>
+            <span>History</span>
+          </a>
+          <a href="{{ url_for('settings') }}" class="nav-item">
+            <i data-lucide="settings"></i>
+            <span>Settings</span>
+          </a>
+          <a href="{{ url_for('help_support') }}" class="nav-item">
+            <i data-lucide="circle-help"></i>
+            <span>Help &amp; Support</span>
+          </a>
+        </nav>
+
+        <div class="care-plan-card">
+          <div class="care-plan-top">
+            <span class="care-plan-title">Alisto Care Plan</span>
+            <span class="badge badge-active">
+              <i data-lucide="check-circle-2"></i> Active
+            </span>
+          </div>
+          <div class="care-plan-row">
+            <i data-lucide="calendar-clock"></i>
+            <span
+              >Renews in {{ care_plan.days_left }} days<br /><small
+                >{{ care_plan.renew_date }}</small
+              ></span
+            >
+          </div>
+          <div class="care-plan-price">
+            ₱{{ care_plan.price }} <span>/ month</span>
+          </div>
+          <button type="button" class="care-plan-btn">
+            <i data-lucide="credit-card"></i> Pay / Renew Now
+          </button>
+        </div>
+      </aside>
+
+      <!-- ============ MAIN ============ -->
+      <main class="main-wrapper">
+        <!-- ---- TOP HEADER ---- -->
+        <header class="top-header">
+          <div class="header-left">
+            <button class="menu-toggle">
+              <i data-lucide="menu"></i>
+            </button>
+            <div class="header-breadcrumb">
+              <span class="org-name">Emergency Response System</span>
+              <h2 class="system-title">ALISTO</h2>
+            </div>
+          </div>
+
+          <div class="header-right">
+            <button type="button" class="icon-btn" aria-label="Notifications">
+              <i data-lucide="bell"></i>
+              {% if notification_count %}
+              <span class="notif-dot">{{ notification_count }}</span>
+              {% endif %}
+            </button>
+
+            <button type="button" class="profile-pill">
+              <span class="avatar">{{ full_name[:1] }}</span>
+              <span class="profile-text">
+                <strong>{{ full_name }}</strong>
+                <small>{{ role|capitalize }}</small>
+              </span>
+              <i data-lucide="chevron-down"></i>
+            </button>
+          </div>
+        </header>
+
+        <!-- ---- MAIN CONTENT ---- -->
+        <div class="main">
+          <div class="page-header">
+            <div>
+              <h1 class="page-title">History</h1>
+              <p class="page-subtitle">
+                View past alerts and medication reminder activities.
+              </p>
+            </div>
+
+            <div class="page-actions">
+              <div class="search-box">
+                <i data-lucide="search"></i>
+                <input
+                  type="text"
+                  id="historySearch"
+                  placeholder="Search by name, type, or date..."
+                  autocomplete="off"
+                />
+              </div>
+              <button
+                type="button"
+                class="btn-primary-action"
+                id="exportHistoryBtn"
+              >
+                <i data-lucide="download"></i> Export History
+              </button>
+            </div>
+          </div>
+
+          <!-- ---- SUMMARY CARDS ---- -->
+          <section class="summary-cards four-up">
+            <div class="summary-card">
+              <div class="summary-icon danger">
+                <i data-lucide="triangle-alert"></i>
+              </div>
+              <div class="summary-content">
+                <span class="summary-label">Emergency Alerts</span>
+                <span class="summary-value">{{ alert_count }}</span>
+                <span class="summary-sub">This Month</span>
+              </div>
+            </div>
+
+            <div class="summary-card">
+              <div class="summary-icon primary">
+                <i data-lucide="pill"></i>
+              </div>
+              <div class="summary-content">
+                <span class="summary-label">Medication Reminders</span>
+                <span class="summary-value">{{ med_reminder_count }}</span>
+                <span class="summary-sub">This Month</span>
+              </div>
+            </div>
+
+            <div class="summary-card">
+              <div class="summary-icon success">
+                <i data-lucide="check-circle-2"></i>
+              </div>
+              <div class="summary-content">
+                <span class="summary-label">Device Activities</span>
+                <span class="summary-value">{{ device_activity_count }}</span>
+                <span class="summary-sub">This Month</span>
+              </div>
+            </div>
+
+            <div class="summary-card">
+              <div class="summary-icon purple">
+                <i data-lucide="file-text"></i>
+              </div>
+              <div class="summary-content">
+                <span class="summary-label">Total Activities</span>
+                <span class="summary-value">{{ activities|length }}</span>
+                <span class="summary-sub">This Month</span>
+              </div>
+            </div>
+          </section>
+
+          <!-- ---- FILTER TABS + DATE RANGE ---- -->
+          <div class="filter-tabs" id="historyFilters">
+            <button type="button" class="filter-tab active" data-filter="all">
+              All Activities ({{ activities|length }})
+            </button>
+            <button type="button" class="filter-tab" data-filter="alert">
+              <span class="dot emergency"></span> Alerts ({{ alert_count }})
+            </button>
+            <button type="button" class="filter-tab" data-filter="med-reminder">
+              <span class="dot online"></span> Med Reminders ({{
+              med_reminder_count }})
+            </button>
+            <button type="button" class="filter-tab" data-filter="device">
+              <span class="dot success"></span> Device Activities ({{
+              device_activity_count }})
+            </button>
+            <button type="button" class="filter-tab" id="dateRangeBtn">
+              <i data-lucide="calendar"></i> {{ date_range_label }}
+            </button>
+            <button type="button" class="filter-tab" id="advancedFilterBtn">
+              <i data-lucide="list-filter"></i> Filter
+            </button>
+          </div>
+
+          <!-- ---- HISTORY TABLE ---- -->
+          <section class="history-table-wrap">
+            <table class="history-table">
+              <thead>
+                <tr>
+                  <th>Date &amp; Time</th>
+                  <th>Type</th>
+                  <th>Person</th>
+                  <th>Details</th>
+                  <th>Location / Notes</th>
+                  <th></th>
+                </tr>
+              </thead>
+              <tbody id="historyTableBody">
+                {% for item in activities %}
+                <tr data-type="{{ item.type_filter }}">
+                  <td class="col-datetime">
+                    {{ item.date }}<br /><small>{{ item.time }}</small>
+                  </td>
+                  <td>
+                    <span class="history-type {{ item.type_class }}">
+                      <i data-lucide="{{ item.type_icon }}"></i> {{
+                      item.type_label }}
+                    </span>
+                  </td>
+                  <td>
+                    <div class="history-person">
+                      <span class="history-person-avatar">
+                        {% if item.person_photo_url %}
+                        <img
+                          src="{{ item.person_photo_url }}"
+                          alt="{{ item.person_name }}"
+                        />
+                        {% else %}
+                        <i data-lucide="{{ item.person_icon }}"></i>
+                        {% endif %}
+                      </span>
+                      <div>
+                        <strong>{{ item.person_name }}</strong>
+                        <small>{{ item.person_relationship }}</small>
+                      </div>
+                    </div>
+                  </td>
+                  <td>
+                    <div class="history-details">
+                      <span>{{ item.detail_main }}</span>
+                      <span
+                        class="history-detail-badge {{ item.detail_badge_class }}"
+                        >{{ item.detail_badge }}</span
+                      >
+                    </div>
+                  </td>
+                  <td class="col-location">
+                    <i data-lucide="map-pin"></i> {{ item.location }}
+                  </td>
+                  <td class="col-chevron">
+                    <a
+                      href="{{ url_for('activity_details', activity_id=item.id) }}"
+                    >
+                      <i data-lucide="chevron-right"></i>
+                    </a>
+                  </td>
+                </tr>
+                {% else %}
+                <tr>
+                  <td colspan="6" class="history-empty">
+                    No activity recorded yet.
+                  </td>
+                </tr>
+                {% endfor %}
+              </tbody>
+            </table>
+          </section>
+
+          <!-- ---- PAGINATION ---- -->
+          {% if activities|length > 0 %}
+          <div class="pagination">
+            <span class="pagination-summary"
+              >Showing {{ pagination.start }} to {{ pagination.end }} of {{
+              pagination.total }} activities</span
+            >
+            <div class="pagination-controls">
+              <button
+                type="button"
+                class="page-btn"
+                {{ 'disabled' if pagination.current_page == 1 else '' }}
+              >
+                <i data-lucide="chevron-left"></i>
+              </button>
+              {% for page in pagination.pages %} {% if page == '...' %}
+              <span class="page-ellipsis">…</span>
+              {% else %}
+              <button
+                type="button"
+                class="page-btn {{ 'active' if page == pagination.current_page else '' }}"
+              >
+                {{ page }}
+              </button>
+              {% endif %} {% endfor %}
+              <button
+                type="button"
+                class="page-btn"
+                {{ 'disabled' if pagination.current_page == pagination.total_pages else '' }}
+              >
+                <i data-lucide="chevron-right"></i>
+              </button>
+            </div>
+          </div>
+          {% endif %}
+
+          <footer class="main-footer">
+            &copy; {{ current_year }} Alisto. All rights reserved.
+          </footer>
+        </div>
+      </main>
+    </div>
+
+    <script>
+      lucide.createIcons();
+
+      // Menu toggle (mobile)
+      const menuToggle = document.querySelector(".menu-toggle");
+      const sidebar = document.querySelector(".sidebar");
+      if (menuToggle) {
+        menuToggle.addEventListener("click", () => {
+          sidebar.classList.toggle("open");
+        });
+      }
+
+      // Filter tabs
+      const filterButtons = document.querySelectorAll(
+        "#historyFilters .filter-tab[data-filter]",
+      );
+      const rows = document.querySelectorAll("#historyTableBody tr[data-type]");
+
+      filterButtons.forEach((btn) => {
+        btn.addEventListener("click", () => {
+          filterButtons.forEach((b) => b.classList.remove("active"));
+          btn.classList.add("active");
+
+          const filter = btn.dataset.filter;
+          rows.forEach((row) => {
+            row.style.display =
+              filter === "all" || row.dataset.type === filter ? "" : "none";
+          });
+        });
+      });
+
+      // Search
+      const searchInput = document.getElementById("historySearch");
+      if (searchInput) {
+        searchInput.addEventListener("input", () => {
+          const query = searchInput.value.trim().toLowerCase();
+          rows.forEach((row) => {
+            const text = row.textContent.toLowerCase();
+            row.style.display = text.includes(query) ? "" : "none";
+          });
+        });
+      }
+    </script>
+  </body>
+</html>

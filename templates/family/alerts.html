@@ -1,0 +1,364 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Alerts - ALISTO</title>
+    <link
+      href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Nunito:wght@400;600;700;800&display=swap"
+      rel="stylesheet"
+    />
+    <script src="https://unpkg.com/lucide@latest/dist/umd/lucide.js"></script>
+    <link
+      rel="stylesheet"
+      href="{{ url_for('static', filename='css/dashboard.css') }}"
+    />
+    <link
+      rel="stylesheet"
+      href="{{ url_for('static', filename='css/alerts.css') }}"
+    />
+  </head>
+  <body>
+    <div class="app-shell">
+      <!-- ============ SIDEBAR ============ -->
+      <aside class="sidebar">
+        <a href="{{ url_for('dashboard') }}" class="sidebar-logo">
+          <img
+            src="{{ url_for('static', filename='images/alistoLogo.png') }}"
+            alt="ALISTO Logo"
+            class="logo-mark-img"
+          />
+        </a>
+
+        <nav class="sidebar-nav">
+          <a href="{{ url_for('dashboard') }}" class="nav-item">
+            <i data-lucide="layout-dashboard"></i>
+            <span>Dashboard</span>
+          </a>
+          <a href="{{ url_for('my_loved_ones') }}" class="nav-item">
+            <i data-lucide="users-round"></i>
+            <span>My Loved Ones</span>
+          </a>
+          <a href="{{ url_for('alerts') }}" class="nav-item active">
+            <i data-lucide="bell-ring"></i>
+            <span>Alerts</span>
+          </a>
+          <a href="{{ url_for('medication_reminders') }}" class="nav-item">
+            <i data-lucide="pill"></i>
+            <span>Medication Reminders</span>
+          </a>
+          <a href="{{ url_for('history') }}" class="nav-item">
+            <i data-lucide="history"></i>
+            <span>History</span>
+          </a>
+          <a href="{{ url_for('settings') }}" class="nav-item">
+            <i data-lucide="settings"></i>
+            <span>Settings</span>
+          </a>
+          <a href="{{ url_for('help_support') }}" class="nav-item">
+            <i data-lucide="circle-help"></i>
+            <span>Help &amp; Support</span>
+          </a>
+        </nav>
+
+        <div class="care-plan-card">
+          <div class="care-plan-top">
+            <span class="care-plan-title">Alisto Care Plan</span>
+            <span class="badge badge-active">
+              <i data-lucide="check-circle-2"></i> Active
+            </span>
+          </div>
+          <div class="care-plan-row">
+            <i data-lucide="calendar-clock"></i>
+            <span
+              >Renews in {{ care_plan.days_left }} days<br /><small
+                >{{ care_plan.renew_date }}</small
+              ></span
+            >
+          </div>
+          <div class="care-plan-price">
+            ₱{{ care_plan.price }} <span>/ month</span>
+          </div>
+          <button type="button" class="care-plan-btn">
+            <i data-lucide="credit-card"></i> Pay / Renew Now
+          </button>
+        </div>
+      </aside>
+
+      <!-- ============ MAIN ============ -->
+      <main class="main-wrapper">
+        <!-- ---- TOP HEADER ---- -->
+        <header class="top-header">
+          <div class="header-left">
+            <button class="menu-toggle">
+              <i data-lucide="menu"></i>
+            </button>
+            <div class="header-breadcrumb">
+              <span class="org-name">Emergency Response System</span>
+              <h2 class="system-title">ALISTO</h2>
+            </div>
+          </div>
+
+          <div class="header-right">
+            <button type="button" class="icon-btn" aria-label="Notifications">
+              <i data-lucide="bell"></i>
+              {% if notification_count %}
+              <span class="notif-dot">{{ notification_count }}</span>
+              {% endif %}
+            </button>
+
+            <button type="button" class="profile-pill">
+              <span class="avatar">{{ full_name[:1] }}</span>
+              <span class="profile-text">
+                <strong>{{ full_name }}</strong>
+                <small>{{ role|capitalize }}</small>
+              </span>
+              <i data-lucide="chevron-down"></i>
+            </button>
+          </div>
+        </header>
+
+        <!-- ---- MAIN CONTENT ---- -->
+        <div class="main">
+          <div class="page-header">
+            <div>
+              <h1 class="page-title">Alerts</h1>
+              <p class="page-subtitle">
+                Monitor emergency incidents and response status.
+              </p>
+            </div>
+
+            <div class="page-actions">
+              <div class="search-box">
+                <i data-lucide="search"></i>
+                <input
+                  type="text"
+                  id="alertsSearch"
+                  placeholder="Search by name or alert ID..."
+                  autocomplete="off"
+                />
+              </div>
+              <button
+                type="button"
+                class="btn-primary-action"
+                id="exportReportBtn"
+              >
+                <i data-lucide="download"></i> Export Report
+              </button>
+            </div>
+          </div>
+
+          <!-- ---- SUMMARY CARDS ---- -->
+          <section class="summary-cards">
+            <div class="summary-card">
+              <div class="summary-icon danger">
+                <i data-lucide="triangle-alert"></i>
+              </div>
+              <div class="summary-content">
+                <span class="summary-label">Emergency Alerts</span>
+                <span class="summary-value">{{ emergency_count }}</span>
+                <span class="summary-sub">Requires Immediate Attention</span>
+              </div>
+            </div>
+
+            <div class="summary-card">
+              <div class="summary-icon muted">
+                <i data-lucide="bell"></i>
+              </div>
+              <div class="summary-content">
+                <span class="summary-label">False Alarms</span>
+                <span class="summary-value">{{ false_alarm_count }}</span>
+                <span class="summary-sub">Cancelled Within 5 Seconds</span>
+              </div>
+            </div>
+
+            <div class="summary-card">
+              <div class="summary-icon primary">
+                <i data-lucide="file-text"></i>
+              </div>
+              <div class="summary-content">
+                <span class="summary-label">Total Alerts</span>
+                <span class="summary-value">{{ alerts|length }}</span>
+                <span class="summary-sub">This Month</span>
+              </div>
+            </div>
+          </section>
+
+          <!-- ---- FILTER TABS ---- -->
+          <div class="filter-tabs" id="alertsFilters">
+            <button type="button" class="filter-tab active" data-filter="all">
+              All ({{ alerts|length }})
+            </button>
+            <button type="button" class="filter-tab" data-filter="emergency">
+              <span class="dot emergency"></span> Emergency ({{ emergency_count
+              }})
+            </button>
+            <button type="button" class="filter-tab" data-filter="false-alarm">
+              <span class="dot offline"></span> False Alarm ({{
+              false_alarm_count }})
+            </button>
+            <button type="button" class="filter-tab" data-filter="today">
+              <i data-lucide="calendar"></i> Today
+            </button>
+            <button type="button" class="filter-tab" data-filter="week">
+              <i data-lucide="calendar-days"></i> This Week
+            </button>
+          </div>
+
+          <!-- ---- ALERTS LIST ---- -->
+          <section class="alerts-list" id="alertsList">
+            {% for alert in alerts %}
+            <div
+              class="alert-card {{ 'emergency' if alert.type == 'emergency' else 'false-alarm' }}"
+              data-status="{{ 'emergency' if alert.type == 'emergency' else 'false-alarm' }}"
+            >
+              <span
+                class="alert-type-badge {{ 'emergency' if alert.type == 'emergency' else 'false-alarm' }}"
+              >
+                {% if alert.type == 'emergency' %}
+                <i data-lucide="triangle-alert"></i> EMERGENCY {% else %}
+                <i data-lucide="bell"></i> FALSE ALARM {% endif %}
+              </span>
+
+              <div class="alert-body">
+                <div class="alert-avatar">
+                  {% if alert.elder_photo_url %}
+                  <img
+                    src="{{ alert.elder_photo_url }}"
+                    alt="{{ alert.elder_name }}"
+                  />
+                  {% else %}
+                  <span>{{ alert.elder_name[:1] }}</span>
+                  {% endif %}
+                </div>
+
+                <div class="alert-main">
+                  <div class="alert-heading">
+                    <strong>{{ alert.elder_name }}</strong>
+                    <span class="alert-relationship"
+                      >{{ alert.relationship }}</span
+                    >
+                  </div>
+                  <div class="alert-trigger">
+                    <i data-lucide="mic"></i>
+                    <span>VOICE TRIGGER</span>
+                    {% if alert.trigger_phrase %}
+                    <em>"{{ alert.trigger_phrase }}"</em>
+                    {% endif %}
+                  </div>
+                </div>
+
+                <div class="alert-meta">
+                  <div class="meta-item">
+                    <i data-lucide="clock"></i>
+                    <span>{{ alert.timestamp }}</span>
+                  </div>
+                  <div class="meta-item">
+                    <i data-lucide="map-pin"></i>
+                    <span
+                      >{{ alert.location }}{% if alert.gps_verified %}<br /><span
+                        class="gps-verified"
+                        ><i data-lucide="check-circle-2"></i> GPS Verified</span
+                      >{% endif %}</span
+                    >
+                  </div>
+                </div>
+
+                <div class="alert-meta">
+                  <div class="meta-item">
+                    <i data-lucide="message-square"></i>
+                    <span>
+                      {% if alert.sms_sent_count %} SMS Sent to {{
+                      alert.sms_sent_count }} Contact{{ 's' if
+                      alert.sms_sent_count != 1 else '' }} {% else %} No SMS
+                      Sent {% endif %}
+                    </span>
+                  </div>
+                  <div class="meta-item">
+                    <i data-lucide="info"></i>
+                    <span>
+                      {% if alert.type == 'emergency' %} Status:
+                      <strong class="status-alert-sent"
+                        >{{ alert.status }}</strong
+                      >
+                      {% else %} Reason: {{ alert.reason }} {% endif %}
+                    </span>
+                  </div>
+                </div>
+              </div>
+
+              <a
+                href="{{ url_for('alert_details', alert_id=alert.id) }}"
+                class="alert-btn"
+              >
+                View Details <i data-lucide="chevron-right"></i>
+              </a>
+            </div>
+            {% else %}
+            <div class="empty-state">
+              <i data-lucide="bell-ring"></i>
+              <p>No alerts recorded yet.</p>
+            </div>
+            {% endfor %}
+          </section>
+
+          <footer class="main-footer">
+            &copy; {{ current_year }} Alisto. All rights reserved.
+          </footer>
+        </div>
+      </main>
+    </div>
+
+    <script>
+      lucide.createIcons();
+
+      // Menu toggle (mobile)
+      const menuToggle = document.querySelector(".menu-toggle");
+      const sidebar = document.querySelector(".sidebar");
+      if (menuToggle) {
+        menuToggle.addEventListener("click", () => {
+          sidebar.classList.toggle("open");
+        });
+      }
+
+      // Filter tabs
+      const filterButtons = document.querySelectorAll(
+        "#alertsFilters .filter-tab",
+      );
+      const alertCards = document.querySelectorAll("#alertsList .alert-card");
+
+      filterButtons.forEach((btn) => {
+        btn.addEventListener("click", () => {
+          filterButtons.forEach((b) => b.classList.remove("active"));
+          btn.classList.add("active");
+
+          const filter = btn.dataset.filter;
+          alertCards.forEach((card) => {
+            if (filter === "all") {
+              card.style.display = "";
+            } else if (filter === "emergency" || filter === "false-alarm") {
+              card.style.display = card.dataset.status === filter ? "" : "none";
+            } else {
+              // "today" / "week" placeholders — wire up to real date filtering later
+              card.style.display = "";
+            }
+          });
+        });
+      });
+
+      // Search by name
+      const searchInput = document.getElementById("alertsSearch");
+      if (searchInput) {
+        searchInput.addEventListener("input", () => {
+          const query = searchInput.value.trim().toLowerCase();
+          alertCards.forEach((card) => {
+            const name = card
+              .querySelector(".alert-heading strong")
+              .textContent.toLowerCase();
+            card.style.display = name.includes(query) ? "" : "none";
+          });
+        });
+      }
+    </script>
+  </body>
+</html>

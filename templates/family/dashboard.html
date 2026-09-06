@@ -1,0 +1,296 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Dashboard - ALISTO</title>
+    <link
+      href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Nunito:wght@400;600;700;800&display=swap"
+      rel="stylesheet"
+    />
+    <script src="https://unpkg.com/lucide@latest/dist/umd/lucide.js"></script>
+    <link
+      rel="stylesheet"
+      href="{{ url_for('static', filename='css/dashboard.css') }}"
+    />
+  </head>
+  <body>
+    <div class="app-shell">
+      <!-- ============ SIDEBAR ============ -->
+      <aside class="sidebar">
+        <a href="{{ url_for('dashboard') }}" class="sidebar-logo">
+          <img
+            src="{{ url_for('static', filename='images/alistoLogo.png') }}"
+            alt="ALISTO Logo"
+            class="logo-mark-img"
+          />
+        </a>
+
+        <nav class="sidebar-nav">
+          <a href="{{ url_for('dashboard') }}" class="nav-item active">
+            <i data-lucide="layout-dashboard"></i>
+            <span>Dashboard</span>
+          </a>
+          <a href="{{ url_for('my_loved_ones') }}" class="nav-item">
+            <i data-lucide="users-round"></i>
+            <span>My Loved Ones</span>
+          </a>
+          <a href="{{ url_for('alerts') }}" class="nav-item">
+            <i data-lucide="bell-ring"></i>
+            <span>Alerts</span>
+          </a>
+          <a href="{{ url_for('medication_reminders') }}" class="nav-item">
+            <i data-lucide="pill"></i>
+            <span>Medication Reminders</span>
+          </a>
+          <a href="{{ url_for('history') }}" class="nav-item">
+            <i data-lucide="history"></i>
+            <span>History</span>
+          </a>
+          <a href="{{ url_for('settings') }}" class="nav-item">
+            <i data-lucide="settings"></i>
+            <span>Settings</span>
+          </a>
+          <a href="{{ url_for('help_support') }}" class="nav-item">
+            <i data-lucide="circle-help"></i>
+            <span>Help &amp; Support</span>
+          </a>
+        </nav>
+
+        <div class="care-plan-card">
+          <div class="care-plan-top">
+            <span class="care-plan-title">Alisto Care Plan</span>
+            <span class="badge badge-active">
+              <i data-lucide="check-circle-2"></i> Active
+            </span>
+          </div>
+          <div class="care-plan-row">
+            <i data-lucide="calendar-clock"></i>
+            <span
+              >Renews in {{ care_plan.days_left }} days<br /><small
+                >{{ care_plan.renew_date }}</small
+              ></span
+            >
+          </div>
+          <div class="care-plan-price">
+            ₱{{ care_plan.price }} <span>/ month</span>
+          </div>
+          <button type="button" class="care-plan-btn">
+            <i data-lucide="credit-card"></i> Pay / Renew Now
+          </button>
+        </div>
+      </aside>
+
+      <!-- ============ MAIN ============ -->
+      <main class="main-wrapper">
+        <!-- ---- TOP HEADER ---- -->
+        <header class="top-header">
+          <div class="header-left">
+            <button class="menu-toggle">
+              <i data-lucide="menu"></i>
+            </button>
+            <div class="header-breadcrumb">
+              <span class="org-name">Emergency Response System</span>
+              <h2 class="system-title">ALISTO</h2>
+            </div>
+          </div>
+
+          <div class="header-right">
+            <button type="button" class="icon-btn" aria-label="Notifications">
+              <i data-lucide="bell"></i>
+              {% if notification_count %}
+              <span class="notif-dot">{{ notification_count }}</span>
+              {% endif %}
+            </button>
+
+            <button type="button" class="profile-pill">
+              <span class="avatar">{{ full_name[:1] }}</span>
+              <span class="profile-text">
+                <strong>{{ full_name }}</strong>
+                <small>{{ role|capitalize }}</small>
+              </span>
+              <i data-lucide="chevron-down"></i>
+            </button>
+          </div>
+        </header>
+
+        <!-- ---- MAIN CONTENT ---- -->
+        <div class="main">
+          <h1 class="page-title">Dashboard</h1>
+
+          <!-- ---- DEVICE STATUS ROW ---- -->
+          <section class="status-section">
+            <div class="status-grid">
+              <div class="status-card">
+                <div class="status-icon device-icon">
+                  <i data-lucide="radio"></i>
+                </div>
+                <div class="status-body">
+                  <span class="status-label">Device</span>
+                  <span class="status-value online">{{ device.status }}</span>
+                  <span class="status-sub">Alisto</span>
+                </div>
+              </div>
+
+              <div class="status-card">
+                <div class="status-icon plan-icon">
+                  <i data-lucide="clipboard-list"></i>
+                </div>
+                <div class="status-body">
+                  <span class="status-label">Care Plan</span>
+                  <span class="status-value online"
+                    >{{ care_plan.status }}</span
+                  >
+                  <span class="status-sub">Subscription active</span>
+                </div>
+              </div>
+
+              <div class="status-card">
+                <div class="status-icon contacts-icon">
+                  <i data-lucide="users"></i>
+                </div>
+                <div class="status-body">
+                  <span class="status-label">Emergency Contacts</span>
+                  <span class="status-value online"
+                    >{{ emergency_contact_count }} Linked</span
+                  >
+                  <span class="status-sub">Ready to notify</span>
+                </div>
+              </div>
+
+              <div class="status-card">
+                <div class="status-icon location-icon">
+                  <i data-lucide="map-pin"></i>
+                </div>
+                <div class="status-body">
+                  <span class="status-label">Location</span>
+                  <span class="status-value online"
+                    >{{ device.location_status }}</span
+                  >
+                  <span class="status-sub">GPS Connected</span>
+                </div>
+              </div>
+            </div>
+          </section>
+
+          <!-- ---- TRIGGER + REMINDER ROW ---- -->
+          <section class="two-col">
+            <div class="panel">
+              <h3 class="panel-title">Last Emergency Trigger</h3>
+              <div class="trigger-row">
+                <div class="trigger-icon safe">
+                  <i data-lucide="shield-check"></i>
+                </div>
+                <div>
+                  <strong>{{ last_trigger.headline }}</strong>
+                  <p>{{ last_trigger.subtext }}</p>
+                </div>
+              </div>
+              <a href="#" class="panel-btn">
+                <i data-lucide="history"></i> View History
+              </a>
+            </div>
+
+            <div class="panel">
+              <h3 class="panel-title">Next Medicine Reminder</h3>
+              <div class="trigger-row">
+                <div class="trigger-icon meds"><i data-lucide="pill"></i></div>
+                <div>
+                  <strong>{{ next_reminder.time }}</strong>
+                  <p>{{ next_reminder.medicine_name }}</p>
+                </div>
+              </div>
+              <a href="#" class="panel-btn primary">
+                <i data-lucide="bell"></i> View Reminders
+              </a>
+            </div>
+          </section>
+
+          <!-- ---- ACTIVITY + QUICK ACTIONS ROW ---- -->
+          <section class="two-col">
+            <div class="panel">
+              <h3 class="panel-title">Recent Activity</h3>
+              <ul class="activity-list">
+                {% for item in recent_activity %}
+                <li>
+                  <span class="activity-icon {{ item.icon_class }}"
+                    ><i data-lucide="{{ item.icon }}"></i
+                  ></span>
+                  <span class="activity-text">
+                    <strong>{{ item.title }}</strong>
+                    <small>{{ item.timestamp }}</small>
+                  </span>
+                  <span class="activity-status status-{{ item.status_class }}"
+                    >{{ item.status }}</span
+                  >
+                </li>
+                {% endfor %}
+              </ul>
+              <a href="#" class="panel-link"
+                >View All Activity <i data-lucide="chevron-right"></i
+              ></a>
+            </div>
+
+            <div class="panel">
+              <h3 class="panel-title">Quick Actions</h3>
+              <ul class="quick-actions">
+                <li>
+                  <a href="{{ url_for('my_loved_ones') }}">
+                    <span class="qa-icon"
+                      ><i data-lucide="users-round"></i
+                    ></span>
+                    <span class="qa-text">
+                      <strong>Manage Emergency Contacts</strong>
+                      <small>Add or update your contacts</small>
+                    </span>
+                    <i data-lucide="chevron-right"></i>
+                  </a>
+                </li>
+                <li>
+                  <a href="{{ url_for('medication_reminders') }}">
+                    <span class="qa-icon"><i data-lucide="pill"></i></span>
+                    <span class="qa-text">
+                      <strong>Medicine Reminder</strong>
+                      <small>View and manage reminders</small>
+                    </span>
+                    <i data-lucide="chevron-right"></i>
+                  </a>
+                </li>
+                <li>
+                  <a href="#">
+                    <span class="qa-icon"
+                      ><i data-lucide="clipboard-list"></i
+                    ></span>
+                    <span class="qa-text">
+                      <strong>Care Plan</strong>
+                      <small>View your subscription plan</small>
+                    </span>
+                    <i data-lucide="chevron-right"></i>
+                  </a>
+                </li>
+                <li>
+                  <a href="{{ url_for('settings') }}">
+                    <span class="qa-icon"><i data-lucide="user"></i></span>
+                    <span class="qa-text">
+                      <strong>Personal Information</strong>
+                      <small>Update your information</small>
+                    </span>
+                    <i data-lucide="chevron-right"></i>
+                  </a>
+                </li>
+              </ul>
+            </div>
+          </section>
+
+          <footer class="main-footer">
+            &copy; {{ current_year }} Alisto. All rights reserved.
+          </footer>
+        </div>
+      </main>
+    </div>
+
+    <script>
+      lucide.createIcons();
+    </script>
+  </body>
+</html>

@@ -13,6 +13,8 @@
   --purple-bg: #f2ecfe;
   --red-bg: #fdeceb;
   --radius: 14px;
+  --navy: #1e3a5f;
+  --white: #ffffff;
 }
 
 * { box-sizing: border-box; }
@@ -26,7 +28,7 @@ body {
 
 a { text-decoration: none; color: inherit; }
 ul { list-style: none; margin: 0; padding: 0; }
-button { font-family: inherit; cursor: pointer; }
+button { font-family: inherit; cursor: pointer; border: none; }
 
 .app-shell {
   display: grid;
@@ -36,7 +38,7 @@ button { font-family: inherit; cursor: pointer; }
 
 /* ============ SIDEBAR ============ */
 .sidebar {
-  background: #fff;
+  background: var(--white);
   border-right: 1px solid var(--border);
   padding: 28px 20px;
   display: flex;
@@ -45,22 +47,28 @@ button { font-family: inherit; cursor: pointer; }
 
 .sidebar-logo {
   display: flex;
+  flex-direction: column;
   align-items: center;
+  justify-content: center;
   gap: 10px;
-  margin-bottom: 32px;
+  margin-bottom: 40px;
+  text-align: center;
+  padding-bottom: 20px; 
+  border-bottom: 2px solid #faf8f8;
 }
 
 .logo-mark-img {
-  width: 34px;
-  height: 34px;
+  width: 100px;
+  height: 100px;
   object-fit: contain;
   flex-shrink: 0;
+  border-radius: 12px;
 }
 
 .logo-word {
   font-family: "Nunito", sans-serif;
   font-weight: 800;
-  font-size: 20px;
+  font-size: 22px;
   color: var(--ink);
 }
 
@@ -84,18 +92,23 @@ button { font-family: inherit; cursor: pointer; }
 }
 .nav-item svg { width: 18px; height: 18px; }
 
-.nav-item:hover { background: var(--bg); color: var(--ink); }
+.nav-item:hover { 
+  background: var(--bg); 
+  color: var(--ink);
+}
 
 .nav-item.active {
   background: var(--blue);
-  color: #fff;
+  color: var(--white);
 }
 
 .care-plan-card {
   margin-top: 20px;
-  background: var(--blue-light);
+  background: var(--bg);
+  border: 1px solid var(--border);
   border-radius: var(--radius);
   padding: 16px;
+  color: var(--ink);
 }
 
 .care-plan-top {
@@ -108,6 +121,7 @@ button { font-family: inherit; cursor: pointer; }
 .care-plan-title {
   font-weight: 700;
   font-size: 14px;
+  color: var(--ink);
 }
 
 .badge {
@@ -138,13 +152,14 @@ button { font-family: inherit; cursor: pointer; }
   font-size: 20px;
   font-weight: 800;
   margin-bottom: 14px;
+  color: var(--ink);
 }
 .care-plan-price span { font-size: 12px; font-weight: 500; color: var(--muted); }
 
 .care-plan-btn {
   width: 100%;
   background: var(--blue);
-  color: #fff;
+  color: var(--white);
   border: none;
   border-radius: 10px;
   padding: 10px;
@@ -154,43 +169,74 @@ button { font-family: inherit; cursor: pointer; }
   align-items: center;
   justify-content: center;
   gap: 8px;
+  cursor: pointer;
+  transition: background 0.15s;
 }
+.care-plan-btn:hover { background: #1d4ed8; }
 .care-plan-btn svg { width: 15px; height: 15px; }
 
-/* ============ MAIN ============ */
-.main {
-  padding: 32px 40px 60px;
-  max-width: 1400px;
-  width: 100%;
-  margin: 0 auto;
-}
-
-.main-header {
+/* ============ MAIN WRAPPER ============ */
+.main-wrapper {
   display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  margin-bottom: 28px;
-  flex-wrap: wrap;
-  gap: 16px;
-  background: #fff;
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
-  padding: 22px 26px;
-  box-shadow: 0 1px 2px rgba(16, 24, 40, 0.04);
+  flex-direction: column;
+  height: 100%;
 }
 
-.main-header h1 {
-  font-size: 26px;
-  margin: 0 0 4px;
-  font-weight: 800;
-}
-.main-header .wave { display: inline-block; }
-.main-header p { margin: 0; color: var(--muted); font-size: 14px; }
-
-.header-actions {
+/* ---- TOP HEADER ---- */
+.top-header {
+  background: var(--white);
+  border-bottom: 1px solid var(--border);
+  padding: 16px 30px;
   display: flex;
   align-items: center;
-  gap: 14px;
+  justify-content: space-between;
+  gap: 20px;
+}
+
+.header-left {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  flex: 1;
+}
+
+.menu-toggle {
+  width: 36px;
+  height: 36px;
+  border-radius: 8px;
+  background: var(--bg);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+.menu-toggle:hover { background: var(--border); }
+.menu-toggle svg { width: 18px; height: 18px; color: var(--ink); }
+
+.header-breadcrumb {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.org-name {
+  font-size: 12px;
+  color: var(--muted);
+  font-weight: 500;
+}
+
+.system-title {
+  font-size: 18px;
+  font-weight: 700;
+  color: var(--navy);
+  margin: 0;
+}
+
+.header-right {
+  display: flex;
+  align-items: center;
+  gap: 12px;
 }
 
 .icon-btn {
@@ -203,7 +249,10 @@ button { font-family: inherit; cursor: pointer; }
   display: flex;
   align-items: center;
   justify-content: center;
+  cursor: pointer;
+  transition: background 0.15s;
 }
+.icon-btn:hover { background: var(--border); }
 .icon-btn svg { width: 18px; height: 18px; color: var(--ink); }
 
 .notif-dot {
@@ -211,7 +260,7 @@ button { font-family: inherit; cursor: pointer; }
   top: -4px;
   right: -4px;
   background: #ef4444;
-  color: #fff;
+  color: var(--white);
   font-size: 10px;
   font-weight: 700;
   min-width: 16px;
@@ -231,19 +280,23 @@ button { font-family: inherit; cursor: pointer; }
   border: 1px solid var(--border);
   border-radius: 999px;
   padding: 6px 14px 6px 6px;
+  cursor: pointer;
+  transition: background 0.15s;
 }
+.profile-pill:hover { background: var(--border); }
 
 .avatar {
   width: 32px;
   height: 32px;
   border-radius: 50%;
   background: var(--blue);
-  color: #fff;
+  color: var(--white);
   font-weight: 700;
   font-size: 13px;
   display: flex;
   align-items: center;
   justify-content: center;
+  flex-shrink: 0;
 }
 
 .profile-text {
@@ -257,22 +310,36 @@ button { font-family: inherit; cursor: pointer; }
 
 .profile-pill svg { width: 15px; height: 15px; color: var(--muted); }
 
+/* ============ MAIN ============ */
+.main {
+  flex: 1;
+  padding: 32px 30px 60px;
+  overflow-y: auto;
+  max-width: 1400px;
+  width: 100%;
+  margin: 0 auto;
+}
+
+.page-title {
+  font-size: 24px;
+  font-weight: 800;
+  margin: 0 0 28px;
+  color: var(--ink);
+}
+
 /* ---- status section ---- */
-.section-label {
-  font-size: 15px;
-  font-weight: 700;
-  margin: 0 0 14px;
+.status-section {
+  margin-bottom: 28px;
 }
 
 .status-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
   gap: 16px;
-  margin-bottom: 28px;
 }
 
 .status-card {
-  background: #fff;
+  background: var(--white);
   border: 1px solid var(--border);
   border-radius: var(--radius);
   padding: 16px;
@@ -298,7 +365,7 @@ button { font-family: inherit; cursor: pointer; }
 .location-icon { background: var(--green-bg); color: var(--green); }
 
 .status-body { display: flex; flex-direction: column; gap: 2px; }
-.status-label { font-size: 12.5px; color: var(--muted); }
+.status-label { font-size: 12.5px; color: var(--muted); font-weight: 500; }
 .status-value { font-size: 15px; font-weight: 700; }
 .status-value.online { color: var(--green); }
 .status-sub { font-size: 12px; color: var(--muted); }
@@ -308,27 +375,28 @@ button { font-family: inherit; cursor: pointer; }
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(340px, 1fr));
   gap: 16px;
-  margin-bottom: 16px;
+  margin-bottom: 28px;
 }
 
 .panel {
-  background: #fff;
+  background: var(--white);
   border: 1px solid var(--border);
   border-radius: var(--radius);
-  padding: 18px 20px;
+  padding: 20px;
 }
 
 .panel-title {
   font-size: 14.5px;
   font-weight: 700;
-  margin: 0 0 14px;
+  margin: 0 0 16px;
+  color: var(--ink);
 }
 
 .trigger-row {
   display: flex;
   gap: 12px;
   align-items: flex-start;
-  margin-bottom: 14px;
+  margin-bottom: 16px;
 }
 
 .trigger-icon {
@@ -359,12 +427,16 @@ button { font-family: inherit; cursor: pointer; }
   color: var(--ink);
   font-weight: 600;
   font-size: 13.5px;
+  cursor: pointer;
+  transition: background 0.15s;
 }
+.panel-btn:hover { background: var(--border); }
 .panel-btn svg { width: 15px; height: 15px; }
-.panel-btn.primary { background: var(--blue); color: #fff; }
+.panel-btn.primary { background: var(--blue); color: var(--white); }
+.panel-btn.primary:hover { background: #1d4ed8; }
 
 /* ---- activity list ---- */
-.activity-list { display: flex; flex-direction: column; gap: 14px; margin-bottom: 14px; }
+.activity-list { display: flex; flex-direction: column; gap: 12px; margin-bottom: 14px; }
 
 .activity-list li {
   display: flex;
@@ -421,6 +493,7 @@ button { font-family: inherit; cursor: pointer; }
   gap: 12px;
   padding: 10px 6px;
   border-radius: 10px;
+  transition: background 0.15s;
 }
 .quick-actions a:hover { background: var(--bg); }
 
@@ -447,20 +520,30 @@ button { font-family: inherit; cursor: pointer; }
   text-align: center;
   color: var(--muted);
   font-size: 12px;
-  margin-top: 30px;
+  margin-top: 40px;
 }
 
 /* ---- responsive ---- */
-@media (max-width: 1000px) {
+@media (max-width: 1200px) {
   .status-grid { grid-template-columns: repeat(2, 1fr); }
   .two-col { grid-template-columns: 1fr; }
 }
 
-@media (max-width: 760px) {
+@media (max-width: 768px) {
   .app-shell { grid-template-columns: 1fr; }
-  .sidebar { flex-direction: row; flex-wrap: wrap; padding: 16px; }
-  .sidebar-nav { flex-direction: row; flex-wrap: wrap; }
-  .care-plan-card { display: none; }
+  
+  .sidebar { 
+    position: fixed;
+    left: -260px;
+    top: 0;
+    height: 100vh;
+    z-index: 100;
+    transition: left 0.3s;
+  }
+  .sidebar.open { left: 0; }
+  
+  .top-header { padding: 12px 20px; }
+  .header-breadcrumb { display: none; }
   .main { padding: 20px; }
   .status-grid { grid-template-columns: 1fr; }
 }

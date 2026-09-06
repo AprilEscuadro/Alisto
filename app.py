@@ -11,6 +11,14 @@ app.secret_key = 'alisto-secret-key-change-this-later'
 # (i.e. same device). BHW joins don't count against this.
 MAX_FAMILY_PER_DEVICE = 3
 
+# Shared care-plan placeholder used across every family-side page's sidebar
+# card. TODO: swap for a real billing/care_plan query once that table exists.
+
+
+def _get_care_plan():
+    return {'status': 'Active', 'days_left': 12,
+            'renew_date': 'July 20, 2026', 'price': 55}
+
 
 @app.route('/check_device', methods=['POST'])
 def check_device():
@@ -341,6 +349,340 @@ def logout():
     flash('You have been logged out.', 'success')
     return redirect(url_for('login'))
 
+
+# ---------- MY LOVED ONES ----------
+
+
+@app.route('/my-loved-ones')
+def my_loved_ones():
+    if 'user_id' not in session:
+        flash('Please log in first.', 'error')
+        return redirect(url_for('login'))
+
+    from datetime import datetime
+
+    conn = get_db_connection()
+
+    # TODO: Replace with real queries for loved ones data
+    loved_ones = []
+    online_count = 0
+    offline_count = 0
+    attention_count = 0
+    notification_count = 0
+
+    conn.close()
+
+    return render_template(
+        'family/my_loved_ones.html',
+        full_name=session['full_name'],
+        role=session['role'],
+        loved_ones=loved_ones,
+        online_count=online_count,
+        offline_count=offline_count,
+        attention_count=attention_count,
+        notification_count=notification_count,
+        current_year=datetime.now().year,
+    )
+
+
+# ---------- ALERTS ----------
+
+
+@app.route('/alerts')
+def alerts():
+    if 'user_id' not in session:
+        flash('Please log in first.', 'error')
+        return redirect(url_for('login'))
+
+    from datetime import datetime
+
+    conn = get_db_connection()
+
+    # TODO: Replace with a real query against the emergency_alert table,
+    # scoped to elders linked to this family user via family_elder_link.
+    alerts_list = []
+    emergency_count = 0
+    false_alarm_count = 0
+    notification_count = 0
+
+    conn.close()
+
+    return render_template(
+        'family/alerts.html',
+        full_name=session['full_name'],
+        role=session['role'],
+        care_plan=_get_care_plan(),
+        alerts=alerts_list,
+        emergency_count=emergency_count,
+        false_alarm_count=false_alarm_count,
+        notification_count=notification_count,
+        current_year=datetime.now().year,
+    )
+
+
+@app.route('/alerts/<int:alert_id>')
+def alert_details(alert_id):
+    if 'user_id' not in session:
+        flash('Please log in first.', 'error')
+        return redirect(url_for('login'))
+    # TODO: Build a dedicated alert-details template and real query.
+    flash('Alert details page not implemented yet.', 'info')
+    return redirect(url_for('alerts'))
+
+
+# ---------- MEDICATION REMINDERS ----------
+
+
+@app.route('/medication-reminders')
+def medication_reminders():
+    if 'user_id' not in session:
+        flash('Please log in first.', 'error')
+        return redirect(url_for('login'))
+
+    from datetime import datetime
+
+    conn = get_db_connection()
+
+    # TODO: Replace with a real query against the medicine_reminder table,
+    # scoped to elders linked to this family user via family_elder_link.
+    schedules = []
+    today_count = 0
+    tomorrow_count = 0
+    total_schedule_count = 0
+    notification_count = 0
+
+    conn.close()
+
+    return render_template(
+        'family/medication_reminders.html',
+        full_name=session['full_name'],
+        role=session['role'],
+        care_plan=_get_care_plan(),
+        schedules=schedules,
+        today_count=today_count,
+        tomorrow_count=tomorrow_count,
+        total_schedule_count=total_schedule_count,
+        notification_count=notification_count,
+        current_year=datetime.now().year,
+    )
+
+
+# ---------- HISTORY ----------
+
+
+@app.route('/history')
+def history():
+    if 'user_id' not in session:
+        flash('Please log in first.', 'error')
+        return redirect(url_for('login'))
+
+    from datetime import datetime
+
+    conn = get_db_connection()
+
+    # TODO: Replace with a real query unioning alerts, medicine reminders,
+    # and device activity logs, scoped to this family user's linked elders.
+    activities = []
+    alert_count = 0
+    med_reminder_count = 0
+    device_activity_count = 0
+    notification_count = 0
+    date_range_label = 'This Month'
+    pagination = {
+        'start': 0,
+        'end': 0,
+        'total': 0,
+        'current_page': 1,
+        'total_pages': 1,
+        'pages': [1],
+    }
+
+    conn.close()
+
+    return render_template(
+        'family/history.html',
+        full_name=session['full_name'],
+        role=session['role'],
+        care_plan=_get_care_plan(),
+        activities=activities,
+        alert_count=alert_count,
+        med_reminder_count=med_reminder_count,
+        device_activity_count=device_activity_count,
+        notification_count=notification_count,
+        date_range_label=date_range_label,
+        pagination=pagination,
+        current_year=datetime.now().year,
+    )
+
+
+@app.route('/history/<int:activity_id>')
+def activity_details(activity_id):
+    if 'user_id' not in session:
+        flash('Please log in first.', 'error')
+        return redirect(url_for('login'))
+    # TODO: Build a dedicated activity-details template and real query.
+    flash('Activity details page not implemented yet.', 'info')
+    return redirect(url_for('history'))
+
+
+# ---------- SETTINGS ----------
+
+
+@app.route('/settings')
+def settings():
+    if 'user_id' not in session:
+        flash('Please log in first.', 'error')
+        return redirect(url_for('login'))
+
+    from datetime import datetime
+
+    conn = get_db_connection()
+
+    # TODO: Replace with a real query against a user_settings/preferences
+    # table once one exists; for now default everything to enabled.
+    user_settings = {
+        'emergency_alerts': True,
+        'medicine_reminders': True,
+        'device_alerts': True,
+        'location_updates': True,
+    }
+    notification_count = 0
+
+    conn.close()
+
+    return render_template(
+        'family/settings.html',
+        full_name=session['full_name'],
+        role=session['role'],
+        care_plan=_get_care_plan(),
+        settings=user_settings,
+        notification_count=notification_count,
+        current_year=datetime.now().year,
+    )
+
+
+@app.route('/settings/change-password')
+def change_password():
+    if 'user_id' not in session:
+        flash('Please log in first.', 'error')
+        return redirect(url_for('login'))
+    # TODO: Build a dedicated change-password template and form handling.
+    flash('Change Password page not implemented yet.', 'info')
+    return redirect(url_for('settings'))
+
+
+# ---------- HELP & SUPPORT ----------
+
+
+@app.route('/help-support')
+def help_support():
+    if 'user_id' not in session:
+        flash('Please log in first.', 'error')
+        return redirect(url_for('login'))
+
+    from datetime import datetime
+
+    # TODO: Move FAQs and contact info into the database once there's an
+    # admin-editable content table; hardcoded for now so the page renders.
+    faqs = [
+        {
+            'question': 'How do I set up the ALISTO device for my loved one?',
+            'answer': 'Follow the step-by-step pairing guide in the User Guide, '
+            'then confirm the Device ID matches the one on your registration.'
+        },
+        {
+            'question': 'What happens when an emergency alert is triggered?',
+            'answer': 'ALISTO sends an SMS to your registered emergency contacts '
+            'and marks the alert on your dashboard with the elder\'s last known location.'
+        },
+        {
+            'question': 'Can more than one family member link to the same elder?',
+            'answer': f'Yes, up to {MAX_FAMILY_PER_DEVICE} family accounts can be linked to the same device/elder.'
+        },
+    ]
+
+    contact_info = {
+        'phone': '+63 917 000 0000',
+        'phone_hours': 'Mon–Fri, 8:00 AM – 5:00 PM',
+        'email': 'support@alisto.ph',
+        'address_line1': 'Barangay Sudlon II Hall',
+        'address_line2': 'Cebu City, Cebu, Philippines',
+    }
+
+    notification_count = 0
+
+    return render_template(
+        'family/help_support.html',
+        full_name=session['full_name'],
+        role=session['role'],
+        care_plan=_get_care_plan(),
+        faqs=faqs,
+        contact_info=contact_info,
+        notification_count=notification_count,
+        current_year=datetime.now().year,
+    )
+
+
+@app.route('/help-support/faqs')
+def faqs():
+    if 'user_id' not in session:
+        flash('Please log in first.', 'error')
+        return redirect(url_for('login'))
+    # TODO: Build a dedicated full-FAQs template.
+    flash('Full FAQs page not implemented yet.', 'info')
+    return redirect(url_for('help_support'))
+
+
+@app.route('/help-support/contact')
+def contact_support():
+    if 'user_id' not in session:
+        flash('Please log in first.', 'error')
+        return redirect(url_for('login'))
+    # TODO: Build a dedicated contact-support form template.
+    flash('Contact Support page not implemented yet.', 'info')
+    return redirect(url_for('help_support'))
+
+
+@app.route('/help-support/user-guide')
+def user_guide():
+    if 'user_id' not in session:
+        flash('Please log in first.', 'error')
+        return redirect(url_for('login'))
+    # TODO: Build a dedicated user-guide template.
+    flash('User Guide page not implemented yet.', 'info')
+    return redirect(url_for('help_support'))
+
+
+@app.route('/help-support/report-issue')
+def report_issue():
+    if 'user_id' not in session:
+        flash('Please log in first.', 'error')
+        return redirect(url_for('login'))
+    # TODO: Build a dedicated report-issue form template.
+    flash('Report Issue page not implemented yet.', 'info')
+    return redirect(url_for('help_support'))
+
+
+@app.route('/help-support/about')
+def about():
+    if 'user_id' not in session:
+        flash('Please log in first.', 'error')
+        return redirect(url_for('login'))
+    # TODO: Build a dedicated about template.
+    flash('About page not implemented yet.', 'info')
+    return redirect(url_for('help_support'))
+
+
+@app.route('/loved-ones/<int:elder_id>')
+def loved_one_details(elder_id):
+    if 'user_id' not in session:
+        flash('Please log in first.', 'error')
+        return redirect(url_for('login'))
+    # TODO: Build a dedicated loved-one-details template and real query.
+    flash('Loved one details page not implemented yet.', 'info')
+    return redirect(url_for('my_loved_ones'))
+
+
 # ---------- DASHBOARD (placeholder, will build separate per role) ----------
 
 
@@ -369,8 +711,7 @@ def dashboard():
     # once device telemetry (device_health_log/device_location), care-plan
     # billing, and medicine_reminder scheduling are hooked up.
     device = {'status': 'Online', 'location_status': 'Available'}
-    care_plan = {'status': 'Active', 'days_left': 12,
-                 'renew_date': 'July 20, 2026', 'price': 55}
+    care_plan = _get_care_plan()
     last_trigger = {'headline': 'No emergency triggered',
                     'subtext': 'You are safe. Keep it up!'}
     next_reminder = {'time': '2:00 PM Today',
@@ -388,7 +729,7 @@ def dashboard():
     notification_count = 2
 
     return render_template(
-        'dashboard.html',
+        'family/dashboard.html',
         full_name=session['full_name'],
         role=session['role'],
         device=device,

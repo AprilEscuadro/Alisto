@@ -1,0 +1,384 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Medication Reminders - ALISTO</title>
+    <link
+      href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Nunito:wght@400;600;700;800&display=swap"
+      rel="stylesheet"
+    />
+    <script src="https://unpkg.com/lucide@latest/dist/umd/lucide.js"></script>
+    <link
+      rel="stylesheet"
+      href="{{ url_for('static', filename='css/dashboard.css') }}"
+    />
+    <link
+      rel="stylesheet"
+      href="{{ url_for('static', filename='css/medication_reminders.css') }}"
+    />
+  </head>
+  <body>
+    <div class="app-shell">
+      <!-- ============ SIDEBAR ============ -->
+      <aside class="sidebar">
+        <a href="{{ url_for('dashboard') }}" class="sidebar-logo">
+          <img
+            src="{{ url_for('static', filename='images/alistoLogo.png') }}"
+            alt="ALISTO Logo"
+            class="logo-mark-img"
+          />
+        </a>
+
+        <nav class="sidebar-nav">
+          <a href="{{ url_for('dashboard') }}" class="nav-item">
+            <i data-lucide="layout-dashboard"></i>
+            <span>Dashboard</span>
+          </a>
+          <a href="{{ url_for('my_loved_ones') }}" class="nav-item">
+            <i data-lucide="users-round"></i>
+            <span>My Loved Ones</span>
+          </a>
+          <a href="{{ url_for('alerts') }}" class="nav-item">
+            <i data-lucide="bell-ring"></i>
+            <span>Alerts</span>
+          </a>
+          <a
+            href="{{ url_for('medication_reminders') }}"
+            class="nav-item active"
+          >
+            <i data-lucide="pill"></i>
+            <span>Medication Reminders</span>
+          </a>
+          <a href="{{ url_for('history') }}" class="nav-item">
+            <i data-lucide="history"></i>
+            <span>History</span>
+          </a>
+          <a href="{{ url_for('settings') }}" class="nav-item">
+            <i data-lucide="settings"></i>
+            <span>Settings</span>
+          </a>
+          <a href="{{ url_for('help_support') }}" class="nav-item">
+            <i data-lucide="circle-help"></i>
+            <span>Help &amp; Support</span>
+          </a>
+        </nav>
+
+        <div class="care-plan-card">
+          <div class="care-plan-top">
+            <span class="care-plan-title">Alisto Care Plan</span>
+            <span class="badge badge-active">
+              <i data-lucide="check-circle-2"></i> Active
+            </span>
+          </div>
+          <div class="care-plan-row">
+            <i data-lucide="calendar-clock"></i>
+            <span
+              >Renews in {{ care_plan.days_left }} days<br /><small
+                >{{ care_plan.renew_date }}</small
+              ></span
+            >
+          </div>
+          <div class="care-plan-price">
+            ₱{{ care_plan.price }} <span>/ month</span>
+          </div>
+          <button type="button" class="care-plan-btn">
+            <i data-lucide="credit-card"></i> Pay / Renew Now
+          </button>
+        </div>
+      </aside>
+
+      <!-- ============ MAIN ============ -->
+      <main class="main-wrapper">
+        <!-- ---- TOP HEADER ---- -->
+        <header class="top-header">
+          <div class="header-left">
+            <button class="menu-toggle">
+              <i data-lucide="menu"></i>
+            </button>
+            <div class="header-breadcrumb">
+              <span class="org-name">Emergency Response System</span>
+              <h2 class="system-title">ALISTO</h2>
+            </div>
+          </div>
+
+          <div class="header-right">
+            <button type="button" class="icon-btn" aria-label="Notifications">
+              <i data-lucide="bell"></i>
+              {% if notification_count %}
+              <span class="notif-dot">{{ notification_count }}</span>
+              {% endif %}
+            </button>
+
+            <button type="button" class="profile-pill">
+              <span class="avatar">{{ full_name[:1] }}</span>
+              <span class="profile-text">
+                <strong>{{ full_name }}</strong>
+                <small>{{ role|capitalize }}</small>
+              </span>
+              <i data-lucide="chevron-down"></i>
+            </button>
+          </div>
+        </header>
+
+        <!-- ---- MAIN CONTENT ---- -->
+        <div class="main">
+          <div class="page-header">
+            <div>
+              <h1 class="page-title">Medication Reminders</h1>
+              <p class="page-subtitle">
+                Manage medication schedules for your loved ones.
+              </p>
+            </div>
+
+            <div class="page-actions">
+              <div class="search-box">
+                <i data-lucide="search"></i>
+                <input
+                  type="text"
+                  id="medsSearch"
+                  placeholder="Search by patient or medicine..."
+                  autocomplete="off"
+                />
+              </div>
+              <button
+                type="button"
+                class="btn-primary-action"
+                id="addReminderBtn"
+              >
+                <i data-lucide="plus"></i> Add Reminder
+              </button>
+            </div>
+          </div>
+
+          <!-- ---- SUMMARY CARDS ---- -->
+          <section class="summary-cards four-up">
+            <div class="summary-card">
+              <div class="summary-icon primary">
+                <i data-lucide="pill"></i>
+              </div>
+              <div class="summary-content">
+                <span class="summary-label">Active Medication Schedules</span>
+                <span class="summary-value">{{ schedules|length }}</span>
+                <span class="summary-sub">Registered</span>
+              </div>
+            </div>
+
+            <div class="summary-card">
+              <div class="summary-icon warning">
+                <i data-lucide="clock"></i>
+              </div>
+              <div class="summary-content">
+                <span class="summary-label">Today's Reminders</span>
+                <span class="summary-value">{{ today_count }}</span>
+                <span class="summary-sub">Scheduled</span>
+              </div>
+            </div>
+
+            <div class="summary-card">
+              <div class="summary-icon success">
+                <i data-lucide="calendar-check"></i>
+              </div>
+              <div class="summary-content">
+                <span class="summary-label">Tomorrow's Reminders</span>
+                <span class="summary-value">{{ tomorrow_count }}</span>
+                <span class="summary-sub">Upcoming</span>
+              </div>
+            </div>
+
+            <div class="summary-card">
+              <div class="summary-icon purple">
+                <i data-lucide="list-checks"></i>
+              </div>
+              <div class="summary-content">
+                <span class="summary-label">Total Schedules</span>
+                <span class="summary-value">{{ total_schedule_count }}</span>
+                <span class="summary-sub">All Time</span>
+              </div>
+            </div>
+          </section>
+
+          <!-- ---- FILTER TABS ---- -->
+          <div class="filter-tabs" id="medsFilters">
+            <button type="button" class="filter-tab active" data-filter="all">
+              All ({{ schedules|length }})
+            </button>
+            <button type="button" class="filter-tab" data-filter="today">
+              <i data-lucide="calendar"></i> Today ({{ today_count }})
+            </button>
+            <button type="button" class="filter-tab" data-filter="tomorrow">
+              <i data-lucide="calendar-days"></i> Tomorrow ({{ tomorrow_count
+              }})
+            </button>
+            <button type="button" class="filter-tab" data-filter="morning">
+              <i data-lucide="sunrise"></i> Morning
+            </button>
+            <button type="button" class="filter-tab" data-filter="afternoon">
+              <i data-lucide="sun"></i> Afternoon
+            </button>
+            <button type="button" class="filter-tab" data-filter="evening">
+              <i data-lucide="moon"></i> Evening
+            </button>
+          </div>
+
+          <!-- ---- MEDICATION GRID ---- -->
+          <section class="meds-grid" id="medsGrid">
+            {% for med in schedules %}
+            <div
+              class="med-card"
+              data-day="{{ med.day_filter }}"
+              data-time-of-day="{{ med.time_of_day }}"
+            >
+              <div class="med-card-top">
+                <div class="med-avatar">
+                  {% if med.elder_photo_url %}
+                  <img
+                    src="{{ med.elder_photo_url }}"
+                    alt="{{ med.elder_name }}"
+                  />
+                  {% else %}
+                  <span>{{ med.elder_name[:1] }}</span>
+                  {% endif %}
+                </div>
+                <div class="med-title-group">
+                  <h3 class="med-name">{{ med.elder_name }}</h3>
+                  <p class="med-relationship">{{ med.relationship }}</p>
+                </div>
+              </div>
+
+              <div class="med-details">
+                <div class="detail-item">
+                  <i data-lucide="syringe"></i>
+                  <div>
+                    <span class="detail-label"
+                      >{{ med.medicine_name }} {{ med.dosage }}</span
+                    >
+                    <strong class="detail-value">For {{ med.purpose }}</strong>
+                  </div>
+                </div>
+                <div class="detail-item">
+                  <i data-lucide="clock"></i>
+                  <div>
+                    <span class="detail-label">Schedule</span>
+                    <strong class="detail-value"
+                      >{{ med.schedule_day }} &bull; {{ med.schedule_time
+                      }}</strong
+                    >
+                  </div>
+                </div>
+                <div class="detail-item">
+                  <i data-lucide="repeat"></i>
+                  <div>
+                    <span class="detail-label">Frequency</span>
+                    <strong class="detail-value">{{ med.frequency }}</strong>
+                  </div>
+                </div>
+                <div class="detail-item">
+                  <i data-lucide="volume-2"></i>
+                  <div>
+                    <span class="detail-label">Voice Reminder</span>
+                    <strong class="detail-value"
+                      >{{ 'Enabled' if med.voice_reminder_enabled else
+                      'Disabled' }}</strong
+                    >
+                  </div>
+                </div>
+              </div>
+
+              <div class="med-card-footer">
+                <span class="med-status-badge {{ med.status_class }}">
+                  <i data-lucide="clock"></i> {{ med.status }}
+                </span>
+                <div class="med-card-actions">
+                  <button
+                    type="button"
+                    class="med-action-btn"
+                    data-action="edit"
+                    data-med-id="{{ med.id }}"
+                  >
+                    <i data-lucide="pencil"></i> Edit
+                  </button>
+                  <button
+                    type="button"
+                    class="med-action-btn danger"
+                    data-action="delete"
+                    data-med-id="{{ med.id }}"
+                  >
+                    <i data-lucide="trash-2"></i> Delete
+                  </button>
+                </div>
+              </div>
+            </div>
+            {% else %}
+            <div class="empty-state">
+              <i data-lucide="pill"></i>
+              <p>No medication reminders set up yet.</p>
+              <button
+                type="button"
+                class="btn-primary-action"
+                id="emptyAddReminderBtn"
+              >
+                <i data-lucide="plus"></i> Add Reminder
+              </button>
+            </div>
+            {% endfor %}
+          </section>
+
+          <footer class="main-footer">
+            &copy; {{ current_year }} Alisto. All rights reserved.
+          </footer>
+        </div>
+      </main>
+    </div>
+
+    <script>
+      lucide.createIcons();
+
+      // Menu toggle (mobile)
+      const menuToggle = document.querySelector(".menu-toggle");
+      const sidebar = document.querySelector(".sidebar");
+      if (menuToggle) {
+        menuToggle.addEventListener("click", () => {
+          sidebar.classList.toggle("open");
+        });
+      }
+
+      // Filter tabs
+      const filterButtons = document.querySelectorAll(
+        "#medsFilters .filter-tab",
+      );
+      const medCards = document.querySelectorAll("#medsGrid .med-card");
+
+      filterButtons.forEach((btn) => {
+        btn.addEventListener("click", () => {
+          filterButtons.forEach((b) => b.classList.remove("active"));
+          btn.classList.add("active");
+
+          const filter = btn.dataset.filter;
+          medCards.forEach((card) => {
+            if (filter === "all") {
+              card.style.display = "";
+            } else if (filter === "today" || filter === "tomorrow") {
+              card.style.display = card.dataset.day === filter ? "" : "none";
+            } else {
+              card.style.display =
+                card.dataset.timeOfDay === filter ? "" : "none";
+            }
+          });
+        });
+      });
+
+      // Search by patient or medicine
+      const searchInput = document.getElementById("medsSearch");
+      if (searchInput) {
+        searchInput.addEventListener("input", () => {
+          const query = searchInput.value.trim().toLowerCase();
+          medCards.forEach((card) => {
+            const text = card.textContent.toLowerCase();
+            card.style.display = text.includes(query) ? "" : "none";
+          });
+        });
+      }
+    </script>
+  </body>
+</html>

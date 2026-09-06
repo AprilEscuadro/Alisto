@@ -1,0 +1,320 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>My Loved Ones - ALISTO</title>
+    <link
+      href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Nunito:wght@400;600;700;800&display=swap"
+      rel="stylesheet"
+    />
+    <script src="https://unpkg.com/lucide@latest/dist/umd/lucide.js"></script>
+    <link
+      rel="stylesheet"
+      href="{{ url_for('static', filename='css/dashboard.css') }}"
+    />
+    <link
+      rel="stylesheet"
+      href="{{ url_for('static', filename='css/my_loved_ones.css') }}"
+    />
+  </head>
+  <body>
+    <div class="app-shell">
+      <!-- ============ SIDEBAR ============ -->
+      <aside class="sidebar">
+        <a href="{{ url_for('dashboard') }}" class="sidebar-logo">
+          <img
+            src="{{ url_for('static', filename='images/alistoLogo.png') }}"
+            alt="ALISTO Logo"
+            class="logo-mark-img"
+          />
+        </a>
+
+        <nav class="sidebar-nav">
+          <a href="{{ url_for('dashboard') }}" class="nav-item">
+            <i data-lucide="layout-dashboard"></i>
+            <span>Dashboard</span>
+          </a>
+          <a href="{{ url_for('my_loved_ones') }}" class="nav-item active">
+            <i data-lucide="users-round"></i>
+            <span>My Loved Ones</span>
+          </a>
+          <a href="{{ url_for('alerts') }}" class="nav-item">
+            <i data-lucide="bell-ring"></i>
+            <span>Alerts</span>
+          </a>
+          <a href="{{ url_for('medication_reminders') }}" class="nav-item">
+            <i data-lucide="pill"></i>
+            <span>Medication Reminders</span>
+          </a>
+          <a href="{{ url_for('history') }}" class="nav-item">
+            <i data-lucide="history"></i>
+            <span>History</span>
+          </a>
+          <a href="{{ url_for('settings') }}" class="nav-item">
+            <i data-lucide="settings"></i>
+            <span>Settings</span>
+          </a>
+          <a href="{{ url_for('help_support') }}" class="nav-item">
+            <i data-lucide="circle-help"></i>
+            <span>Help &amp; Support</span>
+          </a>
+        </nav>
+      </aside>
+
+      <!-- ============ MAIN ============ -->
+      <main class="main-wrapper">
+        <!-- ---- TOP HEADER ---- -->
+        <header class="top-header">
+          <div class="header-left">
+            <button class="menu-toggle">
+              <i data-lucide="menu"></i>
+            </button>
+            <div class="header-breadcrumb">
+              <span class="org-name">Emergency Response System</span>
+              <h2 class="system-title">ALISTO</h2>
+            </div>
+          </div>
+
+          <div class="header-right">
+            <button type="button" class="icon-btn" aria-label="Notifications">
+              <i data-lucide="bell"></i>
+              {% if notification_count %}
+              <span class="notif-dot">{{ notification_count }}</span>
+              {% endif %}
+            </button>
+
+            <button type="button" class="profile-pill">
+              <span class="avatar">{{ full_name[:1] }}</span>
+              <span class="profile-text">
+                <strong>{{ full_name }}</strong>
+                <small>{{ role|capitalize }}</small>
+              </span>
+              <i data-lucide="chevron-down"></i>
+            </button>
+          </div>
+        </header>
+
+        <!-- ---- MAIN CONTENT ---- -->
+        <div class="main">
+          <div class="page-header">
+            <div>
+              <h1 class="page-title">My Loved Ones</h1>
+              <p class="page-subtitle">
+                View and monitor the people connected to your family account.
+              </p>
+            </div>
+
+            <div class="page-actions">
+              <div class="search-box">
+                <i data-lucide="search"></i>
+                <input
+                  type="text"
+                  id="lovedOnesSearch"
+                  placeholder="Search by name..."
+                  autocomplete="off"
+                />
+              </div>
+              <button
+                type="button"
+                class="btn-primary-action"
+                id="addLovedOneBtn"
+              >
+                <i data-lucide="plus"></i> Add Loved One
+              </button>
+            </div>
+          </div>
+
+          <!-- ---- SUMMARY CARDS ---- -->
+          <section class="summary-cards">
+            <div class="summary-card">
+              <div class="summary-icon primary">
+                <i data-lucide="users-round"></i>
+              </div>
+              <div class="summary-content">
+                <span class="summary-label">Total Loved Ones</span>
+                <span class="summary-value">{{ loved_ones|length }}</span>
+                <span class="summary-sub">Registered</span>
+              </div>
+              <a href="#" class="summary-link">
+                View All <i data-lucide="chevron-right"></i>
+              </a>
+            </div>
+
+            <div class="summary-card">
+              <div class="summary-icon success">
+                <i data-lucide="wifi"></i>
+              </div>
+              <div class="summary-content">
+                <span class="summary-label">Online Devices</span>
+                <span class="summary-value">{{ online_count }}</span>
+                <span class="summary-sub">Active</span>
+              </div>
+              <a href="#" class="summary-link">
+                View Online <i data-lucide="chevron-right"></i>
+              </a>
+            </div>
+
+            <div class="summary-card">
+              <div class="summary-icon warning">
+                <i data-lucide="triangle-alert"></i>
+              </div>
+              <div class="summary-content">
+                <span class="summary-label">Need Attention</span>
+                <span class="summary-value">{{ attention_count }}</span>
+                <span class="summary-sub">Alert</span>
+              </div>
+              <a href="#" class="summary-link">
+                Review Now <i data-lucide="chevron-right"></i>
+              </a>
+            </div>
+          </section>
+
+          <!-- ---- FILTER TABS ---- -->
+          <div class="filter-tabs" id="lovedOnesFilters">
+            <button type="button" class="filter-tab active" data-filter="all">
+              All ({{ loved_ones|length }})
+            </button>
+            <button type="button" class="filter-tab" data-filter="online">
+              <span class="dot online"></span> Online ({{ online_count }})
+            </button>
+            <button type="button" class="filter-tab" data-filter="offline">
+              <span class="dot offline"></span> Offline ({{ offline_count }})
+            </button>
+            <button type="button" class="filter-tab" data-filter="attention">
+              <span class="dot attention"></span> Needs Attention ({{
+              attention_count }})
+            </button>
+          </div>
+
+          <!-- ---- LOVED ONES GRID ---- -->
+          <section class="loved-ones-grid" id="lovedOnesGrid">
+            {% for elder in loved_ones %}
+            <div class="loved-one-card" data-status="{{ elder.status_class }}">
+              <div class="card-header">
+                <div class="card-avatar">
+                  {% if elder.photo_url %}
+                  <img src="{{ elder.photo_url }}" alt="{{ elder.name }}" />
+                  {% else %}
+                  <span>{{ elder.name[:1] }}</span>
+                  {% endif %}
+                </div>
+                <div class="card-title-group">
+                  <h3 class="card-name">{{ elder.name }}</h3>
+                  <p class="card-relationship">{{ elder.relationship }}</p>
+                  <span
+                    class="card-status {% if elder.status_class == 'online' %}online{% elif elder.status_class == 'offline' %}offline{% else %}attention{% endif %}"
+                  >
+                    {% if elder.status_class == 'online' %}
+                    <i data-lucide="check-circle-2"></i> Online {% elif
+                    elder.status_class == 'offline' %}
+                    <i data-lucide="circle"></i> Offline {% else %}
+                    <i data-lucide="triangle-alert"></i> Needs Attention {%
+                    endif %}
+                  </span>
+                </div>
+              </div>
+
+              <div class="card-details">
+                <div class="detail-item">
+                  <i data-lucide="clock"></i>
+                  <div>
+                    <span class="detail-label">Last check-in</span>
+                    <strong
+                      class="detail-value {% if elder.checkin_overdue %}overdue{% endif %}"
+                      >{{ elder.last_checkin }}</strong
+                    >
+                  </div>
+                </div>
+                <div class="detail-item">
+                  <i data-lucide="pill"></i>
+                  <div>
+                    <span class="detail-label">Next medicine reminder</span>
+                    <strong
+                      class="detail-value {% if elder.medicine_overdue %}overdue{% endif %}"
+                      >{{ elder.next_medicine }}</strong
+                    >
+                  </div>
+                </div>
+                <div class="detail-item">
+                  <i data-lucide="map-pin"></i>
+                  <div>
+                    <span class="detail-label">Location</span>
+                    <strong class="detail-value">{{ elder.location }}</strong>
+                  </div>
+                </div>
+              </div>
+
+              <a
+                href="{{ url_for('loved_one_details', elder_id=elder.id) }}"
+                class="card-btn"
+              >
+                View Details
+                <i data-lucide="chevron-right"></i>
+              </a>
+            </div>
+            {% else %}
+            <div class="empty-state">
+              <i data-lucide="users-round"></i>
+              <p>No loved ones linked to your account yet.</p>
+              <button type="button" class="btn-primary-action" id="emptyAddBtn">
+                <i data-lucide="plus"></i> Add Loved One
+              </button>
+            </div>
+            {% endfor %}
+          </section>
+
+          <footer class="main-footer">
+            &copy; {{ current_year }} Alisto. All rights reserved.
+          </footer>
+        </div>
+      </main>
+    </div>
+
+    <script>
+      lucide.createIcons();
+
+      // Menu toggle (mobile)
+      const menuToggle = document.querySelector(".menu-toggle");
+      const sidebar = document.querySelector(".sidebar");
+      if (menuToggle) {
+        menuToggle.addEventListener("click", () => {
+          sidebar.classList.toggle("open");
+        });
+      }
+
+      // Filter tabs
+      const filterButtons = document.querySelectorAll(
+        "#lovedOnesFilters .filter-tab",
+      );
+      const cards = document.querySelectorAll("#lovedOnesGrid .loved-one-card");
+
+      filterButtons.forEach((btn) => {
+        btn.addEventListener("click", () => {
+          filterButtons.forEach((b) => b.classList.remove("active"));
+          btn.classList.add("active");
+
+          const filter = btn.dataset.filter;
+          cards.forEach((card) => {
+            card.style.display =
+              filter === "all" || card.dataset.status === filter ? "" : "none";
+          });
+        });
+      });
+
+      // Search by name
+      const searchInput = document.getElementById("lovedOnesSearch");
+      if (searchInput) {
+        searchInput.addEventListener("input", () => {
+          const query = searchInput.value.trim().toLowerCase();
+          cards.forEach((card) => {
+            const name = card
+              .querySelector(".card-name")
+              .textContent.toLowerCase();
+            card.style.display = name.includes(query) ? "" : "none";
+          });
+        });
+      }
+    </script>
+  </body>
+</html>
