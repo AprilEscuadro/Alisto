@@ -17,6 +17,216 @@
       rel="stylesheet"
       href="{{ url_for('static', filename='css/history.css') }}"
     />
+
+    <!-- ============ PROFILE DROPDOWN + LOGOUT CONFIRM ============ -->
+    <style>
+      body.modal-open {
+        overflow: hidden;
+      }
+
+      /* ---- dropdown ---- */
+      .header-right {
+        position: relative;
+      }
+
+      .profile-menu {
+        position: absolute;
+        top: calc(100% + 10px);
+        right: 0;
+        min-width: 220px;
+        background: var(--white);
+        border: 1px solid var(--border);
+        border-radius: 12px;
+        box-shadow: 0 12px 28px rgba(15, 23, 42, 0.12);
+        padding: 6px;
+        z-index: 200;
+        display: none;
+      }
+
+      .profile-menu.open {
+        display: block;
+      }
+
+      .profile-menu-head {
+        display: flex;
+        flex-direction: column;
+        gap: 2px;
+        padding: 10px 12px 12px;
+        border-bottom: 1px solid var(--border);
+        margin-bottom: 6px;
+      }
+      .profile-menu-head strong {
+        font-size: 13.5px;
+        color: var(--ink);
+      }
+      .profile-menu-head small {
+        font-size: 11.5px;
+        color: var(--muted);
+      }
+
+      .profile-menu-item {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        width: 100%;
+        padding: 10px 12px;
+        border: none;
+        border-radius: 8px;
+        background: transparent;
+        color: var(--ink);
+        font-family: inherit;
+        font-size: 13.5px;
+        font-weight: 600;
+        text-align: left;
+        cursor: pointer;
+        transition: background 0.15s;
+      }
+      .profile-menu-item:hover {
+        background: var(--bg);
+      }
+      .profile-menu-item svg,
+      .profile-menu-item i {
+        width: 16px;
+        height: 16px;
+        color: var(--muted);
+        flex-shrink: 0;
+      }
+
+      .profile-menu-item.danger {
+        color: #dc2626;
+      }
+      .profile-menu-item.danger:hover {
+        background: #fef2f2;
+      }
+      .profile-menu-item.danger svg,
+      .profile-menu-item.danger i {
+        color: #dc2626;
+      }
+
+      /* ---- confirmation modal ---- */
+      .confirm-overlay {
+        position: fixed;
+        inset: 0;
+        z-index: 1100;
+        display: none;
+        align-items: center;
+        justify-content: center;
+        padding: 24px;
+        background: rgba(15, 23, 42, 0.55);
+      }
+
+      .confirm-overlay.open {
+        display: flex;
+      }
+
+      .confirm-dialog {
+        background: var(--white);
+        border-radius: 16px;
+        width: 100%;
+        max-width: 400px;
+        padding: 28px 24px 22px;
+        text-align: center;
+        box-shadow: 0 24px 48px rgba(15, 23, 42, 0.18);
+      }
+
+      @media (prefers-reduced-motion: no-preference) {
+        .confirm-overlay.open .confirm-dialog {
+          animation: confirm-rise 0.18s ease-out;
+        }
+      }
+
+      @keyframes confirm-rise {
+        from {
+          opacity: 0;
+          transform: translateY(12px);
+        }
+        to {
+          opacity: 1;
+          transform: translateY(0);
+        }
+      }
+
+      .confirm-icon {
+        width: 52px;
+        height: 52px;
+        margin: 0 auto 16px;
+        border-radius: 50%;
+        background: #fef2f2;
+        color: #dc2626;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+      }
+      .confirm-icon svg,
+      .confirm-icon i {
+        width: 24px;
+        height: 24px;
+      }
+
+      .confirm-title {
+        font-size: 17px;
+        font-weight: 700;
+        color: var(--ink);
+        margin: 0 0 8px;
+      }
+
+      .confirm-text {
+        font-size: 13.5px;
+        color: var(--muted);
+        line-height: 1.6;
+        margin: 0 0 22px;
+      }
+
+      .confirm-actions {
+        display: flex;
+        gap: 10px;
+      }
+
+      .confirm-actions .btn-ghost,
+      .confirm-actions .btn-danger-action {
+        flex: 1;
+        padding: 11px 16px;
+        border-radius: 10px;
+        font-family: inherit;
+        font-size: 14px;
+        font-weight: 600;
+        cursor: pointer;
+      }
+
+      .btn-ghost {
+        border: 1px solid var(--border);
+        background: var(--white);
+        color: var(--ink);
+      }
+      .btn-ghost:hover {
+        background: var(--bg);
+      }
+
+      .btn-danger-action {
+        border: none;
+        background: #dc2626;
+        color: var(--white);
+      }
+      .btn-danger-action:hover {
+        background: #b91c1c;
+      }
+      .btn-danger-action:disabled {
+        opacity: 0.65;
+        cursor: not-allowed;
+      }
+
+      .confirm-dialog button:focus-visible,
+      .profile-menu-item:focus-visible {
+        outline: 2px solid var(--blue);
+        outline-offset: 2px;
+      }
+
+      @media (max-width: 480px) {
+        .confirm-actions {
+          flex-direction: column-reverse;
+        }
+      }
+    </style>
   </head>
   <body>
     <div class="app-shell">
@@ -107,7 +317,13 @@
               {% endif %}
             </button>
 
-            <button type="button" class="profile-pill">
+            <button
+              type="button"
+              class="profile-pill"
+              id="profilePill"
+              aria-haspopup="true"
+              aria-expanded="false"
+            >
               <span class="avatar">{{ full_name[:1] }}</span>
               <span class="profile-text">
                 <strong>{{ full_name }}</strong>
@@ -115,6 +331,31 @@
               </span>
               <i data-lucide="chevron-down"></i>
             </button>
+
+            <!-- ---- PROFILE DROPDOWN ---- -->
+            <div class="profile-menu" id="profileMenu" role="menu">
+              <div class="profile-menu-head">
+                <strong>{{ full_name }}</strong>
+                <small>{{ role|capitalize }}</small>
+              </div>
+              <a
+                class="profile-menu-item"
+                role="menuitem"
+                href="{{ url_for('settings') }}"
+              >
+                <i data-lucide="settings"></i>
+                <span>Settings</span>
+              </a>
+              <button
+                type="button"
+                class="profile-menu-item danger"
+                role="menuitem"
+                id="profileLogoutBtn"
+              >
+                <i data-lucide="log-out"></i>
+                <span>Log out</span>
+              </button>
+            </div>
           </div>
         </header>
 
@@ -336,6 +577,37 @@
       </main>
     </div>
 
+    <!-- ============ LOGOUT CONFIRMATION ============ -->
+    <div class="confirm-overlay" id="logoutConfirm" aria-hidden="true">
+      <div
+        class="confirm-dialog"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="logoutConfirmTitle"
+      >
+        <div class="confirm-icon"><i data-lucide="log-out"></i></div>
+        <h2 class="confirm-title" id="logoutConfirmTitle">
+          Are you sure you want to log out?
+        </h2>
+        <p class="confirm-text">
+          You will need to sign in again to view your loved ones and receive
+          alerts on this device.
+        </p>
+        <div class="confirm-actions">
+          <button type="button" class="btn-ghost" id="logoutCancel">
+            Cancel
+          </button>
+          <button
+            type="button"
+            class="btn-danger-action"
+            id="logoutConfirmBtn"
+          >
+            Log out
+          </button>
+        </div>
+      </div>
+    </div>
+
     <script>
       lucide.createIcons();
 
@@ -378,6 +650,75 @@
           });
         });
       }
+
+      // ---- Profile dropdown + logout confirmation ----
+      (function () {
+        const pill = document.getElementById("profilePill");
+        const menu = document.getElementById("profileMenu");
+        const overlay = document.getElementById("logoutConfirm");
+        const logoutBtn = document.getElementById("profileLogoutBtn");
+        const cancelBtn = document.getElementById("logoutCancel");
+        const confirmBtn = document.getElementById("logoutConfirmBtn");
+
+        if (!pill || !menu) return;
+
+        function openMenu() {
+          menu.classList.add("open");
+          pill.setAttribute("aria-expanded", "true");
+        }
+
+        function closeMenu() {
+          menu.classList.remove("open");
+          pill.setAttribute("aria-expanded", "false");
+        }
+
+        pill.addEventListener("click", (e) => {
+          e.stopPropagation();
+          menu.classList.contains("open") ? closeMenu() : openMenu();
+        });
+
+        // Clicking anywhere outside closes the dropdown
+        document.addEventListener("click", (e) => {
+          if (!menu.contains(e.target) && !pill.contains(e.target)) closeMenu();
+        });
+
+        function openConfirm() {
+          overlay.classList.add("open");
+          overlay.setAttribute("aria-hidden", "false");
+          document.body.classList.add("modal-open");
+          setTimeout(() => confirmBtn.focus(), 60);
+        }
+
+        function closeConfirm() {
+          overlay.classList.remove("open");
+          overlay.setAttribute("aria-hidden", "true");
+          document.body.classList.remove("modal-open");
+        }
+
+        logoutBtn.addEventListener("click", () => {
+          closeMenu();
+          openConfirm();
+        });
+
+        cancelBtn.addEventListener("click", closeConfirm);
+
+        // Clicking the dimmed backdrop cancels; clicks inside the dialog don't
+        overlay.addEventListener("click", (e) => {
+          if (e.target === overlay) closeConfirm();
+        });
+
+        confirmBtn.addEventListener("click", () => {
+          confirmBtn.disabled = true;
+          confirmBtn.textContent = "Logging out...";
+          window.location.href = "{{ url_for('logout') }}";
+        });
+
+        document.addEventListener("keydown", (e) => {
+          if (e.key !== "Escape") return;
+          if (overlay.classList.contains("open")) closeConfirm();
+          else if (menu.classList.contains("open")) closeMenu();
+        });
+      })();
     </script>
   </body>
 </html>
