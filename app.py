@@ -145,14 +145,26 @@ def register():
 
             if join_mode == 'claim':
                 if device.get('is_registered'):
-                    return jsonify(success=False, message='This Device ID was just registered by someone else. Please refresh and try again.'), 409
-
-                elder_id = _create_account_and_elder(
-                    full_name, email, password, role, contact_number,
-                    barangay_assigned, elder_full_name, dob,
-                    ', '.join(filter(None, [house_no, street, elder_barangay, city, province, zip_code])),
-                    relationship, serial_number
-                )
+                    # Device already registered — auto-join if there's room and user is family
+                    elder_id = device.get('elder_id')
+                    elder_doc = db.collection('elder_profile').document(elder_id).get()
+                    if not elder_doc.exists or elder_doc.to_dict().get('deleted_at'):
+                        return jsonify(success=False, message='That elder profile no longer exists.'), 400
+                    
+                    if role == 'family' and _family_link_count(elder_id) >= MAX_FAMILY_PER_DEVICE:
+                        return jsonify(success=False, message=f'This device already has the maximum of {MAX_FAMILY_PER_DEVICE} linked family members.'), 409
+                    
+                    elder_id = _create_account_and_join(
+                        full_name, email, password, role, contact_number,
+                        barangay_assigned, elder_id, relationship
+                    )
+                else:
+                    elder_id = _create_account_and_elder(
+                        full_name, email, password, role, contact_number,
+                        barangay_assigned, elder_full_name, dob,
+                        ', '.join(filter(None, [house_no, street, elder_barangay, city, province, zip_code])),
+                        relationship, serial_number
+                    )
             else:
                 if not device.get('is_registered') or device.get('elder_id') != existing_elder_id:
                     return jsonify(success=False, message='This device is no longer linked to that elder. Please re-check the Device ID.'), 409
