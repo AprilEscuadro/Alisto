@@ -1,0 +1,120 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>{% block title %}BHW{% endblock %} - ALISTO</title>
+    <link
+      href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Nunito:wght@600;700;800&display=swap"
+      rel="stylesheet"
+    />
+    <script src="https://unpkg.com/lucide@latest/dist/umd/lucide.js"></script>
+    <!-- Shared layout/components, then the BHW look on top -->
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/admin_css/admin.css') }}" />
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/bhw_css/bhw.css') }}" />
+    {% block head %}{% endblock %}
+  </head>
+  <body class="admin-body bhw-portal">
+    {% set nav_items = [
+      ('dashboard', 'bhw.dashboard', 'house', 'Dashboard'),
+      ('alerts', 'bhw.alerts', 'bell', 'Alerts'),
+      ('elderly_users', 'bhw.elderly_users', 'users-round', 'Elderly Users'),
+      ('map_view', 'bhw.map_view', 'map-pin', 'Map View'),
+      ('reports', 'bhw.reports', 'chart-column', 'Reports'),
+      ('settings', 'bhw.settings', 'settings', 'Settings'),
+    ] %}
+
+    <!-- SIDEBAR -->
+    <aside class="admin-sidebar" id="adminSidebar">
+      <a href="{{ url_for('bhw.dashboard') }}" class="admin-logo">
+        <img src="{{ url_for('static', filename='images/alistoLogo.png') }}" alt="ALISTO Logo" />
+        <span>Alisto</span>
+      </a>
+
+      <nav class="admin-nav">
+        {% for key, endpoint, icon, label in nav_items %}
+        <a
+          href="{{ url_for(endpoint) }}"
+          class="admin-nav-link {% if active_page == key %}active{% endif %}"
+          {% if active_page == key %}aria-current="page"{% endif %}
+        >
+          <i data-lucide="{{ icon }}"></i>
+          <span>{{ label }}</span>
+          {% if key == 'alerts' and active_alert_count %}
+          <span class="nav-badge">{{ active_alert_count }}</span>
+          {% endif %}
+        </a>
+        {% endfor %}
+      </nav>
+    </aside>
+    <div class="admin-sidebar-backdrop" id="adminSidebarBackdrop"></div>
+
+    <div class="admin-main">
+      <!-- TOP BAR -->
+      <header class="admin-topbar">
+        <button type="button" class="admin-menu-btn" id="adminMenuBtn" aria-label="Open menu">
+          <i data-lucide="menu"></i>
+        </button>
+
+        <div class="admin-topbar-right">
+          <a
+            href="{{ url_for('bhw.alerts') }}"
+            class="admin-bell"
+            title="{{ active_alert_count }} active alert(s)"
+          >
+            <i data-lucide="bell"></i>
+            {% if active_alert_count %}
+            <span class="admin-bell-badge">{{ active_alert_count }}</span>
+            {% endif %}
+          </a>
+
+          <div class="admin-profile" id="adminProfile">
+            <button
+              type="button"
+              class="admin-profile-btn"
+              id="adminProfileBtn"
+              aria-haspopup="true"
+              aria-expanded="false"
+            >
+              <span class="admin-avatar">{{ bhw_initials }}</span>
+              <span class="admin-profile-text">
+                <strong>{{ bhw_name }}</strong>
+                <small>BHW</small>
+              </span>
+              <i data-lucide="chevron-down" class="admin-profile-chevron"></i>
+            </button>
+
+            <div class="admin-dropdown" id="adminDropdown" role="menu">
+              <a href="{{ url_for('bhw.profile') }}" role="menuitem"
+                 class="{% if active_page == 'profile' %}active{% endif %}">
+                <i data-lucide="user"></i> My Profile
+              </a>
+              <a href="{{ url_for('bhw.settings') }}" role="menuitem">
+                <i data-lucide="settings"></i> Account Settings
+              </a>
+              <div class="admin-dropdown-divider"></div>
+              <a href="{{ url_for('logout') }}" role="menuitem">
+                <i data-lucide="log-out"></i> Logout
+              </a>
+            </div>
+          </div>
+        </div>
+      </header>
+
+      <main class="admin-content">
+        {% with messages = get_flashed_messages(with_categories=true) %}
+        {% for category, message in messages %}
+        <div class="admin-alert admin-alert-{{ category }}">{{ message }}</div>
+        {% endfor %}
+        {% endwith %}
+
+        {% block content %}{% endblock %}
+
+        <footer class="bhw-footer">&copy; {{ now_year }} Alisto. All rights reserved.</footer>
+      </main>
+    </div>
+
+    <script src="{{ url_for('static', filename='js/admin.js') }}"></script>
+    {% block scripts %}{% endblock %}
+  </body>
+</html>

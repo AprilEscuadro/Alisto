@@ -15,6 +15,11 @@
       rel="stylesheet"
       href="{{ url_for('static', filename='css/auth.css') }}"
     />
+    <!-- NEW: styles for the BHW steps only -->
+    <link
+      rel="stylesheet"
+      href="{{ url_for('static', filename='css/bhw_css/bhw_register.css') }}"
+    />
   </head>
   <body>
     <!-- SIMPLE NAVBAR (auth pages) -->
@@ -65,6 +70,7 @@
           id="registerForm"
           method="POST"
           action="{{ url_for('register') }}"
+          enctype="multipart/form-data"
         >
           <!-- STEP 1: ACCOUNT INFO -->
           <div class="wizard-step active" data-step="1">
@@ -212,7 +218,12 @@
               </label>
             </div>
 
-            <button type="button" class="btn-submit" onclick="nextStep(1)">
+            <!-- CHANGED: goes to the BHW step if role is BHW, otherwise nextStep(1) like before -->
+            <button
+              type="button"
+              class="btn-submit"
+              onclick="bhwContinueFromStep1()"
+            >
               Continue
             </button>
 
@@ -556,6 +567,239 @@
               "
             >
               Go to Login
+            </a>
+          </div>
+
+          <!-- ====================================== -->
+          <!-- NEW - BHW STEP 2: PROFESSIONAL INFORMATION -->
+          <!-- Only new fields. Name, email, phone, password, and barangay
+               come from step 1 and are not asked again. -->
+          <!-- ====================================== -->
+          <div class="wizard-step" data-step="bhw-info">
+            <div class="step-icon-header"><i data-lucide="briefcase"></i></div>
+            <h1>Professional Information</h1>
+            <p class="auth-subtitle">
+              Tell us about your work as a Barangay Health Worker.
+            </p>
+
+            <div class="form-row">
+              <div class="form-group">
+                <label class="field-label">Date of Birth</label>
+                <div class="input-icon-wrap">
+                  <i data-lucide="calendar" class="input-icon"></i>
+                  <input type="date" id="bhw_dob" name="bhw_dob" />
+                </div>
+              </div>
+              <div class="form-group">
+                <label class="field-label">Health Center</label>
+                <div class="select-icon-wrap">
+                  <i data-lucide="hospital" class="input-icon"></i>
+                  <select id="health_center" name="health_center">
+                    <option value="">Select your health center</option>
+                    {% for center in health_centers %}
+                    <option value="{{ center }}">{{ center }}</option>
+                    {% endfor %}
+                  </select>
+                </div>
+              </div>
+            </div>
+
+            <div class="form-row">
+              <div class="form-group">
+                <label class="field-label">Years of Service</label>
+                <div class="select-icon-wrap">
+                  <i data-lucide="calendar-clock" class="input-icon"></i>
+                  <select id="years_of_service" name="years_of_service">
+                    <option value="">Select years of service</option>
+                    {% for option in years_of_service_options %}
+                    <option value="{{ option }}">{{ option }}</option>
+                    {% endfor %}
+                  </select>
+                </div>
+              </div>
+              <div class="form-group">
+                <label class="field-label">BHW ID Number</label>
+                <div class="input-icon-wrap">
+                  <i data-lucide="id-card" class="input-icon"></i>
+                  <input
+                    type="text"
+                    id="bhw_id_number"
+                    name="bhw_id_number"
+                    placeholder="Enter your BHW ID number"
+                  />
+                </div>
+              </div>
+            </div>
+
+            <div class="form-group">
+              <label class="field-label"
+                >Upload Valid ID
+                <span class="optional-tag">(Optional)</span></label
+              >
+              <label
+                class="upload-dropzone"
+                id="validIdDropzone"
+                for="valid_id"
+              >
+                <i data-lucide="cloud-upload" class="upload-icon"></i>
+                <span class="upload-text">
+                  <span class="upload-title" id="validIdTitle"
+                    >Click to upload or drag and drop</span
+                  >
+                  <span class="upload-hint" id="validIdHint"
+                    >JPG, PNG, PDF (Max 2MB)</span
+                  >
+                </span>
+              </label>
+              <input
+                type="file"
+                id="valid_id"
+                name="valid_id"
+                accept=".jpg,.jpeg,.png,.pdf"
+                hidden
+              />
+              <button
+                type="button"
+                class="upload-remove"
+                id="validIdRemove"
+                style="display: none"
+              >
+                Remove file
+              </button>
+            </div>
+
+            <div class="step-btn-row">
+              <button
+                type="button"
+                class="btn-back"
+                onclick="bhwShowStep('1')"
+              >
+                Back
+              </button>
+              <button
+                type="button"
+                class="btn-submit"
+                onclick="bhwGoToReview()"
+              >
+                Continue
+              </button>
+            </div>
+          </div>
+
+          <!-- ====================================== -->
+          <!-- NEW - BHW STEP 3: REVIEW -->
+          <!-- ====================================== -->
+          <div class="wizard-step" data-step="bhw-review">
+            <div class="step-icon-header"><i data-lucide="file-text"></i></div>
+            <h1>Review Your Information</h1>
+            <p class="auth-subtitle">
+              Please review your information before completing registration.
+            </p>
+
+            <div class="bhw-review-list">
+              <div class="bhw-review-item">
+                <span class="bhw-review-icon"><i data-lucide="user"></i></span>
+                <span class="bhw-review-label">Full Name</span>
+                <span class="bhw-review-value" id="bhw_rev_full_name">—</span>
+                <button type="button" class="bhw-review-edit" onclick="bhwEdit('full_name')">Edit</button>
+              </div>
+              <div class="bhw-review-item">
+                <span class="bhw-review-icon"><i data-lucide="phone"></i></span>
+                <span class="bhw-review-label">Phone Number</span>
+                <span class="bhw-review-value" id="bhw_rev_phone">—</span>
+                <button type="button" class="bhw-review-edit" onclick="bhwEdit('contact_number')">Edit</button>
+              </div>
+              <div class="bhw-review-item">
+                <span class="bhw-review-icon"><i data-lucide="mail"></i></span>
+                <span class="bhw-review-label">Email Address</span>
+                <span class="bhw-review-value" id="bhw_rev_email">—</span>
+                <button type="button" class="bhw-review-edit" onclick="bhwEdit('email')">Edit</button>
+              </div>
+              <div class="bhw-review-item">
+                <span class="bhw-review-icon"><i data-lucide="map-pin"></i></span>
+                <span class="bhw-review-label">Barangay</span>
+                <span class="bhw-review-value" id="bhw_rev_barangay">—</span>
+                <button type="button" class="bhw-review-edit" onclick="bhwEdit('barangay_assigned')">Edit</button>
+              </div>
+              <div class="bhw-review-item">
+                <span class="bhw-review-icon"><i data-lucide="hospital"></i></span>
+                <span class="bhw-review-label">Health Center</span>
+                <span class="bhw-review-value" id="bhw_rev_health_center">—</span>
+                <button type="button" class="bhw-review-edit" onclick="bhwEdit('health_center')">Edit</button>
+              </div>
+              <div class="bhw-review-item">
+                <span class="bhw-review-icon"><i data-lucide="id-card"></i></span>
+                <span class="bhw-review-label">BHW ID Number</span>
+                <span class="bhw-review-value" id="bhw_rev_bhw_id">—</span>
+                <button type="button" class="bhw-review-edit" onclick="bhwEdit('bhw_id_number')">Edit</button>
+              </div>
+              <div class="bhw-review-item">
+                <span class="bhw-review-icon"><i data-lucide="calendar-clock"></i></span>
+                <span class="bhw-review-label">Years of Service</span>
+                <span class="bhw-review-value" id="bhw_rev_years">—</span>
+                <button type="button" class="bhw-review-edit" onclick="bhwEdit('years_of_service')">Edit</button>
+              </div>
+              <div class="bhw-review-item">
+                <span class="bhw-review-icon"><i data-lucide="file-text"></i></span>
+                <span class="bhw-review-label">Uploaded Valid ID</span>
+                <span class="bhw-review-value" id="bhw_rev_valid_id">—</span>
+                <button type="button" class="bhw-review-edit" onclick="bhwEdit('valid_id')">Edit</button>
+              </div>
+            </div>
+
+            <button
+              type="button"
+              class="btn-submit"
+              id="bhwSubmitBtn"
+              onclick="bhwSubmit()"
+            >
+              Confirm &amp; Submit
+            </button>
+            <button
+              type="button"
+              class="btn-text-back"
+              onclick="bhwShowStep('bhw-info')"
+            >
+              Back
+            </button>
+          </div>
+
+          <!-- ====================================== -->
+          <!-- NEW - BHW STEP 4: PENDING APPROVAL -->
+          <!-- ====================================== -->
+          <div class="wizard-step" data-step="bhw-pending">
+            <div class="pending-illustration">
+              <i data-lucide="hourglass"></i>
+            </div>
+            <h1 style="text-align: center">Pending Approval</h1>
+            <p class="auth-subtitle" style="text-align: center">
+              Your BHW account is now pending verification by the system
+              administrator.
+            </p>
+            <p class="auth-subtitle" style="text-align: center">
+              We will review your submitted details and notify you once your
+              account has been approved.
+            </p>
+
+            <div class="info-note bhw-pending-note">
+              <i data-lucide="info"></i>
+              <span
+                >You will be notified via email or SMS once your account is
+                approved.</span
+              >
+            </div>
+
+            <a
+              href="{{ url_for('landing') }}"
+              class="btn-submit"
+              style="
+                display: block;
+                text-align: center;
+                text-decoration: none;
+                line-height: 20px;
+              "
+            >
+              Back to Home
             </a>
           </div>
         </form>
@@ -1091,5 +1335,8 @@
         </p>
       </div>
     </div>
+
+    <!-- NEW: BHW registration flow -->
+    <script src="{{ url_for('static', filename='js/bhw_register.js') }}"></script>
   </body>
 </html>

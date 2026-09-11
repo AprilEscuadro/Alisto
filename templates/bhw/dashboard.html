@@ -1,1 +1,129 @@
 //put html here...
+{% extends 'bhw/base.html' %}
+{% block title %}Dashboard{% endblock %}
+
+{% block head %}
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+{% endblock %}
+
+{% block content %}
+<div class="bhw-welcome">
+  <p>Welcome back,</p>
+  <h1>{{ bhw_name }} <span aria-hidden="true">👋</span></h1>
+  <p class="text-muted">You are logged in as Barangay Health Worker (BHW).</p>
+</div>
+
+<!-- STAT CARDS -->
+<section class="admin-stats admin-stats-4">
+  <div class="stat-card bhw-stat">
+    <span class="stat-icon tint-red"><i data-lucide="siren"></i></span>
+    <div class="stat-body">
+      <strong class="stat-value">{{ stats.active_alerts }}</strong>
+      <span class="stat-label">Active Alerts</span>
+      <a href="{{ url_for('bhw.alerts') }}" class="stat-link">View all alerts <i data-lucide="arrow-right"></i></a>
+    </div>
+  </div>
+  <div class="stat-card bhw-stat">
+    <span class="stat-icon tint-blue"><i data-lucide="users-round"></i></span>
+    <div class="stat-body">
+      <strong class="stat-value">{{ stats.elderly_monitored }}</strong>
+      <span class="stat-label">Elderly Monitored</span>
+      <a href="{{ url_for('bhw.elderly_users') }}" class="stat-link">View all users <i data-lucide="arrow-right"></i></a>
+    </div>
+  </div>
+  <div class="stat-card bhw-stat">
+    <span class="stat-icon tint-green"><i data-lucide="smartphone"></i></span>
+    <div class="stat-body">
+      <strong class="stat-value">{{ stats.active_devices }}</strong>
+      <span class="stat-label">Active Devices</span>
+      <a href="{{ url_for('bhw.elderly_users', status='online') }}" class="stat-link">View device <i data-lucide="arrow-right"></i></a>
+    </div>
+  </div>
+  <div class="stat-card bhw-stat">
+    <span class="stat-icon tint-purple"><i data-lucide="wifi-off"></i></span>
+    <div class="stat-body">
+      <strong class="stat-value">{{ stats.offline_devices }}</strong>
+      <span class="stat-label">Offline Devices</span>
+      <a href="{{ url_for('bhw.elderly_users', status='offline') }}" class="stat-link">View offline <i data-lucide="arrow-right"></i></a>
+    </div>
+  </div>
+</section>
+
+<!-- MAP + RECENT ALERTS -->
+<section class="admin-grid admin-grid-main">
+  <div class="admin-card">
+    <div class="admin-card-header">
+      <h2 class="card-title-alert"><i data-lucide="bell"></i> Active Alerts</h2>
+      <a href="{{ url_for('bhw.alerts') }}" class="card-link">View all alerts <i data-lucide="arrow-right"></i></a>
+    </div>
+
+    <div class="dashboard-map-wrap">
+      <div id="bhwMap" class="dashboard-map"></div>
+      {% if not stats.active_alerts %}
+      <div class="map-status-pill"><i data-lucide="circle-check"></i> No active alerts right now</div>
+      {% endif %}
+    </div>
+
+    <div class="bhw-map-footer">
+      <div class="bhw-map-place">
+        <span class="bhw-map-pin"><i data-lucide="map-pin"></i></span>
+        <div>
+          <strong>Barangay {{ bhw_barangay or '—' }}</strong>
+          <small>Cebu City</small>
+        </div>
+      </div>
+      <a href="{{ url_for('bhw.map_view') }}" class="btn btn-outline btn-outline-primary">
+        Open Full Map <i data-lucide="external-link"></i>
+      </a>
+    </div>
+  </div>
+
+  <div class="admin-card">
+    <div class="admin-card-header">
+      <h2 class="card-title-icon"><i data-lucide="clock"></i> Recent Alerts</h2>
+      <a href="{{ url_for('bhw.alerts') }}" class="card-link">View all <i data-lucide="arrow-right"></i></a>
+    </div>
+
+    {% if recent_alerts %}
+    <div class="recent-alerts">
+      {% for alert in recent_alerts %}
+      <a href="{{ url_for('bhw.alerts') }}" class="recent-alert recent-alert-{{ alert.status }}">
+        <span class="admin-avatar-lg">{{ alert.initials }}</span>
+        <div class="recent-alert-body">
+          <strong>{{ alert.name }}</strong>
+          <span>{{ alert.type }}</span>
+          <small>{{ alert.time }}</small>
+        </div>
+        <span class="badge badge-{{ alert.status }}">{{ alert.status|capitalize }}</span>
+        <i data-lucide="chevron-right"></i>
+      </a>
+      {% endfor %}
+    </div>
+    {% else %}
+    <div class="empty-state">
+      <span class="empty-icon"><i data-lucide="bell-off"></i></span>
+      <strong>No alerts yet</strong>
+      <p>Alerts from elderly residents in your barangay will show up here.</p>
+    </div>
+    {% endif %}
+
+    <a href="{{ url_for('bhw.alerts') }}" class="btn btn-outline btn-outline-primary btn-block">View All Alerts</a>
+  </div>
+</section>
+{% endblock %}
+
+{% block scripts %}
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script>
+  // Centered on Sudlon II, Cebu City. Resident markers will be added once
+  // device locations and alerts are stored.
+  document.addEventListener('DOMContentLoaded', function () {
+    if (!window.L) return;
+    const map = L.map('bhwMap', { scrollWheelZoom: false }).setView([10.398, 123.86], 14);
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+      maxZoom: 19,
+      attribution: '&copy; OpenStreetMap contributors',
+    }).addTo(map);
+  });
+</script>
+{% endblock %}

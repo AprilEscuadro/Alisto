@@ -1,0 +1,231 @@
+{% extends 'admin/base.html' %}
+{% block title %}Users{% endblock %}
+
+{% block content %}
+<div class="admin-page-header">
+  <div>
+    <h1>Users</h1>
+    <p>Manage all users, their devices, and subscription details.</p>
+  </div>
+</div>
+
+<!-- STAT CARDS -->
+<section class="admin-stats admin-stats-6">
+  <div class="stat-card stat-card-compact">
+    <span class="stat-icon tint-blue"><i data-lucide="users-round"></i></span>
+    <div class="stat-body">
+      <span class="stat-label">Total Users</span>
+      <strong class="stat-value text-blue">{{ stats.total_users }}</strong>
+    </div>
+  </div>
+  <div class="stat-card stat-card-compact">
+    <span class="stat-icon tint-green"><i data-lucide="user"></i></span>
+    <div class="stat-body">
+      <span class="stat-label">Elderly</span>
+      <strong class="stat-value text-green">{{ stats.elderly }}</strong>
+    </div>
+  </div>
+  <div class="stat-card stat-card-compact">
+    <span class="stat-icon tint-orange"><i data-lucide="users"></i></span>
+    <div class="stat-body">
+      <span class="stat-label">Family Members</span>
+      <strong class="stat-value text-orange">{{ stats.family }}</strong>
+    </div>
+  </div>
+  <div class="stat-card stat-card-compact">
+    <span class="stat-icon tint-purple"><i data-lucide="shield-check"></i></span>
+    <div class="stat-body">
+      <span class="stat-label">BHWs</span>
+      <strong class="stat-value text-purple">{{ stats.bhw }}</strong>
+      {% if stats.pending_bhw %}
+      <a href="{{ url_for('admin.users', status='pending') }}" class="stat-sub text-orange">{{ stats.pending_bhw }} pending approval</a>
+      {% endif %}
+    </div>
+  </div>
+  <div class="stat-card stat-card-compact">
+    <span class="stat-icon tint-blue"><i data-lucide="smartphone"></i></span>
+    <div class="stat-body">
+      <span class="stat-label">Total Devices</span>
+      <strong class="stat-value text-blue">{{ stats.total_devices }}</strong>
+    </div>
+  </div>
+  <div class="stat-card stat-card-compact">
+    <span class="stat-icon tint-green"><i data-lucide="credit-card"></i></span>
+    <div class="stat-body">
+      <span class="stat-label">Active Subscriptions</span>
+      <strong class="stat-value text-green">—</strong>
+    </div>
+  </div>
+</section>
+
+<!-- TOOLBAR -->
+<section class="admin-toolbar">
+  <div class="toolbar-filters">
+    <label class="search-box">
+      <i data-lucide="search"></i>
+      <input type="search" id="userSearch" placeholder="Search users..." aria-label="Search users" />
+    </label>
+    <select id="typeFilter" aria-label="User type">
+      <option value="">User Type</option>
+      <option value="elderly">Elderly</option>
+      <option value="family">Family</option>
+      <option value="bhw">BHW</option>
+    </select>
+    <select id="statusFilter" aria-label="Status">
+      <option value="">Status</option>
+      <option value="active">Active</option>
+      <option value="pending">Pending</option>
+      <option value="rejected">Rejected</option>
+      <option value="archived">Archived</option>
+    </select>
+    <select id="subscriptionFilter" aria-label="Subscription" disabled title="Subscriptions are not set up yet">
+      <option value="">Subscription</option>
+    </select>
+  </div>
+  <div class="toolbar-actions">
+    <button type="button" class="btn btn-outline" id="exportUsers">
+      <i data-lucide="download"></i> Export
+    </button>
+    <a href="{{ url_for('admin.add_user') }}" class="btn btn-primary">
+      <i data-lucide="plus"></i> Add User
+    </a>
+  </div>
+</section>
+
+<!-- TABLE -->
+<section class="admin-card admin-table-card">
+  <div class="table-scroll">
+    <table class="admin-table" id="usersTable">
+      <thead>
+        <tr>
+          <th>User</th>
+          <th>Type</th>
+          <th>Contact</th>
+          <th>Devices</th>
+          <th>Subscription</th>
+          <th>Status</th>
+          <th>Joined</th>
+          <th class="col-actions">Actions</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for row in rows %}
+        <tr
+          data-name="{{ row.name }}"
+          data-display-id="{{ row.display_id }}"
+          data-email="{{ row.email or '' }}"
+          data-phone="{{ row.phone or '' }}"
+          data-type="{{ row.type }}"
+          data-type-label="{{ 'BHW' if row.type == 'bhw' else row.type|capitalize }}"
+          data-status="{{ row.status }}"
+          data-devices="{{ row.devices }}"
+          data-joined="{{ row.joined }}"
+          data-details='{{ row.details|tojson }}'
+          {% if row.valid_id_url %}data-valid-id-url="{{ row.valid_id_url }}" data-valid-id-name="{{ row.valid_id_name }}"{% endif %}
+          {% if row.type == 'bhw' %}data-approval-url="{{ url_for('admin.update_bhw_approval', user_id=row.id) }}"{% endif %}
+        >
+          <td>
+            <div class="user-cell">
+              <span class="admin-avatar-lg avatar-{{ row.type }}">{{ row.initials }}</span>
+              <div>
+                <strong>{{ row.name }}</strong>
+                <small>ID: {{ row.display_id }}</small>
+              </div>
+            </div>
+          </td>
+          <td><span class="badge badge-{{ row.type }}">{{ 'BHW' if row.type == 'bhw' else row.type|capitalize }}</span></td>
+          <td>
+            {% if row.phone or row.email %}
+            <div class="contact-cell">
+              {% if row.phone %}<span><i data-lucide="phone"></i> {{ row.phone }}</span>{% endif %}
+              {% if row.email %}<span><i data-lucide="mail"></i> {{ row.email }}</span>{% endif %}
+            </div>
+            {% else %}
+            <span class="text-muted">—</span>
+            {% endif %}
+          </td>
+          <td>
+            {% if row.devices %}
+            <strong class="cell-strong">{{ row.devices }} Device{{ 's' if row.devices != 1 }}</strong>
+            {% else %}
+            <span class="text-muted">No device</span>
+            {% endif %}
+          </td>
+          <td><span class="text-muted">—</span></td>
+          <td><span class="badge badge-{{ row.status }}">{{ row.status|capitalize }}</span></td>
+          <td class="nowrap">{{ row.joined }}</td>
+          <td class="col-actions">
+            <div class="row-menu">
+              <button type="button" class="row-menu-btn" aria-label="Actions for {{ row.name }}" aria-haspopup="true" aria-expanded="false">
+                <i data-lucide="ellipsis-vertical"></i>
+              </button>
+              <div class="row-menu-list" role="menu">
+                <button type="button" class="js-view-details" role="menuitem">
+                  <i data-lucide="eye"></i> View details
+                </button>
+                {% if row.status == 'pending' %}
+                <form method="POST" action="{{ url_for('admin.update_bhw_approval', user_id=row.id) }}">
+                  <input type="hidden" name="action" value="approve" />
+                  <button type="submit" class="text-green" role="menuitem"><i data-lucide="check"></i> Approve</button>
+                </form>
+                <form method="POST" action="{{ url_for('admin.update_bhw_approval', user_id=row.id) }}" class="js-confirm-reject">
+                  <input type="hidden" name="action" value="reject" />
+                  <button type="submit" class="text-red" role="menuitem"><i data-lucide="x"></i> Reject</button>
+                </form>
+                {% endif %}
+              </div>
+            </div>
+          </td>
+        </tr>
+        {% endfor %}
+        <tr class="table-empty" id="usersEmpty" {% if rows %}hidden{% endif %}>
+          <td colspan="8">
+            <div class="empty-state">
+              <span class="empty-icon"><i data-lucide="users-round"></i></span>
+              <strong>No users found</strong>
+              <p>Try a different search or clear the filters.</p>
+            </div>
+          </td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="table-footer">
+    <span id="usersShowing" class="text-muted"></span>
+    <nav class="pagination" id="usersPagination" aria-label="Users pages"></nav>
+  </div>
+</section>
+
+<!-- DETAILS MODAL -->
+<div class="admin-modal" id="userModal" hidden>
+  <div class="admin-modal-backdrop" data-close-modal></div>
+  <div class="admin-modal-card" role="dialog" aria-modal="true" aria-labelledby="userModalTitle">
+    <div class="admin-modal-header">
+      <div class="user-cell">
+        <span class="admin-avatar-lg" id="userModalAvatar"></span>
+        <div>
+          <strong id="userModalTitle"></strong>
+          <small id="userModalSub"></small>
+        </div>
+      </div>
+      <button type="button" class="admin-modal-close" data-close-modal aria-label="Close">
+        <i data-lucide="x"></i>
+      </button>
+    </div>
+
+    <dl class="details-list" id="userModalDetails"></dl>
+
+    <div class="admin-modal-footer" id="userModalApproval" hidden>
+      <form method="POST" class="js-confirm-reject" id="userModalReject">
+        <input type="hidden" name="action" value="reject" />
+        <button type="submit" class="btn btn-outline btn-danger">Reject</button>
+      </form>
+      <form method="POST" id="userModalApprove">
+        <input type="hidden" name="action" value="approve" />
+        <button type="submit" class="btn btn-primary">Approve BHW</button>
+      </form>
+    </div>
+  </div>
+</div>
+{% endblock %}

@@ -1,0 +1,19 @@
+{% extends 'admin/base.html' %}
+{% block title %}{{ title }}{% endblock %}
+
+{% block content %}
+<div class="admin-page-header">
+  <div>
+    <h1>{{ title }}</h1>
+    <p>{{ subtitle }}</p>
+  </div>
+</div>
+
+<section class="admin-card">
+  <div class="empty-state empty-state-lg">
+    <span class="empty-icon"><i data-lucide="hammer"></i></span>
+    <strong>This page is not built yet</strong>
+    <p>The {{ title }} page is next on the list. Use the sidebar to go back to the Dashboard or Users.</p>
+  </div>
+</section>
+{% endblock %}

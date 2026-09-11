@@ -1,0 +1,146 @@
+{% extends 'bhw/base.html' %}
+{% block title %}Elderly Users{% endblock %}
+
+{% block content %}
+<div class="admin-page-header">
+  <div>
+    <h1>Elderly Users</h1>
+    <p>Monitor and review the elderly residents registered under Barangay {{ bhw_barangay or '—' }}.</p>
+  </div>
+  <a href="{{ url_for('bhw.add_elderly') }}" class="btn btn-primary btn-lg">
+    <i data-lucide="plus"></i> Add Elderly in Community
+  </a>
+</div>
+
+<section class="admin-card bhw-filter-card">
+  <label class="search-box">
+    <i data-lucide="search"></i>
+    <input type="search" id="elderlySearch" placeholder="Search elderly resident" aria-label="Search elderly resident" />
+  </label>
+  <label class="labeled-select">
+    <span>Status</span>
+    <select id="deviceStatusFilter">
+      <option value="">All</option>
+      <option value="online">Online</option>
+      <option value="offline">Offline</option>
+      <option value="none">No device</option>
+    </select>
+  </label>
+  <label class="labeled-select">
+    <span>Barangay</span>
+    <select disabled title="You can only view residents in your assigned barangay">
+      <option>{{ bhw_barangay or '—' }}</option>
+    </select>
+  </label>
+  <button type="button" class="btn btn-outline" id="elderlyClearFilters">
+    <i data-lucide="filter"></i> Clear Filters
+  </button>
+</section>
+
+<section class="admin-card admin-table-card">
+  <div class="table-scroll">
+    <table class="admin-table" id="elderlyTable">
+      <thead>
+        <tr>
+          <th>Resident</th>
+          <th>Age</th>
+          <th>Address</th>
+          <th>Device Status</th>
+          <th>Current Status</th>
+          <th>Last Update</th>
+          <th class="col-actions">Actions</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for row in rows %}
+        <tr
+          data-name="{{ row.name }}"
+          data-display-id="{{ row.device_ids|join(', ') or 'No device' }}"
+          data-type="elderly"
+          data-status="{{ row.device_status }}"
+          data-subtitle="Resident{% if row.age is not none %} · Age {{ row.age }}{% endif %}"
+          data-skip-meta="1"
+          data-details='{{ row.details|tojson }}'
+        >
+          <td>
+            <div class="user-cell">
+              <span class="admin-avatar-lg avatar-elderly">{{ row.initials }}</span>
+              <strong>{{ row.name }}</strong>
+            </div>
+          </td>
+          <td>{{ row.age if row.age is not none else '—' }}</td>
+          <td class="address-cell">{{ row.address }}</td>
+          <td>
+            {% if row.device_status == 'online' %}
+            <span class="badge badge-active">Online</span>
+            {% elif row.device_status == 'offline' %}
+            <span class="badge badge-archived">Offline</span>
+            {% else %}
+            <span class="text-muted">No device</span>
+            {% endif %}
+          </td>
+          <td>
+            {% if row.current_status == 'safe' %}
+            <span class="badge badge-active">Safe</span>
+            {% elif row.current_status == 'offline' %}
+            <span class="badge badge-archived">Offline</span>
+            {% else %}
+            <span class="text-muted">—</span>
+            {% endif %}
+          </td>
+          <td class="nowrap">{{ row.last_update }}</td>
+          <td class="col-actions">
+            <button type="button" class="link-btn js-view-details">
+              View <i data-lucide="chevron-right"></i>
+            </button>
+          </td>
+        </tr>
+        {% endfor %}
+        <tr class="table-empty" {% if rows %}hidden{% endif %}>
+          <td colspan="7">
+            <div class="empty-state">
+              <span class="empty-icon"><i data-lucide="users-round"></i></span>
+              {% if rows %}
+              <strong>No residents match</strong>
+              <p>Try a different search or clear the filters.</p>
+              {% else %}
+              <strong>No residents yet</strong>
+              <p>Elderly residents registered with an address in Barangay {{ bhw_barangay or 'your barangay' }} will show up here.</p>
+              {% endif %}
+            </div>
+          </td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="table-footer">
+    <span class="text-muted table-showing"></span>
+    <nav class="pagination" aria-label="Resident pages"></nav>
+  </div>
+</section>
+
+<!-- DETAILS WINDOW (opened by admin.js) -->
+<div class="admin-modal" id="userModal" hidden>
+  <div class="admin-modal-backdrop" data-close-modal></div>
+  <div class="admin-modal-card" role="dialog" aria-modal="true" aria-labelledby="userModalTitle">
+    <div class="admin-modal-header">
+      <div class="user-cell">
+        <span class="admin-avatar-lg" id="userModalAvatar"></span>
+        <div>
+          <strong id="userModalTitle"></strong>
+          <small id="userModalSub"></small>
+        </div>
+      </div>
+      <button type="button" class="admin-modal-close" data-close-modal aria-label="Close">
+        <i data-lucide="x"></i>
+      </button>
+    </div>
+    <dl class="details-list" id="userModalDetails"></dl>
+    <div class="admin-modal-footer" id="userModalApproval" hidden>
+      <form method="POST" id="userModalReject"></form>
+      <form method="POST" id="userModalApprove"></form>
+    </div>
+  </div>
+</div>
+{% endblock %}

@@ -1,0 +1,108 @@
+{% extends 'bhw/base.html' %}
+{% block title %}My Profile{% endblock %}
+
+{% block content %}
+<nav class="breadcrumb" aria-label="Breadcrumb">
+  <a href="{{ url_for('bhw.dashboard') }}">Home</a>
+  <i data-lucide="chevron-right"></i>
+  <span aria-current="page">My Profile</span>
+</nav>
+
+<div class="admin-page-header">
+  <div>
+    <h1>My Profile</h1>
+    <p>View and manage your personal information.</p>
+  </div>
+</div>
+
+<section class="profile-grid">
+  <div class="profile-col">
+    <!-- PROFILE INFORMATION -->
+    <div class="admin-card">
+      <div class="admin-card-header">
+        <h2>Profile Information</h2>
+        <a href="{{ url_for('bhw.edit_profile') }}" class="btn btn-outline btn-outline-primary btn-sm">
+          <i data-lucide="pencil"></i> Edit Profile
+        </a>
+      </div>
+
+      <div class="profile-info">
+        <div class="profile-identity">
+          <span class="profile-avatar">{{ bhw_initials }}</span>
+          <strong>{{ user.full_name }}</strong>
+          <small>Barangay Health Worker (BHW)</small>
+          <span class="badge badge-active">Active</span>
+        </div>
+
+        <dl class="details-list profile-details">
+          <div><dt>Full Name</dt><dd>{{ user.full_name or '—' }}</dd></div>
+          <div><dt>Role</dt><dd>Barangay Health Worker (BHW)</dd></div>
+          <div><dt>Barangay</dt><dd>{{ profile.barangay_assigned or '—' }}{% if profile.barangay_assigned %}, Cebu City{% endif %}</dd></div>
+          <div><dt>Health Center</dt><dd>{{ profile.health_center or '—' }}</dd></div>
+          <div><dt>Contact Number</dt><dd>{{ user.contact_number or '—' }}</dd></div>
+          <div><dt>Email</dt><dd>{{ user.email or '—' }}</dd></div>
+          <div><dt>Member Since</dt><dd>{{ member_since }}</dd></div>
+        </dl>
+      </div>
+    </div>
+
+    <!-- ACCOUNT INFORMATION -->
+    <div class="admin-card">
+      <div class="admin-card-header">
+        <h2>Account Information</h2>
+      </div>
+      <dl class="details-list account-details">
+        <div><dt>Account Status</dt><dd class="text-green">Active</dd></div>
+        <div><dt>Last Login</dt><dd>{{ last_login }}</dd></div>
+        <div><dt>BHW ID Number</dt><dd>{{ profile.bhw_id_number or '—' }}</dd></div>
+        <div><dt>Two-Factor Authentication</dt><dd class="text-red">Disabled</dd></div>
+      </dl>
+    </div>
+  </div>
+
+  <!-- CHANGE PASSWORD -->
+  <div class="admin-card">
+    <div class="admin-card-header admin-card-header-stack">
+      <h2>Change Password</h2>
+      <p>Update your password to keep your account secure.</p>
+    </div>
+
+    <form method="POST" action="{{ url_for('bhw.change_password') }}" class="password-form">
+      {% for field, label, placeholder in [
+        ('current_password', 'Current Password', 'Enter current password'),
+        ('new_password', 'New Password', 'Enter new password'),
+        ('confirm_password', 'Confirm New Password', 'Confirm new password'),
+      ] %}
+      <label class="field">
+        <span>{{ label }}</span>
+        <span class="password-wrap">
+          <input
+            type="password"
+            id="{{ field }}"
+            name="{{ field }}"
+            placeholder="{{ placeholder }}"
+            autocomplete="{{ 'current-password' if field == 'current_password' else 'new-password' }}"
+            required
+          />
+          <button type="button" class="password-eye" data-toggle-password="{{ field }}" aria-label="Show password">
+            <i data-lucide="eye"></i>
+          </button>
+        </span>
+      </label>
+      {% endfor %}
+
+      <p class="rules-title">Password Requirements:</p>
+      <ul class="password-rules" id="passwordRules">
+        <li data-rule="length"><i data-lucide="circle-check"></i> At least 8 characters long</li>
+        <li data-rule="case"><i data-lucide="circle-check"></i> Include uppercase and lowercase letters</li>
+        <li data-rule="number"><i data-lucide="circle-check"></i> Include at least one number</li>
+        <li data-rule="special"><i data-lucide="circle-check"></i> Include at least one special character</li>
+      </ul>
+
+      <button type="submit" class="btn btn-primary btn-block">
+        <i data-lucide="lock"></i> Update Password
+      </button>
+    </form>
+  </div>
+</section>
+{% endblock %}

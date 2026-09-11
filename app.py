@@ -1,13 +1,31 @@
 from flask import Flask, render_template, request, redirect, url_for, session, flash, jsonify
 from werkzeug.security import generate_password_hash, check_password_hash
+from werkzeug.utils import secure_filename
 from database import db
+from admin_routes import admin_bp
+from bhw_routes import bhw_bp
 from firebase_admin import firestore
-from datetime import datetime
+from datetime import datetime, timedelta, timezone
+import os
+import uuid
 
 app = Flask(__name__)
 app.secret_key = 'alisto-secret-key-change-this-later'
+app.register_blueprint(admin_bp)  # admin panel at /admin
+app.register_blueprint(bhw_bp)    # BHW portal at /bhw
 
 MAX_FAMILY_PER_DEVICE = 3
+
+# ---------- BHW REGISTRATION SETTINGS ----------
+# Edit these lists to change the dropdown options on the register page.
+HEALTH_CENTERS = ['Sudlon II Health Center']
+YEARS_OF_SERVICE_OPTIONS = [
+    'Less than 1 year', '1-3 years', '4-6 years', '7-10 years', 'More than 10 years'
+]
+VALID_ID_EXTENSIONS = {'jpg', 'jpeg', 'png', 'pdf'}
+VALID_ID_MAX_BYTES = 2 * 1024 * 1024  # 2MB
+# Saved OUTSIDE /static so uploaded IDs are not publicly viewable.
+VALID_ID_UPLOAD_FOLDER = os.path.join(app.root_path, 'uploads', 'bhw_ids')
 
 
 def _get_care_plan():
@@ -114,8 +132,15 @@ def register():
             return jsonify(success=False, message='Please fill up all required account fields.'), 400
         if password != confirm_password:
             return jsonify(success=False, message='Password and confirm password do not match.'), 400
-        if role not in ('family', 'bhw', 'admin'):
+        # Admins are created with create_admin.py, never through the public form.
+        if role not in ('family', 'bhw'):
             return jsonify(success=False, message='Invalid role selected.'), 400
+
+        # NEW: BHWs don't register a device or an elder. They go through their own flow
+        # and wait for admin approval.
+        if role == 'bhw':
+            return _register_bhw(full_name, email, password, contact_number, barangay_assigned)
+
         if not serial_number:
             return jsonify(success=False, message='Please enter a Device ID.'), 400
         if join_mode not in ('claim', 'join'):
@@ -186,7 +211,91 @@ def register():
         except Exception as e:
             return jsonify(success=False, message=f'Error: {str(e)}'), 500
 
-    return render_template('register.html')
+    return render_template(
+        'register.html',
+        health_centers=HEALTH_CENTERS,
+        years_of_service_options=YEARS_OF_SERVICE_OPTIONS,
+    )
+
+
+def _register_bhw(full_name, email, password, contact_number, barangay_assigned):
+    """Create a BHW account with approval_status 'pending' plus its bhw_profile."""
+    dob = request.form.get('bhw_dob', '').strip()
+    health_center = request.form.get('health_center', '').strip()
+    years_of_service = request.form.get('years_of_service', '').strip()
+    bhw_id_number = request.form.get('bhw_id_number', '').strip()
+    valid_id = request.files.get('valid_id')
+
+    if not barangay_assigned:
+        return jsonify(success=False, message='Please enter your assigned barangay.'), 400
+    if not dob or not health_center or not years_of_service or not bhw_id_number:
+        return jsonify(success=False, message='Please fill up all professional information fields.'), 400
+    if health_center not in HEALTH_CENTERS:
+        return jsonify(success=False, message='Please select a valid health center.'), 400
+    if years_of_service not in YEARS_OF_SERVICE_OPTIONS:
+        return jsonify(success=False, message='Please select a valid years of service option.'), 400
+
+    try:
+        if datetime.strptime(dob, '%Y-%m-%d').date() > datetime.now().date():
+            return jsonify(success=False, message='Date of birth cannot be in the future.'), 400
+    except ValueError:
+        return jsonify(success=False, message='Please enter a valid date of birth.'), 400
+
+    # Uniqueness checks (Firestore has no UNIQUE constraint)
+    if list(db.collection('user_account').where('email', '==', email).limit(1).stream()):
+        return jsonify(success=False, message='An account with this email already exists.'), 400
+    if list(db.collection('bhw_profile').where('bhw_id_number', '==', bhw_id_number).limit(1).stream()):
+        return jsonify(success=False, message='This BHW ID number is already registered.'), 400
+
+    # Optional valid ID upload
+    valid_id_filename = None
+    stored_path = None
+    if valid_id and valid_id.filename:
+        ext = valid_id.filename.rsplit('.', 1)[-1].lower() if '.' in valid_id.filename else ''
+        if ext not in VALID_ID_EXTENSIONS:
+            return jsonify(success=False, message='Valid ID must be a JPG, PNG, or PDF file.'), 400
+
+        valid_id.stream.seek(0, os.SEEK_END)
+        size = valid_id.stream.tell()
+        valid_id.stream.seek(0)
+        if size > VALID_ID_MAX_BYTES:
+            return jsonify(success=False, message='Valid ID must be 2MB or smaller.'), 400
+
+        valid_id_filename = secure_filename(valid_id.filename) or f'valid_id.{ext}'
+        os.makedirs(VALID_ID_UPLOAD_FOLDER, exist_ok=True)
+        stored_name = f'{uuid.uuid4().hex}.{ext}'
+        stored_path = os.path.join(VALID_ID_UPLOAD_FOLDER, stored_name)
+
+    try:
+        if stored_path:
+            valid_id.save(stored_path)
+
+        user_ref = db.collection('user_account').document()
+        user_ref.set({
+            'full_name': full_name, 'email': email,
+            'password_hash': generate_password_hash(password),
+            'role': 'bhw', 'contact_number': contact_number,
+            'approval_status': 'pending',  # admin changes this to 'approved' or 'rejected'
+            'created_at': firestore.SERVER_TIMESTAMP, 'deleted_at': None, 'is_archived': 0
+        })
+
+        db.collection('bhw_profile').add({
+            'user_id': user_ref.id,
+            'barangay_assigned': barangay_assigned,
+            'date_of_birth': dob,
+            'health_center': health_center,
+            'years_of_service': years_of_service,
+            'bhw_id_number': bhw_id_number,
+            'valid_id_filename': valid_id_filename,
+            'valid_id_stored_as': os.path.basename(stored_path) if stored_path else None,
+            'created_at': firestore.SERVER_TIMESTAMP,
+        })
+    except Exception as e:
+        if stored_path and os.path.exists(stored_path):
+            os.remove(stored_path)
+        return jsonify(success=False, message=f'Error: {str(e)}'), 500
+
+    return jsonify(success=True, message='Registration submitted. Your account is pending approval.')
 
 
 def _create_account_and_elder(full_name, email, password, role, contact_number,
@@ -264,10 +373,39 @@ def login():
         user = user_doc.to_dict() if user_doc else None
 
         if user and not user.get('deleted_at') and check_password_hash(user['password_hash'], password):
+            # NEW: BHWs can't sign in until an admin approves them.
+            if user.get('role') == 'bhw' and user.get('approval_status') != 'approved':
+                if user.get('approval_status') == 'rejected':
+                    flash('Your BHW account was not approved. Please contact the system administrator.', 'error')
+                else:
+                    flash('Your BHW account is still pending approval by the system administrator.', 'error')
+                return redirect(url_for('login'))
+
             session['user_id'] = user_doc.id
             session['full_name'] = user['full_name']
             session['role'] = user['role']
+
+            # Remember the previous sign-in for "Last Login" on the profile page.
+            previous = user.get('last_login_at')
+            if hasattr(previous, 'astimezone'):
+                previous = previous.astimezone(timezone(timedelta(hours=8)))  # Philippine time
+            session['previous_login'] = previous.strftime('%b %d, %Y %I:%M %p') if hasattr(previous, 'strftime') else None
+            updates = {'last_login_at': firestore.SERVER_TIMESTAMP}
+
+            if user['role'] == 'bhw':
+                # First sign-in after approval: show the "Account Approved!" screen once.
+                if not user.get('approved_notice_seen'):
+                    updates['approved_notice_seen'] = True
+                    user_doc.reference.update(updates)
+                    return redirect(url_for('bhw.account_approved'))
+                user_doc.reference.update(updates)
+                flash(f"Welcome back, {user['full_name']}!", 'success')
+                return redirect(url_for('bhw.dashboard'))
+
+            user_doc.reference.update(updates)
             flash(f"Welcome back, {user['full_name']}!", 'success')
+            if user['role'] == 'admin':
+                return redirect(url_for('admin.dashboard'))
             return redirect(url_for('dashboard'))
         else:
             flash('Incorrect email or password.', 'error')
@@ -496,6 +634,10 @@ def dashboard():
     if 'user_id' not in session:
         flash('Please log in first.', 'error')
         return redirect(url_for('login'))
+    if session.get('role') == 'admin':
+        return redirect(url_for('admin.dashboard'))
+    if session.get('role') == 'bhw':
+        return redirect(url_for('bhw.dashboard'))
 
     links = db.collection('family_elder_link').where('family_user_id', '==', session['user_id']).stream()
     elder_ids = [l.to_dict()['elder_id'] for l in links]

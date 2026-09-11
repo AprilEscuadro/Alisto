@@ -1,0 +1,520 @@
+/* =========================================================
+   ALISTO BHW Portal
+   Loaded AFTER admin_css/admin.css. admin.css provides the shared layout
+   and components (cards, tables, badges, modal); this file gives the BHW
+   portal its own look from the Figma (white sidebar, light blue accents)
+   and styles the BHW-only pieces.
+   ========================================================= */
+
+/* ---------- Theme: white sidebar ---------- */
+
+.bhw-portal .admin-sidebar {
+  background: #fff;
+  color: var(--admin-text);
+  border-right: 1px solid var(--admin-border);
+}
+
+.bhw-portal .admin-logo {
+  color: var(--admin-text);
+}
+
+.bhw-portal .admin-logo img {
+  background: none;
+  padding: 0;
+}
+
+.bhw-portal .admin-nav-link {
+  color: var(--admin-text);
+}
+
+.bhw-portal .admin-nav-link:hover {
+  background: var(--admin-bg);
+  color: var(--admin-text);
+}
+
+.bhw-portal .admin-nav-link.active {
+  background: #eaf1ff;
+  color: var(--admin-primary);
+}
+
+.nav-badge {
+  margin-left: auto;
+  min-width: 20px;
+  height: 20px;
+  padding: 0 6px;
+  border-radius: 999px;
+  background: var(--red);
+  color: #fff;
+  font-size: 11px;
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.bhw-portal .admin-dropdown a.active {
+  background: #eaf1ff;
+  color: var(--admin-primary);
+}
+
+.bhw-portal .admin-avatar {
+  background: #eaf1ff;
+  color: var(--admin-primary);
+}
+
+/* ---------- Shared small pieces ---------- */
+
+.btn-outline-primary {
+  border-color: #b9cffc;
+  color: var(--admin-primary);
+}
+
+.btn-outline-primary:hover {
+  background: #f3f7ff;
+}
+
+.btn-block {
+  width: 100%;
+  margin-top: 14px;
+}
+
+/* Keep a card's bottom button at the bottom of the card */
+.admin-card > .btn-block:last-child {
+  margin-top: auto;
+}
+
+.btn-lg {
+  height: 46px;
+  padding: 0 22px;
+  font-size: 14px;
+}
+
+.btn-sm {
+  height: 34px;
+  padding: 0 14px;
+}
+
+.link-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px;
+  border: none;
+  background: none;
+  color: var(--admin-primary);
+  font-family: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.link-btn svg {
+  width: 15px;
+  height: 15px;
+}
+
+.link-btn:hover {
+  text-decoration: underline;
+}
+
+.bhw-footer {
+  margin-top: 28px;
+  text-align: center;
+  font-size: 12px;
+  color: var(--admin-muted);
+}
+
+/* ---------- Dashboard ---------- */
+
+.bhw-welcome {
+  margin-bottom: 22px;
+}
+
+.bhw-welcome p {
+  margin: 0;
+  font-weight: 500;
+}
+
+.bhw-welcome h1 {
+  font-size: 34px;
+  font-weight: 800;
+  line-height: 1.2;
+}
+
+.bhw-welcome .text-muted {
+  margin-top: 4px;
+  font-size: 13px;
+  font-weight: 400;
+}
+
+/* Figma shows the number first, then the label */
+.bhw-stat {
+  align-items: center;
+}
+
+.bhw-stat .stat-icon {
+  width: 56px;
+  height: 56px;
+  border-radius: 50%;
+}
+
+.bhw-stat .stat-value {
+  font-size: 26px;
+}
+
+.card-title-alert,
+.card-title-icon {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.card-title-alert {
+  color: var(--red);
+}
+
+.card-title-alert svg,
+.card-title-icon svg {
+  width: 18px;
+  height: 18px;
+}
+
+.map-status-pill {
+  position: absolute;
+  top: 12px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 500;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 7px 14px;
+  border-radius: 999px;
+  background: #fff;
+  color: var(--green);
+  font-size: 12px;
+  font-weight: 600;
+  box-shadow: 0 4px 14px rgba(15, 27, 61, 0.12);
+  white-space: nowrap;
+}
+
+.map-status-pill svg {
+  width: 15px;
+  height: 15px;
+}
+
+.bhw-map-footer {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  margin-top: 14px;
+}
+
+.bhw-map-place {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.bhw-map-place strong {
+  display: block;
+  font-size: 14px;
+}
+
+.bhw-map-place small {
+  color: var(--admin-muted);
+  font-size: 12px;
+}
+
+.bhw-map-pin {
+  width: 34px;
+  height: 34px;
+  border-radius: 50%;
+  background: #eaf1ff;
+  color: var(--admin-primary);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.bhw-map-pin svg {
+  width: 17px;
+  height: 17px;
+}
+
+.recent-alert {
+  text-decoration: none;
+  color: inherit;
+}
+
+/* ---------- Elderly Users ---------- */
+
+.admin-page-header .btn-lg {
+  flex-shrink: 0;
+}
+
+.bhw-filter-card {
+  flex-direction: row;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 12px;
+  margin-bottom: 16px;
+}
+
+.bhw-filter-card .search-box {
+  flex: 1 1 260px;
+  width: auto;
+  height: 44px;
+}
+
+.labeled-select {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  flex: 0 1 220px;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.labeled-select select {
+  height: 44px;
+  padding: 0 12px;
+  background: #fff;
+  border: 1px solid var(--admin-border);
+  border-radius: 8px;
+  font-family: inherit;
+  font-size: 13px;
+  color: var(--admin-text);
+}
+
+.labeled-select select:disabled {
+  background: #fafbfd;
+  cursor: not-allowed;
+}
+
+.labeled-select select:focus {
+  outline: none;
+  border-color: var(--admin-primary);
+}
+
+.bhw-filter-card .btn {
+  height: 44px;
+  margin-left: auto;
+}
+
+.address-cell {
+  min-width: 200px;
+  max-width: 260px;
+  color: var(--admin-muted);
+}
+
+/* ---------- My Profile ---------- */
+
+.breadcrumb {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 8px;
+  font-size: 12px;
+  color: var(--admin-muted);
+}
+
+.breadcrumb a {
+  text-decoration: none;
+}
+
+.breadcrumb a:hover {
+  text-decoration: underline;
+}
+
+.breadcrumb svg {
+  width: 13px;
+  height: 13px;
+}
+
+.breadcrumb [aria-current] {
+  color: var(--admin-text);
+}
+
+.profile-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1.2fr) minmax(0, 1fr);
+  gap: 16px;
+  align-items: start;
+}
+
+.profile-col {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.profile-info {
+  display: grid;
+  grid-template-columns: 180px 1fr;
+  gap: 24px;
+  align-items: start;
+}
+
+.profile-identity {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  text-align: center;
+}
+
+.profile-avatar {
+  width: 96px;
+  height: 96px;
+  margin-bottom: 8px;
+  border-radius: 50%;
+  background: #eaf1ff;
+  color: var(--admin-primary);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-family: 'Nunito', sans-serif;
+  font-size: 32px;
+  font-weight: 800;
+}
+
+.profile-identity strong {
+  font-size: 17px;
+}
+
+.profile-identity small {
+  margin-bottom: 6px;
+  color: var(--admin-muted);
+  font-size: 12px;
+}
+
+.profile-details div,
+.account-details div {
+  grid-template-columns: 130px 1fr;
+  padding: 11px 0;
+}
+
+.profile-details dd,
+.account-details dd {
+  font-weight: 500;
+}
+
+.account-details div {
+  grid-template-columns: 1fr auto;
+}
+
+.account-details dd {
+  text-align: right;
+}
+
+/* Change password */
+
+.password-form .field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-bottom: 14px;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.password-wrap {
+  position: relative;
+  display: block;
+}
+
+.password-wrap input {
+  width: 100%;
+  height: 42px;
+  padding: 0 42px 0 12px;
+  border: 1px solid var(--admin-border);
+  border-radius: 8px;
+  font-family: inherit;
+  font-size: 13px;
+  color: var(--admin-text);
+}
+
+.password-wrap input:focus {
+  outline: none;
+  border-color: var(--admin-primary);
+}
+
+.password-eye {
+  position: absolute;
+  right: 6px;
+  top: 50%;
+  transform: translateY(-50%);
+  padding: 6px;
+  border: none;
+  background: none;
+  color: var(--admin-muted);
+  cursor: pointer;
+}
+
+.password-eye svg {
+  width: 16px;
+  height: 16px;
+}
+
+.rules-title {
+  margin: 4px 0 8px;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.password-rules {
+  list-style: none;
+  margin: 0 0 6px;
+  padding: 0;
+}
+
+.password-rules li {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 3px 0;
+  font-size: 12px;
+  color: var(--admin-muted);
+}
+
+.password-rules svg {
+  width: 15px;
+  height: 15px;
+}
+
+.password-rules li.met {
+  color: var(--green);
+}
+
+/* ---------- Responsive ---------- */
+
+@media (max-width: 1100px) {
+  .profile-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 640px) {
+  .admin-page-header {
+    flex-direction: column;
+  }
+  .bhw-welcome h1 {
+    font-size: 28px;
+  }
+  .bhw-map-footer {
+    flex-direction: column;
+    align-items: stretch;
+  }
+  .profile-info {
+    grid-template-columns: 1fr;
+  }
+  .labeled-select {
+    flex: 1 1 100%;
+  }
+  .bhw-filter-card .btn {
+    margin-left: 0;
+    width: 100%;
+  }
+}
