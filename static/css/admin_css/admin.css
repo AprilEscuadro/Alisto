@@ -890,3 +890,80 @@ h1, h2 { font-family: 'Nunito', sans-serif; margin: 0; }
 @media (prefers-reduced-motion: reduce) {
   .admin-sidebar { transition: none; }
 }
+
+/* ---------- Devices page ---------- */
+
+.admin-stats-3 { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+
+.serial-cell {
+  font-family: ui-monospace, 'Cascadia Code', Consolas, monospace;
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+}
+
+.icon-btn {
+  padding: 6px;
+  border: none;
+  background: none;
+  border-radius: 6px;
+  cursor: pointer;
+  color: inherit;
+  display: inline-flex;
+}
+
+.icon-btn-danger { color: var(--red); }
+.icon-btn-danger:hover { background: var(--red-bg); }
+.icon-btn-warn { color: var(--orange); }
+.icon-btn-warn:hover { background: var(--orange-bg); }
+.icon-btn svg { width: 17px; height: 17px; }
+.col-actions form { margin: 0; display: inline-flex; }
+
+/* Form fields inside a modal */
+
+.admin-modal .field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-bottom: 16px;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.admin-modal .field input,
+.admin-modal .field textarea {
+  width: 100%;
+  padding: 10px 12px;
+  border: 1px solid var(--admin-border);
+  border-radius: 8px;
+  font-family: inherit;
+  font-size: 13px;
+  color: var(--admin-text);
+  resize: vertical;
+}
+
+.admin-modal .field textarea {
+  font-family: ui-monospace, 'Cascadia Code', Consolas, monospace;
+  line-height: 1.6;
+}
+
+.admin-modal .field input:focus,
+.admin-modal .field textarea:focus {
+  outline: none;
+  border-color: var(--admin-primary);
+}
+
+.field-hint {
+  font-weight: 400;
+  font-size: 12px;
+  color: var(--admin-muted);
+}
+
+#serialCount { color: var(--admin-primary); font-weight: 600; }
+.optional-tag { color: var(--admin-muted); font-weight: 400; }
+
+.admin-modal-header small { display: block; margin-top: 2px; font-weight: 400; }
+
+@media (max-width: 1100px) {
+  .admin-stats-3 { grid-template-columns: 1fr; }
+}

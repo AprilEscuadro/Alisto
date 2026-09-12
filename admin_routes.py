@@ -10,6 +10,7 @@ Templates are in templates/admin/, styles in static/css/admin_css/admin.css,
 and the page behavior (menus, filters, pagination) in static/js/admin.js.
 """
 import os
+import re
 from functools import wraps
 
 from flask import (Blueprint, render_template, session, redirect, url_for,
@@ -260,10 +261,167 @@ def add_user():
     return redirect(url_for('admin.users'))
 
 
+# ---------- DEVICES ----------
+
+# Serial numbers are pre-registered here by the admin. A family can only sign up
+# with a serial number that already exists in this collection.
+SERIAL_PATTERN = re.compile(r'^[A-Z0-9][A-Z0-9\-]{3,31}$')
+MAX_SERIALS_PER_SUBMIT = 200
+
+
+def _clean_serial(raw):
+    """Normalize one typed serial number, or return None if it is unusable."""
+    serial = re.sub(r'\s+', '', (raw or '')).upper()
+    return serial if serial and SERIAL_PATTERN.match(serial) else None
+
+
+@admin_bp.route('/devices')
+@admin_required
+def devices():
+    elders = {doc.id: (doc.to_dict() or {}).get('full_name') or 'Unnamed'
+              for doc in db.collection('elder_profile').stream()}
+
+    rows = []
+    for doc in db.collection('device').stream():
+        device = doc.to_dict() or {}
+        elder_id = device.get('elder_id')
+        registered = bool(device.get('is_registered'))
+        rows.append({
+            'serial': doc.id,
+            'assigned_to': elders.get(elder_id) if registered else None,
+            'elder_id': elder_id if registered else None,
+            'status': 'registered' if registered else 'available',
+            'added': _fmt_date(device.get('created_at')),
+            'registered_at': _fmt_date(device.get('registered_at')),
+            'batch': device.get('batch') or '',
+            'sort': _sort_key(device.get('created_at')),
+        })
+
+    rows.sort(key=lambda r: (r['status'] != 'available', -r['sort'], r['serial']))
+
+    stats = {
+        'total': len(rows),
+        'registered': sum(1 for r in rows if r['status'] == 'registered'),
+        'available': sum(1 for r in rows if r['status'] == 'available'),
+    }
+
+    return render_template('admin/devices.html', active_page='devices', rows=rows, stats=stats)
+
+
+@admin_bp.route('/devices/add', methods=['POST'])
+@admin_required
+def add_devices():
+    """Pre-register one or many serial numbers. One serial per line."""
+    raw_lines = (request.form.get('serial_numbers') or '').replace(',', '\n').splitlines()
+    batch = (request.form.get('batch') or '').strip()
+
+    typed = [line for line in (l.strip() for l in raw_lines) if line]
+    if not typed:
+        flash('Please enter at least one serial number.', 'error')
+        return redirect(url_for('admin.devices'))
+    if len(typed) > MAX_SERIALS_PER_SUBMIT:
+        flash(f'Please add at most {MAX_SERIALS_PER_SUBMIT} serial numbers at a time.', 'error')
+        return redirect(url_for('admin.devices'))
+
+    invalid, seen, to_add = [], set(), []
+    for line in typed:
+        serial = _clean_serial(line)
+        if not serial:
+            invalid.append(line)
+        elif serial not in seen:
+            seen.add(serial)
+            to_add.append(serial)
+
+    added, existing = [], []
+    for serial in to_add:
+        ref = db.collection('device').document(serial)
+        if ref.get().exists:
+            existing.append(serial)
+            continue
+        ref.set({
+            'serial_number': serial,
+            'is_registered': False,
+            'elder_id': None,
+            'batch': batch,
+            'created_at': firestore.SERVER_TIMESTAMP,
+            'added_by': session['user_id'],
+        })
+        added.append(serial)
+
+    if added:
+        flash(f"Pre-registered {len(added)} serial number{'s' if len(added) != 1 else ''}.", 'success')
+    if existing:
+        flash(f"Already in the system, skipped: {_join_sample(existing)}", 'info')
+    if invalid:
+        flash(f"Not a valid serial number, skipped: {_join_sample(invalid)}", 'error')
+    return redirect(url_for('admin.devices'))
+
+
+@admin_bp.route('/devices/<serial>/unregister', methods=['POST'])
+@admin_required
+def unregister_device(serial):
+    """Unlink a device from its elder so the serial can be handed to someone else.
+
+    The elder profile and the family accounts linked to it are NOT deleted — they
+    simply stop having a device until a new one is registered to them.
+    """
+    ref = db.collection('device').document(serial)
+    doc = ref.get()
+    device = doc.to_dict() if doc.exists else None
+
+    if not device:
+        flash('That serial number is not in the system.', 'error')
+        return redirect(url_for('admin.devices'))
+    if not device.get('is_registered'):
+        flash('That device is not registered to anyone.', 'error')
+        return redirect(url_for('admin.devices'))
+
+    elder_id = device.get('elder_id')
+    elder_doc = db.collection('elder_profile').document(elder_id).get() if elder_id else None
+    elder_name = (elder_doc.to_dict() or {}).get('full_name') if elder_doc and elder_doc.exists else None
+
+    ref.update({
+        'is_registered': False,
+        'elder_id': None,
+        'registered_at': None,
+        # Kept for history so you can see who the device used to belong to.
+        'previous_elder_id': elder_id,
+        'unregistered_at': firestore.SERVER_TIMESTAMP,
+        'unregistered_by': session['user_id'],
+    })
+
+    flash(
+        f"{serial} is unregistered and available again."
+        + (f" {elder_name} no longer has a device linked." if elder_name else ''),
+        'success',
+    )
+    return redirect(url_for('admin.devices'))
+
+
+@admin_bp.route('/devices/<serial>/delete', methods=['POST'])
+@admin_required
+def delete_device(serial):
+    """Remove a serial number that was never claimed (typo, wrong batch)."""
+    ref = db.collection('device').document(serial)
+    doc = ref.get()
+    if not doc.exists:
+        flash('That serial number is not in the system.', 'error')
+    elif (doc.to_dict() or {}).get('is_registered'):
+        flash('That device is already linked to an elder, so it cannot be removed.', 'error')
+    else:
+        ref.delete()
+        flash(f'Removed serial number {serial}.', 'success')
+    return redirect(url_for('admin.devices'))
+
+
+def _join_sample(items, limit=5):
+    head = ', '.join(items[:limit])
+    return head if len(items) <= limit else f'{head} and {len(items) - limit} more'
+
+
 # ---------- PAGES NOT BUILT YET ----------
 
 _COMING_SOON = {
-    'devices': ('Devices', 'Manage and monitor all Alisto devices.'),
     'map_view': ('Map View', 'Monitor device and emergency status across the community.'),
     'emergency_logs': ('Emergency Logs', 'View and manage all emergency alerts and incidents.'),
     'reports': ('Reports', 'Analyze devices, alerts, and community activity.'),
@@ -275,12 +433,6 @@ _COMING_SOON = {
 def _coming_soon(page):
     title, subtitle = _COMING_SOON[page]
     return render_template('admin/coming_soon.html', active_page=page, title=title, subtitle=subtitle)
-
-
-@admin_bp.route('/devices')
-@admin_required
-def devices():
-    return _coming_soon('devices')
 
 
 @admin_bp.route('/map')

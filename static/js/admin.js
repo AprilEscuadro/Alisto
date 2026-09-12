@@ -85,11 +85,25 @@
       closeModal();
     });
 
-    // Ask before rejecting a BHW
+    // Ask before rejecting a BHW or removing a serial number
     document.addEventListener('submit', (e) => {
       if (e.target.classList.contains('js-confirm-reject') &&
           !confirm('Reject this BHW registration? They will not be able to sign in.')) {
         e.preventDefault();
+      }
+      if (e.target.classList.contains('js-confirm-delete-device')) {
+        const serial = e.target.closest('tr').dataset.serial;
+        if (!confirm(`Remove serial number ${serial}? It will no longer work for registration.`)) {
+          e.preventDefault();
+        }
+      }
+      if (e.target.classList.contains('js-confirm-unregister')) {
+        const serial = e.target.closest('tr').dataset.serial;
+        const elder = e.target.dataset.elder;
+        const who = elder ? `${elder} will no longer have a device linked` : 'the linked elder will no longer have a device';
+        if (!confirm(`Unregister ${serial}? ${who}, and the serial becomes available for someone else.`)) {
+          e.preventDefault();
+        }
       }
     });
   }
@@ -180,6 +194,11 @@
     {
       table: '#elderlyTable', search: '#elderlySearch', noun: 'residents',
       filters: { status: '#deviceStatusFilter' }, clearButton: '#elderlyClearFilters',
+    },
+    {
+      table: '#devicesTable', search: '#deviceSearch', noun: 'serial numbers',
+      filters: { status: '#deviceStatusFilter' }, exportButton: '#exportDevices',
+      columns: ['serial', 'batch', 'assignedTo', 'status', 'added'],
     },
   ];
 
@@ -279,12 +298,15 @@
     }
 
     function exportCsv() {
-      const header = ['Name', 'ID', 'Type', 'Phone', 'Email', 'Devices', 'Status', 'Joined'];
+      // Read the table as shown, so any table can be exported.
+      const header = $$('thead th', table).map((th) => th.textContent.trim()).filter((t) => t !== 'Actions');
       const quote = (v) => `"${String(v ?? '').replace(/"/g, '""')}"`;
       const lines = [header.map(quote).join(',')];
       matches.forEach((row) => {
-        const d = row.dataset;
-        lines.push([d.name, d.displayId, d.typeLabel, d.phone, d.email, d.devices, d.status, d.joined].map(quote).join(','));
+        const cells = $$('td', row)
+          .filter((td) => !td.classList.contains('col-actions'))
+          .map((td) => td.textContent.replace(/\s+/g, ' ').trim());
+        lines.push(cells.map(quote).join(','));
       });
       const blob = new Blob(['\ufeff' + lines.join('\r\n')], { type: 'text/csv;charset=utf-8' });
       const link = document.createElement('a');
@@ -306,6 +328,31 @@
     }
 
     applyFilters();
+  }
+
+  // ---------- Register serial numbers window ----------
+  function setupAddDevices() {
+    const modal = $('#addDevicesModal');
+    const open = $('#openAddDevices');
+    if (!modal || !open) return;
+
+    open.addEventListener('click', () => {
+      modal.hidden = false;
+      $('#serial_numbers').focus();
+    });
+    modal.addEventListener('click', (e) => {
+      if (e.target.closest('[data-close-modal]')) modal.hidden = true;
+    });
+    document.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape') modal.hidden = true;
+    });
+
+    const box = $('#serial_numbers');
+    const count = $('#serialCount');
+    box.addEventListener('input', () => {
+      const n = box.value.split(/[\n,]/).map((s) => s.trim()).filter(Boolean).length;
+      count.textContent = n ? `${n} serial number${n === 1 ? '' : 's'} typed.` : '';
+    });
   }
 
   // ---------- Show/hide password buttons ----------
@@ -346,6 +393,7 @@
     setupRowMenus();
     setupModal();
     FILTER_TABLES.forEach(setupFilterTable);
+    setupAddDevices();
     setupPasswordToggles();
     setupPasswordChecklist();
     icons();

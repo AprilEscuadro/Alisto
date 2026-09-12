@@ -1,0 +1,190 @@
+{% extends 'admin/base.html' %}
+{% block title %}Devices{% endblock %}
+
+{% block content %}
+<div class="admin-page-header">
+  <div>
+    <h1>Devices</h1>
+    <p>Pre-register ALISTO serial numbers. Families can only sign up using a serial number listed here.</p>
+  </div>
+  <button type="button" class="btn btn-primary btn-lg" id="openAddDevices">
+    <i data-lucide="plus"></i> Register Serial Numbers
+  </button>
+</div>
+
+<!-- STAT CARDS -->
+<section class="admin-stats admin-stats-3">
+  <div class="stat-card">
+    <span class="stat-icon tint-blue"><i data-lucide="smartphone"></i></span>
+    <div class="stat-body">
+      <span class="stat-label">Total Serial Numbers</span>
+      <strong class="stat-value text-blue">{{ stats.total }}</strong>
+    </div>
+  </div>
+  <div class="stat-card">
+    <span class="stat-icon tint-green"><i data-lucide="circle-check"></i></span>
+    <div class="stat-body">
+      <span class="stat-label">Registered</span>
+      <strong class="stat-value text-green">{{ stats.registered }}</strong>
+      <span class="stat-sub text-muted">Already linked to an elder</span>
+    </div>
+  </div>
+  <div class="stat-card">
+    <span class="stat-icon tint-orange"><i data-lucide="package"></i></span>
+    <div class="stat-body">
+      <span class="stat-label">Available</span>
+      <strong class="stat-value text-orange">{{ stats.available }}</strong>
+      <span class="stat-sub text-muted">Ready to be claimed</span>
+    </div>
+  </div>
+</section>
+
+<!-- TOOLBAR -->
+<section class="admin-toolbar">
+  <div class="toolbar-filters">
+    <label class="search-box">
+      <i data-lucide="search"></i>
+      <input type="search" id="deviceSearch" placeholder="Search serial number..." aria-label="Search serial number" />
+    </label>
+    <select id="deviceStatusFilter" aria-label="Status">
+      <option value="">All statuses</option>
+      <option value="available">Available</option>
+      <option value="registered">Registered</option>
+    </select>
+  </div>
+  <div class="toolbar-actions">
+    <button type="button" class="btn btn-outline" id="exportDevices">
+      <i data-lucide="download"></i> Export
+    </button>
+  </div>
+</section>
+
+<!-- TABLE -->
+<section class="admin-card admin-table-card">
+  <div class="table-scroll">
+    <table class="admin-table" id="devicesTable">
+      <thead>
+        <tr>
+          <th>Serial Number</th>
+          <th>Batch</th>
+          <th>Assigned To</th>
+          <th>Status</th>
+          <th>Date Added</th>
+          <th class="col-actions">Actions</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for row in rows %}
+        <tr data-status="{{ row.status }}" data-serial="{{ row.serial }}">
+          <td><span class="serial-cell">{{ row.serial }}</span></td>
+          <td>{% if row.batch %}{{ row.batch }}{% else %}<span class="text-muted">—</span>{% endif %}</td>
+          <td>
+            {% if row.assigned_to %}
+            <strong class="cell-strong">{{ row.assigned_to }}</strong>
+            {% else %}
+            <span class="text-muted">Not assigned</span>
+            {% endif %}
+          </td>
+          <td>
+            {% if row.status == 'registered' %}
+            <span class="badge badge-active">Registered</span>
+            {% else %}
+            <span class="badge badge-pending">Available</span>
+            {% endif %}
+          </td>
+          <td class="nowrap">{{ row.added }}</td>
+          <td class="col-actions">
+            {% if row.status == 'registered' %}
+            <form
+              method="POST"
+              action="{{ url_for('admin.unregister_device', serial=row.serial) }}"
+              class="js-confirm-unregister"
+              data-elder="{{ row.assigned_to or '' }}"
+            >
+              <button type="submit" class="icon-btn icon-btn-warn" title="Unregister {{ row.serial }}" aria-label="Unregister {{ row.serial }}">
+                <i data-lucide="unlink"></i>
+              </button>
+            </form>
+            {% else %}
+            <form
+              method="POST"
+              action="{{ url_for('admin.delete_device', serial=row.serial) }}"
+              class="js-confirm-delete-device"
+            >
+              <button type="submit" class="icon-btn icon-btn-danger" title="Remove {{ row.serial }}" aria-label="Remove {{ row.serial }}">
+                <i data-lucide="trash-2"></i>
+              </button>
+            </form>
+            {% endif %}
+          </td>
+        </tr>
+        {% endfor %}
+        <tr class="table-empty" {% if rows %}hidden{% endif %}>
+          <td colspan="6">
+            <div class="empty-state">
+              <span class="empty-icon"><i data-lucide="smartphone"></i></span>
+              {% if rows %}
+              <strong>No serial numbers match</strong>
+              <p>Try a different search or clear the filter.</p>
+              {% else %}
+              <strong>No serial numbers yet</strong>
+              <p>Add the serial numbers of your ALISTO devices so families can register them.</p>
+              {% endif %}
+            </div>
+          </td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="table-footer">
+    <span class="text-muted table-showing"></span>
+    <nav class="pagination" aria-label="Device pages"></nav>
+  </div>
+</section>
+
+<!-- ADD SERIAL NUMBERS -->
+<div class="admin-modal" id="addDevicesModal" hidden>
+  <div class="admin-modal-backdrop" data-close-modal></div>
+  <div class="admin-modal-card" role="dialog" aria-modal="true" aria-labelledby="addDevicesTitle">
+    <div class="admin-modal-header">
+      <div>
+        <strong id="addDevicesTitle">Register Serial Numbers</strong>
+        <small class="text-muted">Add one serial number per line.</small>
+      </div>
+      <button type="button" class="admin-modal-close" data-close-modal aria-label="Close">
+        <i data-lucide="x"></i>
+      </button>
+    </div>
+
+    <form method="POST" action="{{ url_for('admin.add_devices') }}">
+      <label class="field">
+        <span>Serial Numbers</span>
+        <textarea
+          id="serial_numbers"
+          name="serial_numbers"
+          rows="7"
+          placeholder="ALISTO-0001&#10;ALISTO-0002&#10;ALISTO-0003"
+          required
+          autofocus
+        ></textarea>
+        <small class="field-hint">
+          Letters, numbers, and dashes only, 4 to 32 characters. Lowercase letters are saved as uppercase.
+          <span id="serialCount"></span>
+        </small>
+      </label>
+
+      <label class="field">
+        <span>Batch <span class="optional-tag">(optional)</span></span>
+        <input type="text" id="batch" name="batch" placeholder="e.g. Batch 1 - Sudlon II" />
+        <small class="field-hint">A label to help you tell groups of devices apart later.</small>
+      </label>
+
+      <div class="admin-modal-footer">
+        <button type="button" class="btn btn-outline" data-close-modal>Cancel</button>
+        <button type="submit" class="btn btn-primary">Add Serial Numbers</button>
+      </div>
+    </form>
+  </div>
+</div>
+{% endblock %}
