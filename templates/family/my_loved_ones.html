@@ -79,6 +79,13 @@
         border-bottom: 1px solid var(--border);
       }
 
+      .modal-head-left {
+        display: flex;
+        align-items: flex-start;
+        gap: 12px;
+        min-width: 0;
+      }
+
       .modal-title {
         font-size: 18px;
         font-weight: 700;
@@ -111,6 +118,26 @@
         color: var(--ink);
       }
       .modal-close i {
+        width: 18px;
+        height: 18px;
+      }
+
+      /* ---- delete button, upper-left of a modal ---- */
+      .modal-delete-btn {
+        border: none;
+        background: #fef2f2;
+        color: #dc2626;
+        border-radius: 8px;
+        padding: 8px;
+        cursor: pointer;
+        display: flex;
+        flex-shrink: 0;
+        transition: background 0.15s;
+      }
+      .modal-delete-btn:hover {
+        background: #fee2e2;
+      }
+      .modal-delete-btn i {
         width: 18px;
         height: 18px;
       }
@@ -282,6 +309,95 @@
         }
       }
 
+      /* ================= VIEW LOVED ONE MODAL ================= */
+      .view-lo-avatar-row {
+        display: flex;
+        align-items: center;
+        gap: 16px;
+        margin-bottom: 20px;
+      }
+
+      .view-lo-avatar {
+        position: relative;
+        width: 76px;
+        height: 76px;
+        border-radius: 50%;
+        background: var(--blue-light);
+        color: var(--blue);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-weight: 700;
+        font-size: 22px;
+        overflow: hidden;
+        flex-shrink: 0;
+      }
+      .view-lo-avatar img {
+        width: 100%;
+        height: 100%;
+        object-fit: cover;
+      }
+
+      .view-lo-avatar-edit {
+        position: absolute;
+        bottom: -2px;
+        right: -2px;
+        width: 26px;
+        height: 26px;
+        border-radius: 50%;
+        background: var(--blue);
+        color: var(--white);
+        border: 2px solid var(--white);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        cursor: pointer;
+        transition: background 0.15s;
+      }
+      .view-lo-avatar-edit:hover {
+        background: #1d4ed8;
+      }
+      .view-lo-avatar-edit i {
+        width: 13px;
+        height: 13px;
+      }
+
+      .view-lo-name {
+        font-size: 16px;
+        font-weight: 700;
+        color: var(--ink);
+        margin: 0 0 2px;
+      }
+      .view-lo-relationship {
+        font-size: 13px;
+        color: var(--muted);
+        margin: 0 0 6px;
+      }
+
+      .view-lo-grid {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 14px 16px;
+      }
+      .view-lo-field.span-2 {
+        grid-column: 1 / -1;
+      }
+      .view-lo-field span {
+        display: block;
+        font-size: 11.5px;
+        color: var(--muted);
+        font-weight: 500;
+        margin-bottom: 2px;
+      }
+      .view-lo-field strong {
+        font-size: 13.5px;
+        color: var(--ink);
+        font-weight: 700;
+      }
+      .view-lo-field strong.overdue {
+        color: #ef4444;
+      }
+
       /* ================= PROFILE DROPDOWN ================= */
       .header-right {
         position: relative;
@@ -361,7 +477,7 @@
         color: #dc2626;
       }
 
-      /* ================= LOGOUT CONFIRMATION ================= */
+      /* ================= CONFIRMATION DIALOGS (logout + delete) ================= */
       .confirm-overlay {
         position: fixed;
         inset: 0;
@@ -669,67 +785,77 @@
           <section class="loved-ones-grid" id="lovedOnesGrid">
             {% for elder in loved_ones %}
             <div class="loved-one-card" data-status="{{ elder.status_class }}">
-              <div class="card-header">
-                <div class="card-avatar">
-                  {% if elder.photo_url %}
-                  <img src="{{ elder.photo_url }}" alt="{{ elder.name }}" />
-                  {% else %}
-                  <span>{{ elder.name[:1] }}</span>
-                  {% endif %}
+              <div class="card-top">
+                <div class="card-left">
+                  <div class="card-left-top">
+                    <div class="card-avatar">
+                      {% if elder.photo_url %}
+                      <img src="{{ elder.photo_url }}" alt="{{ elder.name }}" />
+                      {% else %}
+                      <span>{{ elder.initials }}</span>
+                      {% endif %}
+                    </div>
+                    <div class="card-name-group">
+                      <h3 class="card-name">{{ elder.name }}</h3>
+                      <p class="card-relationship">{{ elder.relationship }}</p>
+                      <span
+                        class="card-status {% if elder.status_class == 'online' %}online{% elif elder.status_class == 'offline' %}offline{% else %}attention{% endif %}"
+                      >
+                        {% if elder.status_class == 'online' %}
+                        <i data-lucide="check-circle-2"></i> Online {% elif
+                        elder.status_class == 'offline' %}
+                        <i data-lucide="circle"></i> Offline {% else %}
+                        <i data-lucide="triangle-alert"></i> Needs Attention {%
+                        endif %}
+                      </span>
+                    </div>
+                  </div>
                 </div>
-                <div class="card-title-group">
-                  <h3 class="card-name">{{ elder.name }}</h3>
-                  <p class="card-relationship">{{ elder.relationship }}</p>
-                  <span
-                    class="card-status {% if elder.status_class == 'online' %}online{% elif elder.status_class == 'offline' %}offline{% else %}attention{% endif %}"
-                  >
-                    {% if elder.status_class == 'online' %}
-                    <i data-lucide="check-circle-2"></i> Online {% elif
-                    elder.status_class == 'offline' %}
-                    <i data-lucide="circle"></i> Offline {% else %}
-                    <i data-lucide="triangle-alert"></i> Needs Attention {%
-                    endif %}
-                  </span>
+
+                <div class="card-details">
+                  <div class="detail-item">
+                    <span class="icon-badge"><i data-lucide="clock"></i></span>
+                    <div>
+                      <span class="detail-label">Last check-in</span>
+                      <strong
+                        class="detail-value {% if elder.checkin_overdue %}overdue{% endif %}"
+                        >{{ elder.last_checkin }}</strong
+                      >
+                    </div>
+                  </div>
+                  <div class="detail-item">
+                    <span class="icon-badge"
+                      ><i data-lucide="calendar-check"></i
+                    ></span>
+                    <div>
+                      <span class="detail-label">Next medicine reminder</span>
+                      <strong
+                        class="detail-value {% if elder.medicine_overdue %}overdue{% endif %}"
+                        >{{ elder.next_medicine }}</strong
+                      >
+                    </div>
+                  </div>
+                  <div class="detail-item">
+                    <span class="icon-badge"
+                      ><i data-lucide="map-pin"></i
+                    ></span>
+                    <div>
+                      <span class="detail-label">Location</span>
+                      <strong class="detail-value">{{ elder.location }}</strong>
+                    </div>
+                  </div>
                 </div>
               </div>
 
-              <div class="card-details">
-                <div class="detail-item">
-                  <i data-lucide="clock"></i>
-                  <div>
-                    <span class="detail-label">Last check-in</span>
-                    <strong
-                      class="detail-value {% if elder.checkin_overdue %}overdue{% endif %}"
-                      >{{ elder.last_checkin }}</strong
-                    >
-                  </div>
-                </div>
-                <div class="detail-item">
-                  <i data-lucide="pill"></i>
-                  <div>
-                    <span class="detail-label">Next medicine reminder</span>
-                    <strong
-                      class="detail-value {% if elder.medicine_overdue %}overdue{% endif %}"
-                      >{{ elder.next_medicine }}</strong
-                    >
-                  </div>
-                </div>
-                <div class="detail-item">
-                  <i data-lucide="map-pin"></i>
-                  <div>
-                    <span class="detail-label">Location</span>
-                    <strong class="detail-value">{{ elder.location }}</strong>
-                  </div>
-                </div>
+              <div class="card-footer">
+                <button
+                  type="button"
+                  class="card-btn view-details-btn"
+                  data-elder-id="{{ elder.id }}"
+                >
+                  View Details <i data-lucide="arrow-right"></i>
+                </button>
               </div>
-
-              <a
-                href="{{ url_for('loved_one_details', elder_id=elder.id) }}"
-                class="card-btn"
-              >
-                View Details
-                <i data-lucide="chevron-right"></i>
-              </a>
             </div>
             {% else %}
             <div class="empty-state">
@@ -798,13 +924,12 @@
               <div class="form-field">
                 <label for="lo_relationship">Your relationship to them</label>
                 <select id="lo_relationship" name="relationship" required>
-                  <option value="">Select one</option>
-                  <option value="Parent">Parent</option>
-                  <option value="Grandparent">Grandparent</option>
+                  <option value="">Select relationship</option>
+                  <option value="Son/Daughter">Son/Daughter</option>
                   <option value="Spouse">Spouse</option>
                   <option value="Sibling">Sibling</option>
-                  <option value="Aunt / Uncle">Aunt / Uncle</option>
-                  <option value="Guardian">Guardian</option>
+                  <option value="Grandchild">Grandchild</option>
+                  <option value="Caregiver">Caregiver</option>
                   <option value="Other">Other</option>
                 </select>
               </div>
@@ -812,6 +937,21 @@
               <div class="form-field">
                 <label for="lo_dob">Date of birth</label>
                 <input type="date" id="lo_dob" name="date_of_birth" />
+              </div>
+
+              <div
+                class="form-field span-2"
+                id="lo_relationship_other_wrap"
+                style="display: none"
+              >
+                <label for="lo_relationship_other">Please specify</label>
+                <input
+                  type="text"
+                  id="lo_relationship_other"
+                  name="relationship_other"
+                  placeholder="e.g. Girlfriend, Boyfriend, Neighbor"
+                  autocomplete="off"
+                />
               </div>
             </div>
 
@@ -919,6 +1059,164 @@
       </div>
     </div>
 
+    <!-- ============ VIEW LOVED ONE MODAL ============ -->
+    <div class="modal-overlay" id="viewLovedOneModal" aria-hidden="true">
+      <div
+        class="modal-dialog"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="viewLovedOneTitle"
+      >
+        <div class="modal-head">
+          <div>
+            <h2 class="modal-title" id="viewLovedOneTitle">
+              Loved one details
+            </h2>
+            <p class="modal-sub">
+              View and manage the information for this loved one.
+            </p>
+          </div>
+          <button
+            type="button"
+            class="modal-close"
+            id="viewLovedOneClose"
+            aria-label="Close"
+          >
+            <i data-lucide="x"></i>
+          </button>
+        </div>
+
+        <div class="modal-body">
+          <div class="form-alert" id="viewLovedOneAlert" role="alert"></div>
+
+          <div id="viewLovedOneEditableSection">
+            <div class="view-lo-avatar-row">
+              <div class="view-lo-avatar" id="viewLovedOneAvatar">
+                <span id="viewLovedOneInitials"></span>
+                <img id="viewLovedOneImg" src="" alt="" style="display: none" />
+                <button
+                  type="button"
+                  class="view-lo-avatar-edit"
+                  id="viewLovedOnePhotoBtn"
+                  aria-label="Change photo"
+                >
+                  <i data-lucide="camera"></i>
+                </button>
+                <input
+                  type="file"
+                  id="viewLovedOnePhotoInput"
+                  accept="image/*"
+                  hidden
+                />
+              </div>
+              <div>
+                <h3 class="view-lo-name" id="viewLovedOneName">&nbsp;</h3>
+                <input
+                  type="text"
+                  class="view-lo-edit-input view-lo-name-input"
+                  id="viewLovedOneNameInput"
+                  placeholder="Full name"
+                />
+
+                <p class="view-lo-relationship" id="viewLovedOneRelationship">
+                  &nbsp;
+                </p>
+                <select
+                  class="view-lo-edit-input view-lo-relationship-input"
+                  id="viewLovedOneRelationshipInput"
+                >
+                  <option value="Son/Daughter">Son/Daughter</option>
+                  <option value="Spouse">Spouse</option>
+                  <option value="Sibling">Sibling</option>
+                  <option value="Grandchild">Grandchild</option>
+                  <option value="Caregiver">Caregiver</option>
+                  <option value="Other">Other</option>
+                </select>
+
+                <span class="card-status" id="viewLovedOneStatus"></span>
+              </div>
+            </div>
+
+            <p class="form-section-title">Personal information</p>
+            <div class="view-lo-grid">
+              <div class="view-lo-field">
+                <span>Date of birth</span>
+                <strong id="viewLovedOneDob">—</strong>
+                <input
+                  type="date"
+                  class="view-lo-edit-input"
+                  id="viewLovedOneDobInput"
+                />
+              </div>
+              <div class="view-lo-field span-2">
+                <span>Address</span>
+                <strong id="viewLovedOneAddress">—</strong>
+                <input
+                  type="text"
+                  class="view-lo-edit-input"
+                  id="viewLovedOneAddressInput"
+                  placeholder="Full address"
+                />
+              </div>
+            </div>
+          </div>
+
+          <p class="form-section-title">ALISTO device</p>
+          <div class="view-lo-grid">
+            <div class="view-lo-field">
+              <span>Device ID</span>
+              <strong id="viewLovedOneDeviceId">—</strong>
+            </div>
+            <div class="view-lo-field">
+              <span>Device status</span>
+              <strong id="viewLovedOneDeviceStatus">—</strong>
+            </div>
+            <div class="view-lo-field">
+              <span>Last check-in</span>
+              <strong id="viewLovedOneCheckin">—</strong>
+            </div>
+            <div class="view-lo-field">
+              <span>Next medicine reminder</span>
+              <strong id="viewLovedOneMedicine">—</strong>
+            </div>
+            <div class="view-lo-field span-2">
+              <span>Location</span>
+              <strong id="viewLovedOneLocation">—</strong>
+            </div>
+          </div>
+
+          <div class="danger-zone" id="viewLovedOneDangerZone">
+            <button
+              type="button"
+              class="btn-danger-plain"
+              id="viewLovedOneDeleteBtn"
+            >
+              <i data-lucide="trash-2"></i>
+              <span>Delete loved one</span>
+            </button>
+          </div>
+        </div>
+
+        <div class="modal-foot modal-foot-apple" id="viewLovedOneFoot">
+          <button
+            type="button"
+            class="btn-ghost-pill"
+            id="viewLovedOneCancelBtn"
+            style="display: none"
+          >
+            Cancel
+          </button>
+          <button
+            type="button"
+            class="btn-primary-pill"
+            id="viewLovedOneEditSaveBtn"
+            data-mode="edit"
+          >
+            <span>Edit</span>
+          </button>
+        </div>
+      </div>
+    </div>
     <!-- ============ LOGOUT CONFIRMATION ============ -->
     <div class="confirm-overlay" id="logoutConfirm" aria-hidden="true">
       <div
@@ -941,6 +1239,38 @@
           </button>
           <button type="button" class="confirm-logout" id="logoutConfirmBtn">
             Log out
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- ============ DELETE LOVED ONE CONFIRMATION ============ -->
+    <div class="confirm-overlay" id="deleteLovedOneConfirm" aria-hidden="true">
+      <div
+        class="confirm-dialog"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="deleteLovedOneTitle"
+      >
+        <div class="confirm-icon"><i data-lucide="trash-2"></i></div>
+        <h2 class="confirm-title" id="deleteLovedOneTitle">
+          Delete this loved one?
+        </h2>
+        <p class="confirm-text">
+          This will permanently remove
+          <strong id="deleteLovedOneName">this person</strong> from your account
+          and unlink their ALISTO device. This cannot be undone.
+        </p>
+        <div class="confirm-actions">
+          <button type="button" class="btn-ghost" id="deleteLovedOneCancel">
+            Cancel
+          </button>
+          <button
+            type="button"
+            class="confirm-logout"
+            id="deleteLovedOneConfirmBtn"
+          >
+            Delete
           </button>
         </div>
       </div>
@@ -999,6 +1329,10 @@
         const submitBtn = document.getElementById("addLovedOneSubmit");
         const submitLabel = submitBtn.querySelector("span");
 
+        const relationshipSelect = document.getElementById("lo_relationship");
+        const otherWrap = document.getElementById("lo_relationship_other_wrap");
+        const otherInput = document.getElementById("lo_relationship_other");
+
         const openers = [
           document.getElementById("addLovedOneBtn"),
           document.getElementById("emptyAddBtn"),
@@ -1019,9 +1353,18 @@
           alertBox.className = "form-alert";
         }
 
+        function toggleRelationshipOther() {
+          const isOther = relationshipSelect.value === "Other";
+          otherWrap.style.display = isOther ? "" : "none";
+          if (!isOther) otherInput.value = "";
+        }
+
+        relationshipSelect.addEventListener("change", toggleRelationshipOther);
+
         function openModal() {
           clearAlert();
           form.reset();
+          toggleRelationshipOther();
           form
             .querySelectorAll(".form-field.has-error")
             .forEach((f) => f.classList.remove("has-error"));
@@ -1067,7 +1410,7 @@
           clearAlert();
 
           const name = document.getElementById("lo_full_name").value.trim();
-          const relationship = document.getElementById("lo_relationship").value;
+          const relationship = relationshipSelect.value;
 
           if (!name) {
             markInvalid("lo_full_name");
@@ -1077,6 +1420,11 @@
           if (!relationship) {
             markInvalid("lo_relationship");
             showAlert("Choose how you are related to them.", "error");
+            return;
+          }
+          if (relationship === "Other" && !otherInput.value.trim()) {
+            markInvalid("lo_relationship_other");
+            showAlert("Please specify your relationship.", "error");
             return;
           }
 
@@ -1111,6 +1459,233 @@
 
           submitBtn.disabled = false;
           submitLabel.textContent = "Save loved one";
+        });
+      })();
+
+      // ---- View Loved One modal (details + photo + delete) ----
+      (function () {
+        const modal = document.getElementById("viewLovedOneModal");
+        const alertBox = document.getElementById("viewLovedOneAlert");
+        const closeBtns = [
+          document.getElementById("viewLovedOneClose"),
+          document.getElementById("viewLovedOneCloseFoot"),
+        ].filter(Boolean);
+
+        const avatarEl = document.getElementById("viewLovedOneAvatar");
+        const initialsEl = document.getElementById("viewLovedOneInitials");
+        const imgEl = document.getElementById("viewLovedOneImg");
+        const photoBtn = document.getElementById("viewLovedOnePhotoBtn");
+        const photoInput = document.getElementById("viewLovedOnePhotoInput");
+
+        const nameEl = document.getElementById("viewLovedOneName");
+        const relationshipEl = document.getElementById(
+          "viewLovedOneRelationship",
+        );
+        const statusEl = document.getElementById("viewLovedOneStatus");
+        const dobEl = document.getElementById("viewLovedOneDob");
+        const addressEl = document.getElementById("viewLovedOneAddress");
+        const deviceIdEl = document.getElementById("viewLovedOneDeviceId");
+        const deviceStatusEl = document.getElementById(
+          "viewLovedOneDeviceStatus",
+        );
+        const checkinEl = document.getElementById("viewLovedOneCheckin");
+        const medicineEl = document.getElementById("viewLovedOneMedicine");
+        const locationEl = document.getElementById("viewLovedOneLocation");
+
+        const deleteBtn = document.getElementById("viewLovedOneDeleteBtn");
+        const deleteConfirm = document.getElementById("deleteLovedOneConfirm");
+        const deleteNameEl = document.getElementById("deleteLovedOneName");
+        const deleteCancelBtn = document.getElementById("deleteLovedOneCancel");
+        const deleteConfirmBtn = document.getElementById(
+          "deleteLovedOneConfirmBtn",
+        );
+
+        let currentElderId = null;
+
+        function showAlert(message, type) {
+          alertBox.textContent = message;
+          alertBox.className = "form-alert show " + type;
+        }
+
+        function clearAlert() {
+          alertBox.textContent = "";
+          alertBox.className = "form-alert";
+        }
+
+        function setStatus(statusClass) {
+          statusEl.className = "card-status " + statusClass;
+          if (statusClass === "online") {
+            statusEl.innerHTML = '<i data-lucide="check-circle-2"></i> Online';
+          } else if (statusClass === "offline") {
+            statusEl.innerHTML = '<i data-lucide="circle"></i> Offline';
+          } else {
+            statusEl.innerHTML =
+              '<i data-lucide="triangle-alert"></i> Needs Attention';
+          }
+          lucide.createIcons();
+        }
+
+        function openModal() {
+          modal.classList.add("open");
+          modal.setAttribute("aria-hidden", "false");
+          document.body.classList.add("modal-open");
+        }
+
+        function closeModal() {
+          modal.classList.remove("open");
+          modal.setAttribute("aria-hidden", "true");
+          document.body.classList.remove("modal-open");
+          currentElderId = null;
+        }
+
+        async function loadElder(elderId) {
+          clearAlert();
+          currentElderId = elderId;
+          nameEl.textContent = "Loading...";
+          relationshipEl.textContent = "";
+          openModal();
+
+          try {
+            const res = await fetch(`/loved-ones/${elderId}/details`);
+            const data = await res.json();
+
+            if (!data.success) {
+              showAlert(data.message || "Could not load details.", "error");
+              return;
+            }
+
+            const elder = data.elder;
+            nameEl.textContent = elder.name;
+            relationshipEl.textContent = elder.relationship;
+            setStatus(elder.status_class);
+
+            initialsEl.textContent = elder.initials || "?";
+            if (elder.photo_url) {
+              imgEl.src = elder.photo_url;
+              imgEl.style.display = "";
+              initialsEl.style.display = "none";
+            } else {
+              imgEl.style.display = "none";
+              initialsEl.style.display = "";
+            }
+
+            dobEl.textContent = elder.date_of_birth || "Not set";
+            addressEl.textContent = elder.address || "Not set";
+            deviceIdEl.textContent = elder.device_id || "Not linked yet";
+            deviceStatusEl.textContent = elder.device_status || "Offline";
+            checkinEl.textContent = elder.last_checkin;
+            medicineEl.textContent = elder.next_medicine;
+            locationEl.textContent = elder.location;
+          } catch (err) {
+            showAlert(
+              "Cannot reach the server. Check your connection and try again.",
+              "error",
+            );
+          }
+        }
+
+        document.querySelectorAll(".view-details-btn").forEach((btn) => {
+          btn.addEventListener("click", () => {
+            loadElder(btn.dataset.elderId);
+          });
+        });
+
+        closeBtns.forEach((btn) => btn.addEventListener("click", closeModal));
+
+        modal.addEventListener("click", (e) => {
+          if (e.target === modal) closeModal();
+        });
+
+        document.addEventListener("keydown", (e) => {
+          if (e.key === "Escape" && modal.classList.contains("open"))
+            closeModal();
+        });
+
+        // ---- Change photo ----
+        photoBtn.addEventListener("click", () => photoInput.click());
+
+        photoInput.addEventListener("change", async () => {
+          if (!currentElderId || !photoInput.files[0]) return;
+
+          const formData = new FormData();
+          formData.append("photo", photoInput.files[0]);
+
+          clearAlert();
+          showAlert("Uploading photo...", "success");
+
+          try {
+            const res = await fetch(`/loved-ones/${currentElderId}/photo`, {
+              method: "POST",
+              body: formData,
+            });
+            const data = await res.json();
+
+            if (data.success) {
+              imgEl.src = data.photo_url;
+              imgEl.style.display = "";
+              initialsEl.style.display = "none";
+              showAlert(data.message || "Photo updated.", "success");
+            } else {
+              showAlert(data.message || "Could not update photo.", "error");
+            }
+          } catch (err) {
+            showAlert(
+              "Cannot reach the server. Check your connection and try again.",
+              "error",
+            );
+          }
+
+          photoInput.value = "";
+        });
+
+        // ---- Delete loved one ----
+        deleteBtn.addEventListener("click", () => {
+          if (!currentElderId) return;
+          deleteNameEl.textContent = nameEl.textContent || "this person";
+          deleteConfirm.classList.add("open");
+          deleteConfirm.setAttribute("aria-hidden", "false");
+        });
+
+        function closeDeleteConfirm() {
+          deleteConfirm.classList.remove("open");
+          deleteConfirm.setAttribute("aria-hidden", "true");
+        }
+
+        deleteCancelBtn.addEventListener("click", closeDeleteConfirm);
+
+        deleteConfirm.addEventListener("click", (e) => {
+          if (e.target === deleteConfirm) closeDeleteConfirm();
+        });
+
+        deleteConfirmBtn.addEventListener("click", async () => {
+          if (!currentElderId) return;
+
+          deleteConfirmBtn.disabled = true;
+          deleteConfirmBtn.textContent = "Deleting...";
+
+          try {
+            const res = await fetch(`/loved-ones/${currentElderId}/delete`, {
+              method: "POST",
+            });
+            const data = await res.json();
+
+            if (data.success) {
+              window.location.reload();
+              return;
+            }
+
+            closeDeleteConfirm();
+            showAlert(data.message || "Could not delete.", "error");
+          } catch (err) {
+            closeDeleteConfirm();
+            showAlert(
+              "Cannot reach the server. Check your connection and try again.",
+              "error",
+            );
+          }
+
+          deleteConfirmBtn.disabled = false;
+          deleteConfirmBtn.textContent = "Delete";
         });
       })();
 

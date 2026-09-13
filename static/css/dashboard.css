@@ -547,3 +547,518 @@ button { font-family: inherit; cursor: pointer; border: none; }
   .main { padding: 20px; }
   .status-grid { grid-template-columns: 1fr; }
 }
+
+body.modal-open {
+  overflow: hidden;
+}
+
+/* ---- dropdown ---- */
+.header-right {
+  position: relative;
+}
+
+.profile-menu {
+  position: absolute;
+  top: calc(100% + 10px);
+  right: 0;
+  min-width: 220px;
+  background: var(--white);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  box-shadow: 0 12px 28px rgba(15, 23, 42, 0.12);
+  padding: 6px;
+  z-index: 200;
+  display: none;
+}
+
+.profile-menu.open {
+  display: block;
+}
+
+.profile-menu-head {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 10px 12px 12px;
+  border-bottom: 1px solid var(--border);
+  margin-bottom: 6px;
+}
+.profile-menu-head strong {
+  font-size: 13.5px;
+  color: var(--ink);
+}
+.profile-menu-head small {
+  font-size: 11.5px;
+  color: var(--muted);
+}
+
+.profile-menu-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 10px 12px;
+  border: none;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--ink);
+  font-family: inherit;
+  font-size: 13.5px;
+  font-weight: 600;
+  text-align: left;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+.profile-menu-item:hover {
+  background: var(--bg);
+}
+.profile-menu-item svg,
+.profile-menu-item i {
+  width: 16px;
+  height: 16px;
+  color: var(--muted);
+  flex-shrink: 0;
+}
+
+.profile-menu-item.danger {
+  color: #dc2626;
+}
+.profile-menu-item.danger:hover {
+  background: #fef2f2;
+}
+.profile-menu-item.danger svg,
+.profile-menu-item.danger i {
+  color: #dc2626;
+}
+
+/* ---- confirmation modal ---- */
+.confirm-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 1100;
+  display: none;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  background: rgba(15, 23, 42, 0.55);
+}
+
+.confirm-overlay.open {
+  display: flex;
+}
+
+.confirm-dialog {
+  background: var(--white);
+  border-radius: 16px;
+  width: 100%;
+  max-width: 400px;
+  padding: 28px 24px 22px;
+  text-align: center;
+  box-shadow: 0 24px 48px rgba(15, 23, 42, 0.18);
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .confirm-overlay.open .confirm-dialog {
+    animation: confirm-rise 0.18s ease-out;
+  }
+}
+
+@keyframes confirm-rise {
+  from {
+    opacity: 0;
+    transform: translateY(12px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.confirm-icon {
+  width: 52px;
+  height: 52px;
+  margin: 0 auto 16px;
+  border-radius: 50%;
+  background: #fef2f2;
+  color: #dc2626;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.confirm-icon svg,
+.confirm-icon i {
+  width: 24px;
+  height: 24px;
+}
+
+.confirm-title {
+  font-size: 17px;
+  font-weight: 700;
+  color: var(--ink);
+  margin: 0 0 8px;
+}
+
+.confirm-text {
+  font-size: 13.5px;
+  color: var(--muted);
+  line-height: 1.6;
+  margin: 0 0 22px;
+}
+
+.confirm-actions {
+  display: flex;
+  gap: 10px;
+}
+
+.confirm-actions .btn-ghost,
+.confirm-actions .btn-danger-action {
+  flex: 1;
+  padding: 11px 16px;
+  border-radius: 10px;
+  font-family: inherit;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.btn-ghost {
+  border: 1px solid var(--border);
+  background: var(--white);
+  color: var(--ink);
+}
+.btn-ghost:hover {
+  background: var(--bg);
+}
+
+.btn-danger-action {
+  border: none;
+  background: #dc2626;
+  color: var(--white);
+}
+.btn-danger-action:hover {
+  background: #b91c1c;
+}
+.btn-danger-action:disabled {
+  opacity: 0.65;
+  cursor: not-allowed;
+}
+
+.confirm-dialog button:focus-visible,
+.profile-menu-item:focus-visible {
+  outline: 2px solid var(--blue);
+  outline-offset: 2px;
+}
+
+@media (max-width: 480px) {
+  .confirm-actions {
+    flex-direction: column-reverse;
+  }
+}
+
+/* ============================================================
+   NEW DASHBOARD CONTENT — welcome header, info cards,
+   alerts panel, location panel (sidebar/topbar untouched)
+   ============================================================ */
+
+/* ---- welcome header ---- */
+.welcome-header { margin-bottom: 28px; }
+.welcome-header .page-title { margin: 0 0 6px; }
+.page-subtitle {
+  margin: 0;
+  font-size: 14px;
+  color: var(--muted);
+}
+
+/* ---- info grid (loved one / device / medicine) ---- */
+.info-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  gap: 16px;
+  margin-bottom: 28px;
+}
+
+.info-card {
+  background: var(--white);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 18px;
+}
+
+.info-card-title {
+  font-size: 14px;
+  font-weight: 800;
+  color: var(--navy);
+  margin: 0 0 16px;
+  text-align: left;
+}
+
+/* -- my loved one card -- */
+.loved-one-body {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  width: fit-content;
+  margin: 0 auto;
+}
+
+.loved-one-avatar {
+  width: 72px;
+  height: 72px;
+  border-radius: 50%;
+  object-fit: cover;
+  flex-shrink: 0;
+  background: var(--bg);
+}
+
+.loved-one-initials {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--blue);
+  color: var(--white);
+  font-weight: 700;
+  font-size: 22px;
+}
+
+.loved-one-details {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 6px;
+}
+.loved-one-details strong { font-size: 17px; color: var(--navy); }
+.loved-one-sub { font-size: 13px; color: var(--muted); }
+
+.pill-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  width: fit-content;
+  font-size: 12px;
+  font-weight: 700;
+  padding: 4px 12px;
+  border-radius: 999px;
+}
+.pill-status svg { width: 8px; height: 8px; fill: currentColor; }
+.pill-status.online { background: var(--green-bg); color: var(--green); }
+
+/* -- device status card -- */
+.device-status-body {
+  display: flex;
+  align-items: center;
+  gap: 18px;
+  width: fit-content;
+  margin: 0 auto;
+}
+
+.device-thumb {
+  width: 100px;
+  height: 100px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+.device-thumb img { width: 100%; height: 100%; object-fit: contain; }
+
+.device-status-details {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 6px;
+}
+
+.device-online-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 16px;
+  font-weight: 700;
+  color: var(--green);
+}
+.device-online-label svg { width: 10px; height: 10px; fill: currentColor; }
+
+.device-status-note {
+  margin: 0;
+  font-size: 13px;
+  color: var(--muted);
+  line-height: 1.4;
+}
+
+/* -- medicine card -- */
+.medicine-body {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  margin: 0 auto 16px;
+  width: fit-content;
+}
+
+.medicine-clock {
+  width: 72px;
+  height: 72px;
+  border-radius: 50%;
+  background: var(--blue-light);
+  color: var(--blue);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+.medicine-clock svg { width: 26px; height: 26px; }
+
+.medicine-details {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 6px;
+}
+.medicine-details strong { font-size: 18px; color: var(--navy); }
+.medicine-details span { font-size: 13px; color: var(--muted); }
+
+.medicine-date {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  background: var(--blue-light);
+  color: var(--blue);
+  font-size: 13px;
+  font-weight: 600;
+  padding: 6px 12px;
+  border-radius: 10px;
+  width: fit-content;
+}
+.medicine-date svg { width: 14px; height: 14px; }
+
+/* ---- recent alerts panel ---- */
+.alert-list {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  margin-bottom: 14px;
+}
+
+.alert-list li {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.alert-icon {
+  width: 30px;
+  height: 30px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  font-size: 9px;
+  font-weight: 800;
+}
+.alert-icon svg { width: 14px; height: 14px; }
+.alert-icon.ok { background: var(--green-bg); color: var(--green); }
+.alert-icon.warn { background: var(--amber-bg); color: var(--amber); }
+.alert-icon.sos { background: var(--red-bg); color: #dc2626; }
+
+.alert-text { display: flex; flex-direction: column; flex: 1; line-height: 1.3; }
+.alert-text strong { font-size: 13.5px; color: var(--ink); }
+.alert-text small { color: var(--muted); font-size: 11.5px; }
+
+.alert-time {
+  font-size: 11.5px;
+  color: var(--muted);
+  white-space: nowrap;
+}
+
+/* ---- last known location panel ---- */
+.location-map {
+  width: 100%;
+  height: 180px;
+  border-radius: 10px;
+  overflow: hidden;
+  margin-bottom: 14px;
+}
+.location-map img { width: 100%; height: 100%; object-fit: cover; }
+
+.location-map-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  background: var(--bg);
+  color: var(--muted);
+  font-size: 13px;
+}
+.location-map-empty svg { width: 28px; height: 28px; }
+
+.location-pin {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  width: 30px;
+  height: 30px;
+  border-radius: 50%;
+  background: var(--blue);
+  color: var(--white);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 0 0 8px rgba(37, 99, 235, 0.15);
+}
+.location-pin svg { width: 15px; height: 15px; }
+
+.location-details {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-bottom: 14px;
+}
+
+.location-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  font-size: 13px;
+  color: var(--ink);
+}
+.location-row svg {
+  width: 16px;
+  height: 16px;
+  color: var(--blue);
+  margin-top: 2px;
+  flex-shrink: 0;
+}
+
+@media (max-width: 1200px) {
+  .info-grid { grid-template-columns: repeat(2, 1fr); }
+}
+
+@media (max-width: 768px) {
+  .info-grid { grid-template-columns: 1fr; }
+}
+
+.map-avatar-icon-wrapper {
+  background: transparent;
+  border: none;
+}
+
+.map-avatar-marker {
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  border: 3px solid var(--blue);
+  box-shadow: 0 4px 10px rgba(15, 23, 42, 0.25);
+  object-fit: cover;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.map-avatar-initials {
+  background: var(--blue);
+  color: var(--white);
+  font-weight: 700;
+  font-size: 14px;
+}

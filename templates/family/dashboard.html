@@ -13,213 +13,133 @@
       rel="stylesheet"
       href="{{ url_for('static', filename='css/dashboard.css') }}"
     />
-
-    <!-- ============ PROFILE DROPDOWN + LOGOUT CONFIRM ============ -->
+    <link
+      rel="stylesheet"
+      href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
+    />
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
     <style>
-      body.modal-open {
-        overflow: hidden;
-      }
-
-      /* ---- dropdown ---- */
-      .header-right {
-        position: relative;
-      }
-
-      .profile-menu {
-        position: absolute;
-        top: calc(100% + 10px);
-        right: 0;
-        min-width: 220px;
-        background: var(--white);
-        border: 1px solid var(--border);
-        border-radius: 12px;
-        box-shadow: 0 12px 28px rgba(15, 23, 42, 0.12);
-        padding: 6px;
-        z-index: 200;
+      .map-modal-overlay {
         display: none;
-      }
-
-      .profile-menu.open {
-        display: block;
-      }
-
-      .profile-menu-head {
-        display: flex;
-        flex-direction: column;
-        gap: 2px;
-        padding: 10px 12px 12px;
-        border-bottom: 1px solid var(--border);
-        margin-bottom: 6px;
-      }
-      .profile-menu-head strong {
-        font-size: 13.5px;
-        color: var(--ink);
-      }
-      .profile-menu-head small {
-        font-size: 11.5px;
-        color: var(--muted);
-      }
-
-      .profile-menu-item {
-        display: flex;
-        align-items: center;
-        gap: 10px;
-        width: 100%;
-        padding: 10px 12px;
-        border: none;
-        border-radius: 8px;
-        background: transparent;
-        color: var(--ink);
-        font-family: inherit;
-        font-size: 13.5px;
-        font-weight: 600;
-        text-align: left;
-        cursor: pointer;
-        transition: background 0.15s;
-      }
-      .profile-menu-item:hover {
-        background: var(--bg);
-      }
-      .profile-menu-item svg,
-      .profile-menu-item i {
-        width: 16px;
-        height: 16px;
-        color: var(--muted);
-        flex-shrink: 0;
-      }
-
-      .profile-menu-item.danger {
-        color: #dc2626;
-      }
-      .profile-menu-item.danger:hover {
-        background: #fef2f2;
-      }
-      .profile-menu-item.danger svg,
-      .profile-menu-item.danger i {
-        color: #dc2626;
-      }
-
-      /* ---- confirmation modal ---- */
-      .confirm-overlay {
         position: fixed;
-        inset: 0;
-        z-index: 1100;
-        display: none;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+        background-color: rgba(0, 0, 0, 0.7);
+        z-index: 9999;
+        animation: fadeIn 0.3s ease;
+      }
+
+      .map-modal-overlay.active {
+        display: flex;
         align-items: center;
         justify-content: center;
-        padding: 24px;
-        background: rgba(15, 23, 42, 0.55);
       }
 
-      .confirm-overlay.open {
-        display: flex;
-      }
-
-      .confirm-dialog {
-        background: var(--white);
-        border-radius: 16px;
-        width: 100%;
-        max-width: 400px;
-        padding: 28px 24px 22px;
-        text-align: center;
-        box-shadow: 0 24px 48px rgba(15, 23, 42, 0.18);
-      }
-
-      @media (prefers-reduced-motion: no-preference) {
-        .confirm-overlay.open .confirm-dialog {
-          animation: confirm-rise 0.18s ease-out;
-        }
-      }
-
-      @keyframes confirm-rise {
+      @keyframes fadeIn {
         from {
           opacity: 0;
-          transform: translateY(12px);
         }
         to {
           opacity: 1;
-          transform: translateY(0);
         }
       }
 
-      .confirm-icon {
-        width: 52px;
-        height: 52px;
-        margin: 0 auto 16px;
-        border-radius: 50%;
-        background: #fef2f2;
-        color: #dc2626;
+      .map-modal-content {
+        background: white;
+        border-radius: 12px;
+        width: 96%;
+        max-width: 1800px; /* mas gidak-on na, gikan sa 900px */
+        height: 95vh; /* mas taas na, gikan sa 80vh */
         display: flex;
+        flex-direction: column;
+        box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+        animation: slideUp 0.3s ease;
+      }
+
+      @keyframes slideUp {
+        from {
+          transform: translateY(50px);
+          opacity: 0;
+        }
+        to {
+          transform: translateY(0);
+          opacity: 1;
+        }
+      }
+
+      .map-modal-header {
+        display: flex;
+        justify-content: space-between;
         align-items: center;
-        justify-content: center;
-      }
-      .confirm-icon svg,
-      .confirm-icon i {
-        width: 24px;
-        height: 24px;
+        padding: 20px;
+        border-bottom: 1px solid #e0e0e0;
       }
 
-      .confirm-title {
-        font-size: 17px;
-        font-weight: 700;
-        color: var(--ink);
-        margin: 0 0 8px;
+      .map-modal-header h2 {
+        font-size: 20px;
+        font-weight: 600;
+        color: #333;
       }
 
-      .confirm-text {
-        font-size: 13.5px;
-        color: var(--muted);
-        line-height: 1.6;
-        margin: 0 0 22px;
+      .map-modal-close {
+        background: none;
+        border: none;
+        font-size: 28px;
+        cursor: pointer;
+        color: #999;
+        transition: color 0.2s;
       }
 
-      .confirm-actions {
-        display: flex;
-        gap: 10px;
+      .map-modal-close:hover {
+        color: #333;
       }
 
-      .confirm-actions .btn-ghost,
-      .confirm-actions .btn-danger-action {
+      .map-modal-body {
         flex: 1;
-        padding: 11px 16px;
-        border-radius: 10px;
-        font-family: inherit;
+        position: relative;
+        overflow: hidden;
+      }
+
+      #mapContainer {
+        width: 100%;
+        height: 100%;
+      }
+
+      .map-info {
+        position: absolute;
+        bottom: 20px;
+        left: 20px;
+        background: white;
+        padding: 15px 20px;
+        border-radius: 8px;
+        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+        max-width: 400px;
+        z-index: 1000;
+      }
+
+      .map-info h3 {
         font-size: 14px;
         font-weight: 600;
-        cursor: pointer;
+        color: #5088fe;
+        margin-bottom: 5px;
       }
 
-      .btn-ghost {
-        border: 1px solid var(--border);
-        background: var(--white);
-        color: var(--ink);
-      }
-      .btn-ghost:hover {
-        background: var(--bg);
+      .map-info p {
+        font-size: 13px;
+        color: #666;
+        line-height: 1.5;
       }
 
-      .btn-danger-action {
-        border: none;
-        background: #dc2626;
-        color: var(--white);
-      }
-      .btn-danger-action:hover {
-        background: #b91c1c;
-      }
-      .btn-danger-action:disabled {
-        opacity: 0.65;
-        cursor: not-allowed;
-      }
+      @media (max-width: 768px) {
+        .map-modal-content {
+          width: 98%;
+          height: 96vh;
+        }
 
-      .confirm-dialog button:focus-visible,
-      .profile-menu-item:focus-visible {
-        outline: 2px solid var(--blue);
-        outline-offset: 2px;
-      }
-
-      @media (max-width: 480px) {
-        .confirm-actions {
-          flex-direction: column-reverse;
+        .map-info {
+          max-width: 90%;
         }
       }
     </style>
@@ -357,169 +277,149 @@
 
         <!-- ---- MAIN CONTENT ---- -->
         <div class="main">
-          <h1 class="page-title">Dashboard</h1>
+          <!-- ---- WELCOME HEADER ---- -->
+          <div class="welcome-header">
+            <h1 class="page-title">
+              Welcome back, {{ full_name.split(' ')[0] }}!
+            </h1>
+            <p class="page-subtitle">
+              Here's the latest update from your loved one's ALISTO device.
+            </p>
+          </div>
 
-          <!-- ---- DEVICE STATUS ROW ---- -->
-          <section class="status-section">
-            <div class="status-grid">
-              <div class="status-card">
-                <div class="status-icon device-icon">
-                  <i data-lucide="radio"></i>
+          <!-- ---- TOP INFO ROW: LOVED ONE / DEVICE / MEDICINE ---- -->
+          <section class="info-grid">
+            <div class="info-card loved-one-card">
+              <h3 class="info-card-title">My Loved One</h3>
+              <div class="loved-one-body">
+                {% if loved_one.photo_url %}
+                <img
+                  src="{{ loved_one.photo_url }}"
+                  alt="{{ loved_one.name }}"
+                  class="loved-one-avatar"
+                />
+                {% else %}
+                <div class="loved-one-avatar loved-one-initials">
+                  {{ loved_one.initials }}
                 </div>
-                <div class="status-body">
-                  <span class="status-label">Device</span>
-                  <span class="status-value online">{{ device.status }}</span>
-                  <span class="status-sub">Alisto</span>
-                </div>
-              </div>
-
-              <div class="status-card">
-                <div class="status-icon plan-icon">
-                  <i data-lucide="clipboard-list"></i>
-                </div>
-                <div class="status-body">
-                  <span class="status-label">Care Plan</span>
-                  <span class="status-value online"
-                    >{{ care_plan.status }}</span
-                  >
-                  <span class="status-sub">Subscription active</span>
-                </div>
-              </div>
-
-              <div class="status-card">
-                <div class="status-icon contacts-icon">
-                  <i data-lucide="users"></i>
-                </div>
-                <div class="status-body">
-                  <span class="status-label">Emergency Contacts</span>
-                  <span class="status-value online"
-                    >{{ emergency_contact_count }} Linked</span
-                  >
-                  <span class="status-sub">Ready to notify</span>
-                </div>
-              </div>
-
-              <div class="status-card">
-                <div class="status-icon location-icon">
-                  <i data-lucide="map-pin"></i>
-                </div>
-                <div class="status-body">
-                  <span class="status-label">Location</span>
-                  <span class="status-value online"
-                    >{{ device.location_status }}</span
-                  >
-                  <span class="status-sub">GPS Connected</span>
-                </div>
-              </div>
-            </div>
-          </section>
-
-          <!-- ---- TRIGGER + REMINDER ROW ---- -->
-          <section class="two-col">
-            <div class="panel">
-              <h3 class="panel-title">Last Emergency Trigger</h3>
-              <div class="trigger-row">
-                <div class="trigger-icon safe">
-                  <i data-lucide="shield-check"></i>
-                </div>
-                <div>
-                  <strong>{{ last_trigger.headline }}</strong>
-                  <p>{{ last_trigger.subtext }}</p>
-                </div>
-              </div>
-              <a href="#" class="panel-btn">
-                <i data-lucide="history"></i> View History
-              </a>
-            </div>
-
-            <div class="panel">
-              <h3 class="panel-title">Next Medicine Reminder</h3>
-              <div class="trigger-row">
-                <div class="trigger-icon meds"><i data-lucide="pill"></i></div>
-                <div>
-                  <strong>{{ next_reminder.time }}</strong>
-                  <p>{{ next_reminder.medicine_name }}</p>
-                </div>
-              </div>
-              <a href="#" class="panel-btn primary">
-                <i data-lucide="bell"></i> View Reminders
-              </a>
-            </div>
-          </section>
-
-          <!-- ---- ACTIVITY + QUICK ACTIONS ROW ---- -->
-          <section class="two-col">
-            <div class="panel">
-              <h3 class="panel-title">Recent Activity</h3>
-              <ul class="activity-list">
-                {% for item in recent_activity %}
-                <li>
-                  <span class="activity-icon {{ item.icon_class }}"
-                    ><i data-lucide="{{ item.icon }}"></i
-                  ></span>
-                  <span class="activity-text">
-                    <strong>{{ item.title }}</strong>
-                    <small>{{ item.timestamp }}</small>
+                {% endif %}
+                <div class="loved-one-details">
+                  <strong>{{ loved_one.name }}</strong>
+                  <span class="loved-one-sub">ALISTO Device</span>
+                  <span class="pill-status online">
+                    <i data-lucide="circle"></i> Online
                   </span>
-                  <span class="activity-status status-{{ item.status_class }}"
-                    >{{ item.status }}</span
-                  >
+                </div>
+              </div>
+            </div>
+
+            <div class="info-card device-status-card">
+              <h3 class="info-card-title">Device Status</h3>
+              <div class="device-status-body">
+                <div class="device-thumb">
+                  <img
+                    src="{{ url_for('static', filename='images/device1.png') }}"
+                    alt="Alisto Device"
+                  />
+                </div>
+                <div class="device-status-details">
+                  <span class="device-online-label">
+                    <i data-lucide="circle"></i> {{ device.status }}
+                  </span>
+                  <p class="device-status-note">
+                    Device is connected<br />and working properly.
+                  </p>
+                </div>
+              </div>
+            </div>
+
+            <div class="info-card medicine-card">
+              <h3 class="info-card-title">Next Medicine</h3>
+              <div class="medicine-body">
+                <div class="medicine-clock"><i data-lucide="pill"></i></div>
+                <div class="medicine-details">
+                  <strong>{{ next_reminder.time }}</strong>
+                  <span>{{ next_reminder.medicine_name }}</span>
+                  <span class="medicine-date">
+                    <i data-lucide="calendar"></i> {{ next_reminder.date }}
+                  </span>
+                </div>
+              </div>
+            </div>
+          </section>
+
+          <!-- ---- ALERTS + LOCATION ROW ---- -->
+          <section class="two-col">
+            <div class="panel alerts-panel">
+              <h3 class="panel-title">Recent Alerts</h3>
+              <ul class="alert-list">
+                {% for alert in recent_alerts %}
+                <li>
+                  <span class="alert-icon {{ alert.icon_class }}">
+                    {% if alert.icon_class == 'sos' %}SOS{% else %}<i
+                      data-lucide="{{ alert.icon }}"
+                    ></i
+                    >{% endif %}
+                  </span>
+                  <span class="alert-text">
+                    <strong>{{ alert.title }}</strong>
+                    <small>{{ alert.subtext }}</small>
+                  </span>
+                  <span class="alert-time">{{ alert.timestamp }}</span>
                 </li>
                 {% endfor %}
               </ul>
-              <a href="#" class="panel-link"
-                >View All Activity <i data-lucide="chevron-right"></i
+              <a href="{{ url_for('alerts') }}" class="panel-link"
+                >View all alerts <i data-lucide="chevron-right"></i
               ></a>
             </div>
 
-            <div class="panel">
-              <h3 class="panel-title">Quick Actions</h3>
-              <ul class="quick-actions">
-                <li>
-                  <a href="{{ url_for('my_loved_ones') }}">
-                    <span class="qa-icon"
-                      ><i data-lucide="users-round"></i
-                    ></span>
-                    <span class="qa-text">
-                      <strong>Manage Emergency Contacts</strong>
-                      <small>Add or update your contacts</small>
-                    </span>
-                    <i data-lucide="chevron-right"></i>
-                  </a>
-                </li>
-                <li>
-                  <a href="{{ url_for('medication_reminders') }}">
-                    <span class="qa-icon"><i data-lucide="pill"></i></span>
-                    <span class="qa-text">
-                      <strong>Medicine Reminder</strong>
-                      <small>View and manage reminders</small>
-                    </span>
-                    <i data-lucide="chevron-right"></i>
-                  </a>
-                </li>
-                <li>
-                  <a href="#">
-                    <span class="qa-icon"
-                      ><i data-lucide="clipboard-list"></i
-                    ></span>
-                    <span class="qa-text">
-                      <strong>Care Plan</strong>
-                      <small>View your subscription plan</small>
-                    </span>
-                    <i data-lucide="chevron-right"></i>
-                  </a>
-                </li>
-                <li>
-                  <a href="{{ url_for('settings') }}">
-                    <span class="qa-icon"><i data-lucide="user"></i></span>
-                    <span class="qa-text">
-                      <strong>Personal Information</strong>
-                      <small>Update your information</small>
-                    </span>
-                    <i data-lucide="chevron-right"></i>
-                  </a>
-                </li>
-              </ul>
+            <div class="panel location-panel">
+              <h3 class="panel-title">Last Known Location</h3>
+
+              {% if location.latitude and location.longitude %}
+              <div
+                id="locationMap"
+                class="location-map"
+                data-lat="{{ location.latitude }}"
+                data-lng="{{ location.longitude }}"
+                data-photo="{{ loved_one.photo_url or '' }}"
+                data-initials="{{ loved_one.initials }}"
+              ></div>
+              {% else %}
+              <div class="location-map location-map-empty">
+                <i data-lucide="map-pin-off"></i>
+                <span>Location not available yet</span>
+              </div>
+              {% endif %}
+
+              <div class="location-details">
+                <div class="location-row">
+                  <i data-lucide="map-pin"></i>
+                  <span>{{ location.address }}</span>
+                </div>
+                <div class="location-row">
+                  <i data-lucide="clock"></i>
+                  <span>{{ location.last_updated }}</span>
+                </div>
+              </div>
+              {% if location.latitude and location.longitude %}
+              <button
+                type="button"
+                onclick="openMapModal()"
+                class="panel-link"
+                style="
+                  background: none;
+                  border: none;
+                  cursor: pointer;
+                  padding: 0;
+                  color: inherit;
+                  text-decoration: none;
+                "
+              >
+                View on Map <i data-lucide="chevron-right"></i>
+              </button>
+              {% endif %}
             </div>
           </section>
 
@@ -550,13 +450,28 @@
           <button type="button" class="btn-ghost" id="logoutCancel">
             Cancel
           </button>
-          <button
-            type="button"
-            class="btn-danger-action"
-            id="logoutConfirmBtn"
-          >
+          <button type="button" class="btn-danger-action" id="logoutConfirmBtn">
             Log out
           </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- ============ MAP MODAL (EMBEDDED) ============ -->
+    <div class="map-modal-overlay" id="mapModalOverlay">
+      <div class="map-modal-content">
+        <div class="map-modal-header">
+          <h2>📍 Last Known Location — {{ loved_one.name }}</h2>
+          <button class="map-modal-close" onclick="closeMapModal()">
+            &times;
+          </button>
+        </div>
+        <div class="map-modal-body">
+          <div id="mapContainer"></div>
+          <div class="map-info">
+            <h3>Current Location</h3>
+            <p>{{ location.address }}</p>
+          </div>
         </div>
       </div>
     </div>
@@ -590,7 +505,6 @@
           menu.classList.contains("open") ? closeMenu() : openMenu();
         });
 
-        // Clicking anywhere outside closes the dropdown
         document.addEventListener("click", (e) => {
           if (!menu.contains(e.target) && !pill.contains(e.target)) closeMenu();
         });
@@ -615,7 +529,6 @@
 
         cancelBtn.addEventListener("click", closeConfirm);
 
-        // Clicking the dimmed backdrop cancels; clicks inside the dialog don't
         overlay.addEventListener("click", (e) => {
           if (e.target === overlay) closeConfirm();
         });
@@ -632,6 +545,96 @@
           else if (menu.classList.contains("open")) closeMenu();
         });
       })();
+
+      // ---- Last Known Location map (Leaflet + OpenStreetMap, avatar marker) ----
+      (function () {
+        const mapEl = document.getElementById("locationMap");
+        if (!mapEl) return;
+
+        const lat = parseFloat(mapEl.dataset.lat);
+        const lng = parseFloat(mapEl.dataset.lng);
+        const photo = mapEl.dataset.photo;
+        const initials = mapEl.dataset.initials || "?";
+
+        if (Number.isNaN(lat) || Number.isNaN(lng)) return;
+
+        const map = L.map("locationMap", {
+          zoomControl: false,
+          scrollWheelZoom: false,
+        }).setView([lat, lng], 16);
+
+        L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
+          attribution: "&copy; OpenStreetMap contributors",
+          maxZoom: 19,
+        }).addTo(map);
+
+        const avatarHtml = photo
+          ? `<img src="${photo}" class="map-avatar-marker" alt="" />`
+          : `<div class="map-avatar-marker map-avatar-initials">${initials}</div>`;
+
+        const avatarIcon = L.divIcon({
+          html: avatarHtml,
+          className: "map-avatar-icon-wrapper",
+          iconSize: [44, 44],
+          iconAnchor: [22, 44],
+        });
+
+        L.marker([lat, lng], { icon: avatarIcon }).addTo(map);
+      })();
+
+      // ---- MAP MODAL FUNCTIONS ----
+      let modalMap = null;
+
+      function openMapModal() {
+        const overlay = document.getElementById('mapModalOverlay');
+        overlay.classList.add('active');
+
+        // Initialize map in modal
+        setTimeout(() => {
+          if (!modalMap) {
+            const lat = {{ location.latitude }};
+            const lng = {{ location.longitude }};
+
+            modalMap = L.map('mapContainer').setView([lat, lng], 15);
+
+            L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+              attribution: '© OpenStreetMap contributors',
+              maxZoom: 19
+            }).addTo(modalMap);
+
+            L.circleMarker([lat, lng], {
+              radius: 12,
+              fillColor: '#5088FE',
+              color: '#fff',
+              weight: 3,
+              opacity: 1,
+              fillOpacity: 0.8
+            }).addTo(modalMap).bindPopup(`<b>{{ loved_one.name }}</b><br>Last seen here`).openPopup();
+
+            setTimeout(() => modalMap.invalidateSize(), 100);
+          } else {
+            modalMap.invalidateSize();
+          }
+        }, 100);
+      }
+
+      function closeMapModal() {
+        document.getElementById('mapModalOverlay').classList.remove('active');
+      }
+
+      // Close on overlay click
+      document.getElementById('mapModalOverlay').addEventListener('click', function(e) {
+        if (e.target === this) {
+          closeMapModal();
+        }
+      });
+
+      // Close on Escape key
+      document.addEventListener('keydown', function(e) {
+        if (e.key === 'Escape' && document.getElementById('mapModalOverlay').classList.contains('active')) {
+          closeMapModal();
+        }
+      });
     </script>
   </body>
 </html>

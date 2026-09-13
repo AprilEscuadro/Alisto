@@ -2,6 +2,7 @@ from database import db
 
 DEVICE_IDS = [
     '2026-0718ALISTO9X3',
+    '2026-0718ALISTO9X2',
 ]
 
 
