@@ -18,26 +18,471 @@
       href="{{ url_for('static', filename='css/help_support.css') }}"
     />
 
-    <!-- ============ PROFILE DROPDOWN + LOGOUT CONFIRM ============ -->
+    <!-- ============ MODAL & DROPDOWN STYLES ============ -->
     <style>
       body.modal-open {
         overflow: hidden;
       }
 
-      /* ---- dropdown ---- */
+      /* ---- MODAL OVERLAY & CONTAINER ---- */
+      .modal-overlay {
+        position: fixed;
+        inset: 0;
+        z-index: 1000;
+        display: none;
+        align-items: center;
+        justify-content: center;
+        padding: 16px;
+        background: rgba(31, 36, 48, 0.4);
+      }
+
+      .modal-overlay.open {
+        display: flex;
+      }
+
+      .modal-content {
+        background: var(--card-bg);
+        border-radius: var(--radius-lg);
+        width: 100%;
+        max-width: 560px;
+        max-height: 80vh;
+        overflow-y: auto;
+        box-shadow: 0 4px 6px rgba(16, 24, 40, 0.1);
+      }
+
+      .modal-content::-webkit-scrollbar {
+        width: 6px;
+      }
+
+      .modal-content::-webkit-scrollbar-track {
+        background: var(--muted-light);
+      }
+
+      .modal-content::-webkit-scrollbar-thumb {
+        background: #cbd5e1;
+        border-radius: 3px;
+      }
+
+      .modal-content::-webkit-scrollbar-thumb:hover {
+        background: #94a3b8;
+      }
+
+      .modal-header {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        padding: 18px 20px;
+        border-bottom: 1px solid var(--border);
+        position: sticky;
+        top: 0;
+        background: var(--card-bg);
+        z-index: 10;
+      }
+
+      .modal-title {
+        font-size: 16px;
+        font-weight: 700;
+        color: var(--text);
+        margin: 0;
+        font-family: "Nunito", sans-serif;
+      }
+
+      .modal-close-btn {
+        width: 28px;
+        height: 28px;
+        border: none;
+        background: transparent;
+        border-radius: 6px;
+        cursor: pointer;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        color: var(--text-soft);
+        transition: all 0.15s;
+      }
+
+      .modal-close-btn:hover {
+        background: var(--muted-light);
+      }
+
+      .modal-close-btn svg {
+        width: 18px;
+        height: 18px;
+      }
+
+      .modal-body {
+        padding: 20px;
+      }
+
+      .modal-footer {
+        padding: 14px 20px;
+        border-top: 1px solid var(--border);
+        display: flex;
+        gap: 10px;
+        justify-content: flex-end;
+        background: #fafbfd;
+      }
+
+      /* ---- FAQs MODAL ---- */
+      .faq-modal-list {
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+      }
+
+      .faq-modal-item {
+        border: 1px solid var(--border);
+        border-radius: var(--radius-sm);
+        overflow: hidden;
+      }
+
+      .faq-modal-question {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        width: 100%;
+        padding: 13px 14px;
+        background: #fafbfd;
+        border: none;
+        cursor: pointer;
+        transition: background 0.15s;
+        text-align: left;
+        font-family: inherit;
+        font-size: 13.5px;
+        font-weight: 600;
+        color: var(--text);
+      }
+
+      .faq-modal-question:hover {
+        background: var(--muted-light);
+      }
+
+      .faq-modal-question svg {
+        width: 16px;
+        height: 16px;
+        color: var(--primary);
+        flex-shrink: 0;
+      }
+
+      .faq-modal-item.open .faq-modal-answer {
+        display: block;
+      }
+
+      .faq-modal-answer {
+        display: none;
+        padding: 12px 14px 12px 40px;
+        font-size: 13px;
+        color: var(--text-soft);
+        line-height: 1.6;
+        background: white;
+      }
+
+      .faq-modal-answer p {
+        margin: 0;
+      }
+
+      /* ---- USER GUIDE MODAL ---- */
+      .guide-steps {
+        display: flex;
+        flex-direction: column;
+        gap: 16px;
+      }
+
+      .guide-step {
+        display: flex;
+        gap: 14px;
+      }
+
+      .guide-step-number {
+        width: 36px;
+        height: 36px;
+        min-width: 36px;
+        border-radius: 50%;
+        background: var(--primary-light);
+        color: var(--primary);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-weight: 700;
+        font-size: 14px;
+      }
+
+      .guide-step-content h4 {
+        margin: 0 0 4px;
+        font-size: 13.5px;
+        font-weight: 600;
+        color: var(--text);
+      }
+
+      .guide-step-content p {
+        margin: 0;
+        font-size: 13px;
+        color: var(--text-soft);
+        line-height: 1.6;
+      }
+
+      /* ---- REPORT PROBLEM MODAL ---- */
+      .report-form {
+        display: flex;
+        flex-direction: column;
+        gap: 14px;
+      }
+
+      .form-group {
+        display: flex;
+        flex-direction: column;
+        gap: 6px;
+      }
+
+      .form-label {
+        font-size: 12px;
+        font-weight: 600;
+        color: var(--text);
+        text-transform: uppercase;
+        letter-spacing: 0.3px;
+      }
+
+      .report-category-options {
+        display: grid;
+        grid-template-columns: repeat(2, 1fr);
+        gap: 8px;
+      }
+
+      .category-radio {
+        display: none;
+      }
+
+      .category-label {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        padding: 10px;
+        border: 1.5px solid var(--border);
+        border-radius: var(--radius-sm);
+        cursor: pointer;
+        transition: all 0.15s;
+        background: white;
+      }
+
+      .category-radio:checked + .category-label {
+        border-color: var(--primary);
+        background: var(--primary-light);
+      }
+
+      .category-label span {
+        font-size: 12.5px;
+        font-weight: 600;
+        color: var(--text);
+      }
+
+      .category-radio:checked + .category-label span {
+        color: var(--primary);
+      }
+
+      .category-label svg {
+        width: 14px;
+        height: 14px;
+        color: var(--border);
+        flex-shrink: 0;
+      }
+
+      .category-radio:checked + .category-label svg {
+        color: var(--primary);
+      }
+
+      textarea.form-input {
+        font-family: inherit;
+        font-size: 13px;
+        padding: 10px;
+        border: 1px solid var(--border);
+        border-radius: var(--radius-sm);
+        color: var(--text);
+        resize: vertical;
+        min-height: 90px;
+        transition: border-color 0.15s;
+      }
+
+      textarea.form-input:focus {
+        outline: none;
+        border-color: var(--primary);
+        box-shadow: 0 0 0 2px var(--primary-light);
+      }
+
+      .form-input::placeholder {
+        color: var(--muted);
+      }
+
+      /* ---- ABOUT ALISTO MODAL ---- */
+      .about-content {
+        display: flex;
+        flex-direction: column;
+        gap: 14px;
+      }
+
+      .about-section {
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+      }
+
+      .about-section-title {
+        font-size: 13.5px;
+        font-weight: 700;
+        color: var(--text);
+        display: flex;
+        align-items: center;
+        gap: 6px;
+      }
+
+      .about-section-title svg {
+        width: 16px;
+        height: 16px;
+        color: var(--primary);
+      }
+
+      .about-description {
+        font-size: 13px;
+        color: var(--text-soft);
+        line-height: 1.6;
+      }
+
+      .about-list {
+        display: flex;
+        flex-direction: column;
+        gap: 6px;
+        list-style: none;
+        padding: 0;
+        margin: 0;
+      }
+
+      .about-list li {
+        font-size: 13px;
+        color: var(--text-soft);
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        padding-left: 0;
+      }
+
+      .about-list li:before {
+        content: "▸";
+        color: var(--primary);
+        font-weight: 700;
+      }
+
+      .about-team {
+        background: var(--muted-light);
+        padding: 12px;
+        border-radius: var(--radius-sm);
+      }
+
+      .about-team-title {
+        font-size: 11px;
+        font-weight: 600;
+        color: var(--text-soft);
+        text-transform: uppercase;
+        letter-spacing: 0.3px;
+        margin-bottom: 6px;
+      }
+
+      .about-team-list {
+        display: flex;
+        flex-direction: column;
+        gap: 4px;
+        list-style: none;
+        padding: 0;
+        margin: 0;
+      }
+
+      .about-team-list li {
+        font-size: 12.5px;
+        color: var(--text);
+        font-weight: 500;
+      }
+
+      /* ---- CONTACT SUPPORT MODAL ---- */
+      .contact-form {
+        display: flex;
+        flex-direction: column;
+        gap: 14px;
+      }
+
+      .form-input {
+        width: 100%;
+        padding: 10px;
+        border: 1px solid var(--border);
+        border-radius: var(--radius-sm);
+        font-family: inherit;
+        font-size: 13px;
+        color: var(--text);
+        transition: border-color 0.15s;
+      }
+
+      .form-input:focus {
+        outline: none;
+        border-color: var(--primary);
+        box-shadow: 0 0 0 2px var(--primary-light);
+      }
+
+      /* ---- BUTTONS ---- */
+      .btn {
+        padding: 10px 14px;
+        border-radius: var(--radius-sm);
+        border: none;
+        font-family: inherit;
+        font-size: 13px;
+        font-weight: 600;
+        cursor: pointer;
+        transition: all 0.15s;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        gap: 6px;
+      }
+
+      .btn-primary {
+        background: var(--primary);
+        color: #fff;
+      }
+
+      .btn-primary:hover {
+        background: var(--primary-dark);
+      }
+
+      .btn-primary:disabled {
+        opacity: 0.6;
+        cursor: not-allowed;
+      }
+
+      .btn-secondary {
+        background: white;
+        color: var(--text);
+        border: 1px solid var(--border);
+      }
+
+      .btn-secondary:hover {
+        background: var(--muted-light);
+      }
+
+      .btn svg {
+        width: 14px;
+        height: 14px;
+      }
+
+      /* ---- PROFILE DROPDOWN ---- */
       .header-right {
         position: relative;
       }
 
       .profile-menu {
         position: absolute;
-        top: calc(100% + 10px);
+        top: calc(100% + 8px);
         right: 0;
-        min-width: 220px;
-        background: var(--white);
+        min-width: 200px;
+        background: var(--card-bg);
         border: 1px solid var(--border);
-        border-radius: 12px;
-        box-shadow: 0 12px 28px rgba(15, 23, 42, 0.12);
+        border-radius: var(--radius-md);
+        box-shadow: 0 4px 12px rgba(16, 24, 40, 0.1);
         padding: 6px;
         z-index: 200;
         display: none;
@@ -51,17 +496,19 @@
         display: flex;
         flex-direction: column;
         gap: 2px;
-        padding: 10px 12px 12px;
+        padding: 8px 12px 10px;
         border-bottom: 1px solid var(--border);
         margin-bottom: 6px;
       }
+
       .profile-menu-head strong {
-        font-size: 13.5px;
-        color: var(--ink);
+        font-size: 12.5px;
+        color: var(--text);
       }
+
       .profile-menu-head small {
-        font-size: 11.5px;
-        color: var(--muted);
+        font-size: 11px;
+        color: var(--text-soft);
       }
 
       .profile-menu-item {
@@ -71,39 +518,41 @@
         width: 100%;
         padding: 10px 12px;
         border: none;
-        border-radius: 8px;
+        border-radius: var(--radius-sm);
         background: transparent;
-        color: var(--ink);
+        color: var(--text);
         font-family: inherit;
-        font-size: 13.5px;
+        font-size: 12.5px;
         font-weight: 600;
         text-align: left;
         cursor: pointer;
         transition: background 0.15s;
       }
+
       .profile-menu-item:hover {
-        background: var(--bg);
+        background: var(--muted-light);
       }
-      .profile-menu-item svg,
-      .profile-menu-item i {
-        width: 16px;
-        height: 16px;
-        color: var(--muted);
+
+      .profile-menu-item svg {
+        width: 14px;
+        height: 14px;
+        color: var(--text-soft);
         flex-shrink: 0;
       }
 
       .profile-menu-item.danger {
         color: #dc2626;
       }
+
       .profile-menu-item.danger:hover {
         background: #fef2f2;
       }
-      .profile-menu-item.danger svg,
-      .profile-menu-item.danger i {
+
+      .profile-menu-item.danger svg {
         color: #dc2626;
       }
 
-      /* ---- confirmation modal ---- */
+      /* ---- LOGOUT CONFIRMATION ---- */
       .confirm-overlay {
         position: fixed;
         inset: 0;
@@ -111,8 +560,8 @@
         display: none;
         align-items: center;
         justify-content: center;
-        padding: 24px;
-        background: rgba(15, 23, 42, 0.55);
+        padding: 16px;
+        background: rgba(31, 36, 48, 0.4);
       }
 
       .confirm-overlay.open {
@@ -120,36 +569,19 @@
       }
 
       .confirm-dialog {
-        background: var(--white);
-        border-radius: 16px;
+        background: var(--card-bg);
+        border-radius: var(--radius-lg);
         width: 100%;
-        max-width: 400px;
-        padding: 28px 24px 22px;
+        max-width: 380px;
+        padding: 24px;
         text-align: center;
-        box-shadow: 0 24px 48px rgba(15, 23, 42, 0.18);
-      }
-
-      @media (prefers-reduced-motion: no-preference) {
-        .confirm-overlay.open .confirm-dialog {
-          animation: confirm-rise 0.18s ease-out;
-        }
-      }
-
-      @keyframes confirm-rise {
-        from {
-          opacity: 0;
-          transform: translateY(12px);
-        }
-        to {
-          opacity: 1;
-          transform: translateY(0);
-        }
+        box-shadow: 0 4px 6px rgba(16, 24, 40, 0.1);
       }
 
       .confirm-icon {
-        width: 52px;
-        height: 52px;
-        margin: 0 auto 16px;
+        width: 48px;
+        height: 48px;
+        margin: 0 auto 14px;
         border-radius: 50%;
         background: #fef2f2;
         color: #dc2626;
@@ -157,24 +589,24 @@
         align-items: center;
         justify-content: center;
       }
-      .confirm-icon svg,
-      .confirm-icon i {
-        width: 24px;
-        height: 24px;
+
+      .confirm-icon svg {
+        width: 22px;
+        height: 22px;
       }
 
       .confirm-title {
-        font-size: 17px;
+        font-size: 16px;
         font-weight: 700;
-        color: var(--ink);
+        color: var(--text);
         margin: 0 0 8px;
       }
 
       .confirm-text {
-        font-size: 13.5px;
-        color: var(--muted);
+        font-size: 13px;
+        color: var(--text-soft);
         line-height: 1.6;
-        margin: 0 0 22px;
+        margin: 0 0 18px;
       }
 
       .confirm-actions {
@@ -185,45 +617,87 @@
       .confirm-actions .btn-ghost,
       .confirm-actions .btn-danger-action {
         flex: 1;
-        padding: 11px 16px;
-        border-radius: 10px;
+        padding: 10px 14px;
+        border-radius: var(--radius-sm);
         font-family: inherit;
-        font-size: 14px;
+        font-size: 13px;
         font-weight: 600;
         cursor: pointer;
       }
 
       .btn-ghost {
         border: 1px solid var(--border);
-        background: var(--white);
-        color: var(--ink);
+        background: white;
+        color: var(--text);
       }
+
       .btn-ghost:hover {
-        background: var(--bg);
+        background: var(--muted-light);
       }
 
       .btn-danger-action {
         border: none;
         background: #dc2626;
-        color: var(--white);
+        color: white;
       }
+
       .btn-danger-action:hover {
         background: #b91c1c;
       }
+
       .btn-danger-action:disabled {
-        opacity: 0.65;
+        opacity: 0.6;
         cursor: not-allowed;
       }
 
-      .confirm-dialog button:focus-visible,
-      .profile-menu-item:focus-visible {
-        outline: 2px solid var(--blue);
-        outline-offset: 2px;
+      /* ---- TOAST NOTIFICATION ---- */
+      .toast {
+        position: fixed;
+        bottom: 20px;
+        right: 20px;
+        z-index: 2000;
+        padding: 12px 16px;
+        border-radius: var(--radius-sm);
+        font-size: 13px;
+        font-weight: 500;
+        display: flex;
+        align-items: center;
+        gap: 8px;
+      }
+
+      .toast.success {
+        background: var(--success-light);
+        color: var(--success);
+      }
+
+      .toast.error {
+        background: #fef2f2;
+        color: #dc2626;
+      }
+
+      .toast svg {
+        width: 16px;
+        height: 16px;
+        flex-shrink: 0;
       }
 
       @media (max-width: 480px) {
+        .modal-content {
+          max-width: 100%;
+        }
+
+        .report-category-options {
+          grid-template-columns: 1fr;
+        }
+
         .confirm-actions {
           flex-direction: column-reverse;
+        }
+
+        .toast {
+          bottom: 12px;
+          right: 12px;
+          left: 12px;
         }
       }
     </style>
@@ -324,10 +798,17 @@
               aria-haspopup="true"
               aria-expanded="false"
             >
-              <span class="avatar">{{ full_name[:1] }}</span>
+              <span class="avatar">
+                {% if account.photo_base64 %}
+                <img
+                  src="data:image/jpeg;base64,{{ account.photo_base64 }}"
+                  alt=""
+                />
+                {% else %}{{ account.initials }}{% endif %}
+              </span>
               <span class="profile-text">
-                <strong>{{ full_name }}</strong>
-                <small>{{ role|capitalize }}</small>
+                <strong>{{ account.full_name }}</strong>
+                <small>{{ account.role|capitalize }}</small>
               </span>
               <i data-lucide="chevron-down"></i>
             </button>
@@ -335,16 +816,16 @@
             <!-- ---- PROFILE DROPDOWN ---- -->
             <div class="profile-menu" id="profileMenu" role="menu">
               <div class="profile-menu-head">
-                <strong>{{ full_name }}</strong>
-                <small>{{ role|capitalize }}</small>
+                <strong>{{ account.full_name }}</strong>
+                <small>{{ account.role|capitalize }}</small>
               </div>
               <a
                 class="profile-menu-item"
                 role="menuitem"
-                href="{{ url_for('settings') }}"
+                href="{{ url_for('my_profile') }}"
               >
-                <i data-lucide="settings"></i>
-                <span>Settings</span>
+                <i data-lucide="user-round"></i>
+                <span>My Profile</span>
               </a>
               <button
                 type="button"
@@ -362,12 +843,10 @@
         <!-- ---- MAIN CONTENT ---- -->
         <div class="main">
           <div class="page-header">
-            <div>
-              <h1 class="page-title">Help &amp; Support</h1>
-              <p class="page-subtitle">
-                We're here to help you. Find answers or contact us anytime.
-              </p>
-            </div>
+            <h1 class="page-title">Help &amp; Support</h1>
+            <p class="page-subtitle">
+              We're here to help you. Find answers or contact us anytime.
+            </p>
           </div>
 
           <!-- ---- FAQ + CONTACT CARD ---- -->
@@ -388,9 +867,9 @@
                 </div>
                 {% endfor %}
               </div>
-              <a href="{{ url_for('faqs') }}" class="panel-link left-aligned">
+              <button type="button" class="panel-link left-aligned" id="viewMoreFaqsBtn">
                 View more FAQs <i data-lucide="chevron-right"></i>
-              </a>
+              </button>
             </div>
 
             <div class="panel contact-card">
@@ -402,12 +881,13 @@
                 If you can't find the answer you're looking for, our support
                 team is ready to assist you.
               </p>
-              <a
-                href="{{ url_for('contact_support') }}"
+              <button
+                type="button"
                 class="panel-btn primary"
+                id="contactSupportBtn"
               >
                 <i data-lucide="mail"></i> Contact Support
-              </a>
+              </button>
               <p class="contact-card-note">
                 We usually respond within <strong>24 hours</strong>
               </p>
@@ -423,12 +903,13 @@
               </div>
               <strong>User Guide</strong>
               <p>Learn how to use Alisto with our step-by-step user guide.</p>
-              <a
-                href="{{ url_for('user_guide') }}"
+              <button
+                type="button"
                 class="help-option-btn success"
+                id="userGuideBtn"
               >
                 View User Guide
-              </a>
+              </button>
             </div>
 
             <div class="help-option-card">
@@ -437,12 +918,13 @@
               </div>
               <strong>Report a Problem</strong>
               <p>Found a problem? Let us know so we can fix it.</p>
-              <a
-                href="{{ url_for('report_issue') }}"
+              <button
+                type="button"
                 class="help-option-btn warning"
+                id="reportProblemBtn"
               >
                 Report Issue
-              </a>
+              </button>
             </div>
 
             <div class="help-option-card">
@@ -451,9 +933,13 @@
               </div>
               <strong>About Alisto</strong>
               <p>Learn more about Alisto and its mission.</p>
-              <a href="{{ url_for('about') }}" class="help-option-btn purple">
+              <button
+                type="button"
+                class="help-option-btn purple"
+                id="aboutAlistoBtn"
+              >
                 Learn More
-              </a>
+              </button>
             </div>
           </section>
 
@@ -500,16 +986,326 @@
       </main>
     </div>
 
+    <!-- ============ MORE FAQs MODAL ============ -->
+    <div class="modal-overlay" id="moreFaqsModal" role="dialog" aria-modal="true">
+      <div class="modal-content">
+        <div class="modal-header">
+          <h2 class="modal-title">Frequently Asked Questions</h2>
+          <button type="button" class="modal-close-btn" data-modal="moreFaqsModal">
+            <i data-lucide="x"></i>
+          </button>
+        </div>
+        <div class="modal-body">
+          <div class="faq-modal-list" id="faqModalList"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ============ USER GUIDE MODAL ============ -->
+    <div class="modal-overlay" id="userGuideModal" role="dialog" aria-modal="true">
+      <div class="modal-content">
+        <div class="modal-header">
+          <h2 class="modal-title">How to Use ALISTO</h2>
+          <button type="button" class="modal-close-btn" data-modal="userGuideModal">
+            <i data-lucide="x"></i>
+          </button>
+        </div>
+        <div class="modal-body">
+          <div class="guide-steps">
+            <div class="guide-step">
+              <div class="guide-step-number">1</div>
+              <div class="guide-step-content">
+                <h4>Enable Emergency Trigger</h4>
+                <p>Say the emergency phrase in Cebuano: "Alisto, tabanag!" or press the emergency button on your ALISTO device.</p>
+              </div>
+            </div>
+
+            <div class="guide-step">
+              <div class="guide-step-number">2</div>
+              <div class="guide-step-content">
+                <h4>Offline Detection</h4>
+                <p>ALISTO works completely offline. The device detects your emergency phrase without needing internet connection.</p>
+              </div>
+            </div>
+
+            <div class="guide-step">
+              <div class="guide-step-number">3</div>
+              <div class="guide-step-content">
+                <h4>5-Second Cancellation</h4>
+                <p>After triggering, you have 5 seconds to cancel the alert if it was a false alarm by pressing the cancel button.</p>
+              </div>
+            </div>
+
+            <div class="guide-step">
+              <div class="guide-step-number">4</div>
+              <div class="guide-step-content">
+                <h4>Family Notification</h4>
+                <p>If not canceled, your registered family members and BHW receive an SMS alert with your location instantly.</p>
+              </div>
+            </div>
+
+            <div class="guide-step">
+              <div class="guide-step-number">5</div>
+              <div class="guide-step-content">
+                <h4>Emergency Response</h4>
+                <p>The BHW coordinates immediate emergency response. You can track the responder's location on the app.</p>
+              </div>
+            </div>
+
+            <div class="guide-step">
+              <div class="guide-step-number">6</div>
+              <div class="guide-step-content">
+                <h4>View History</h4>
+                <p>All alerts and their outcomes are saved in your alert history. Share with healthcare providers if needed.</p>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ============ REPORT PROBLEM MODAL ============ -->
+    <div class="modal-overlay" id="reportProblemModal" role="dialog" aria-modal="true">
+      <div class="modal-content">
+        <div class="modal-header">
+          <h2 class="modal-title">Report a Problem</h2>
+          <button type="button" class="modal-close-btn" data-modal="reportProblemModal">
+            <i data-lucide="x"></i>
+          </button>
+        </div>
+        <div class="modal-body">
+          <form class="report-form" id="reportProblemForm">
+            <div class="form-group">
+              <label class="form-label">What's the issue about?</label>
+              <div class="report-category-options">
+                <div>
+                  <input type="radio" id="cat-app" name="category" value="app" class="category-radio" required />
+                  <label for="cat-app" class="category-label">
+                    <i data-lucide="smartphone"></i>
+                    <span>App Issue</span>
+                  </label>
+                </div>
+                <div>
+                  <input type="radio" id="cat-device" name="category" value="device" class="category-radio" />
+                  <label for="cat-device" class="category-label">
+                    <i data-lucide="radio"></i>
+                    <span>Device Issue</span>
+                  </label>
+                </div>
+                <div>
+                  <input type="radio" id="cat-alert" name="category" value="alert" class="category-radio" />
+                  <label for="cat-alert" class="category-label">
+                    <i data-lucide="bell-ring"></i>
+                    <span>Alert Issue</span>
+                  </label>
+                </div>
+                <div>
+                  <input type="radio" id="cat-other" name="category" value="other" class="category-radio" />
+                  <label for="cat-other" class="category-label">
+                    <i data-lucide="help-circle"></i>
+                    <span>Other</span>
+                  </label>
+                </div>
+              </div>
+            </div>
+
+            <div class="form-group">
+              <label class="form-label" for="problemDescription">Describe the problem</label>
+              <textarea
+                id="problemDescription"
+                name="description"
+                class="form-input"
+                placeholder="Tell us what happened..."
+                required
+              ></textarea>
+            </div>
+
+            <div class="form-group">
+              <label class="form-label" for="problemEmail">Your email (optional)</label>
+              <input
+                type="email"
+                id="problemEmail"
+                name="email"
+                class="form-input"
+                placeholder="you@example.com"
+              />
+            </div>
+          </form>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary" data-modal="reportProblemModal">
+            Cancel
+          </button>
+          <button type="submit" class="btn btn-primary" id="submitReportBtn" form="reportProblemForm">
+            <i data-lucide="send"></i>
+            Submit
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- ============ ABOUT ALISTO MODAL ============ -->
+    <div class="modal-overlay" id="aboutAlistoModal" role="dialog" aria-modal="true">
+      <div class="modal-content">
+        <div class="modal-header">
+          <h2 class="modal-title">About ALISTO</h2>
+          <button type="button" class="modal-close-btn" data-modal="aboutAlistoModal">
+            <i data-lucide="x"></i>
+          </button>
+        </div>
+        <div class="modal-body">
+          <div class="about-content">
+            <div class="about-section">
+              <h3 class="about-section-title">
+                <i data-lucide="stethoscope"></i> What is ALISTO?
+              </h3>
+              <p class="about-description">
+                ALISTO is an offline emergency response system designed specifically to help elderly individuals during emergencies. It detects emergency voice commands in Cebuano (Bisaya) without requiring an internet connection.
+              </p>
+            </div>
+
+            <div class="about-section">
+              <h3 class="about-section-title">
+                <i data-lucide="sparkles"></i> Key Features
+              </h3>
+              <ul class="about-list">
+                <li>Offline voice detection</li>
+                <li>Emergency phrase recognition</li>
+                <li>Android mobile application</li>
+                <li>Emergency alert notifications</li>
+                <li>Multiple emergency contacts</li>
+                <li>Alert history tracking</li>
+                <li>5-second false alarm cancellation</li>
+              </ul>
+            </div>
+
+            <div class="about-section">
+              <h3 class="about-section-title">
+                <i data-lucide="zap"></i> How It Works
+              </h3>
+              <ol class="about-list">
+                <li>Device listens for emergency voice commands</li>
+                <li>AI analyzes speech locally</li>
+                <li>5-second cancellation timer starts</li>
+                <li>If not canceled, sends emergency alert</li>
+                <li>Contacts receive notification instantly</li>
+                <li>Emergency saved in alert history</li>
+              </ol>
+            </div>
+
+            <div class="about-section">
+              <h3 class="about-section-title">
+                <i data-lucide="wrench"></i> Technologies Used
+              </h3>
+              <ul class="about-list">
+                <li>Android Studio</li>
+                <li>Visual Studio Code</li>
+                <li>HTML, CSS, JavaScript</li>
+                <li>Python</li>
+                <li>SQLite3</li>
+                <li>ESP32</li>
+              </ul>
+            </div>
+
+            <div class="about-team">
+              <div class="about-team-title">Development Team</div>
+              <ul class="about-team-list">
+                <li>April Dianne D. Escuadro</li>
+                <li>Engel B. Bellita</li>
+                <li>Josh Neo Ylaya</li>
+                <li>Lemuel Alonso</li>
+              </ul>
+              <p style="font-size: 11px; color: var(--text-soft); margin-top: 6px; margin-bottom: 0;">
+                Bachelor of Science in Information Technology<br />
+                University of Cebu - Main Campus
+              </p>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ============ CONTACT SUPPORT MODAL ============ -->
+    <div class="modal-overlay" id="contactSupportModal" role="dialog" aria-modal="true">
+      <div class="modal-content">
+        <div class="modal-header">
+          <h2 class="modal-title">Contact Support</h2>
+          <button type="button" class="modal-close-btn" data-modal="contactSupportModal">
+            <i data-lucide="x"></i>
+          </button>
+        </div>
+        <div class="modal-body">
+          <form class="contact-form" id="contactSupportForm">
+            <div class="form-group">
+              <label class="form-label" for="supportName">Full Name</label>
+              <input
+                type="text"
+                id="supportName"
+                name="name"
+                class="form-input"
+                placeholder="Your full name"
+                required
+              />
+            </div>
+
+            <div class="form-group">
+              <label class="form-label" for="supportEmail">Email Address</label>
+              <input
+                type="email"
+                id="supportEmail"
+                name="email"
+                class="form-input"
+                placeholder="your@email.com"
+                required
+              />
+            </div>
+
+            <div class="form-group">
+              <label class="form-label" for="supportSubject">Subject</label>
+              <input
+                type="text"
+                id="supportSubject"
+                name="subject"
+                class="form-input"
+                placeholder="What do you need help with?"
+                required
+              />
+            </div>
+
+            <div class="form-group">
+              <label class="form-label" for="supportMessage">Message</label>
+              <textarea
+                id="supportMessage"
+                name="message"
+                class="form-input"
+                placeholder="Tell us more..."
+                required
+                style="min-height: 100px;"
+              ></textarea>
+            </div>
+          </form>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary" data-modal="contactSupportModal">
+            Cancel
+          </button>
+          <button type="submit" class="btn btn-primary" id="submitContactBtn" form="contactSupportForm">
+            <i data-lucide="send"></i>
+            Send
+          </button>
+        </div>
+      </div>
+    </div>
+
     <!-- ============ LOGOUT CONFIRMATION ============ -->
     <div class="confirm-overlay" id="logoutConfirm" aria-hidden="true">
       <div
         class="confirm-dialog"
         role="dialog"
         aria-modal="true"
-        aria-labelledby="logoutConfirmTitle"
       >
         <div class="confirm-icon"><i data-lucide="log-out"></i></div>
-        <h2 class="confirm-title" id="logoutConfirmTitle">
+        <h2 class="confirm-title">
           Are you sure you want to log out?
         </h2>
         <p class="confirm-text">
@@ -531,19 +1327,274 @@
       </div>
     </div>
 
+    <!-- ============ FIREBASE CONFIG ============ -->
+    <script type="module">
+      // Initialize Firebase (Update with your config)
+      import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.0/firebase-app.js";
+      import { getFirestore, collection, addDoc, serverTimestamp } from "https://www.gstatic.com/firebasejs/10.7.0/firebase-firestore.js";
+
+      const firebaseConfig = {
+        apiKey: "YOUR_API_KEY",
+        authDomain: "YOUR_AUTH_DOMAIN",
+        projectId: "YOUR_PROJECT_ID",
+        storageBucket: "YOUR_STORAGE_BUCKET",
+        messagingSenderId: "YOUR_MESSAGING_SENDER_ID",
+        appId: "YOUR_APP_ID"
+      };
+
+      const app = initializeApp(firebaseConfig);
+      const db = getFirestore(app);
+
+      window.db = db;
+      window.addDoc = addDoc;
+      window.collection = collection;
+      window.serverTimestamp = serverTimestamp;
+    </script>
+
     <script>
       lucide.createIcons();
 
-      // Menu toggle (mobile)
-      const menuToggle = document.querySelector(".menu-toggle");
-      const sidebar = document.querySelector(".sidebar");
-      if (menuToggle) {
-        menuToggle.addEventListener("click", () => {
-          sidebar.classList.toggle("open");
+      // Extended FAQ data
+      const allFaqs = [
+        {
+          question: "How do I set up the ALISTO device for my loved one?",
+          answer: "To set up ALISTO: 1) Charge the device fully, 2) Register it in the app, 3) Add family members as emergency contacts, 4) Test the emergency trigger, 5) Keep the device within Bluetooth range."
+        },
+        {
+          question: "What happens when an emergency alert is triggered?",
+          answer: "When triggered, ALISTO immediately sends SMS alerts to all registered contacts with the user's location. The Barangay Health Worker is also notified and can provide emergency response."
+        },
+        {
+          question: "Can more than one family member link to the same elder?",
+          answer: "Yes! Multiple family members can be registered as emergency contacts for the same user. They will all receive alerts when an emergency is triggered."
+        },
+        {
+          question: "How does ALISTO work without internet?",
+          answer: "ALISTO has offline voice recognition built into the device itself. It continuously listens for emergency phrases without needing an internet connection."
+        },
+        {
+          question: "What if I accidentally trigger an alarm?",
+          answer: "You have 5 seconds to cancel the alarm after it's triggered by pressing the cancel button on the ALISTO device. This prevents false alerts from being sent."
+        },
+        {
+          question: "How do I view my alert history?",
+          answer: "Go to the 'History' section in the app. You can see all past emergencies with timestamps, who was notified, and the outcome of each incident."
+        },
+        {
+          question: "What emergency phrases does ALISTO recognize?",
+          answer: "ALISTO recognizes common Cebuano emergency phrases like 'Alisto, tabanag!' and similar variations. It's trained to understand natural speech."
+        },
+        {
+          question: "How do I update my emergency contacts?",
+          answer: "Go to Settings, then select 'Emergency Contacts'. You can add, edit, or remove contacts anytime. Changes will sync to your ALISTO device."
+        },
+        {
+          question: "What should I do if the device is not detecting my voice?",
+          answer: "Make sure the device is in a quiet environment and you're speaking clearly. Ensure the device firmware is up to date. If the issue persists, report it."
+        },
+        {
+          question: "Is my location data secure and private?",
+          answer: "Yes, location data is only shared with registered emergency contacts and Barangay Health Workers. We use encryption and follow strict privacy protocols."
+        }
+      ];
+
+      // Modal functionality
+      const modalOverlays = document.querySelectorAll(".modal-overlay");
+      const closeButtons = document.querySelectorAll(".modal-close-btn");
+
+      // Open modals
+      document.getElementById("viewMoreFaqsBtn").addEventListener("click", () => {
+        populateFaqModal();
+        document.getElementById("moreFaqsModal").classList.add("open");
+        document.body.classList.add("modal-open");
+      });
+
+      document.getElementById("userGuideBtn").addEventListener("click", () => {
+        document.getElementById("userGuideModal").classList.add("open");
+        document.body.classList.add("modal-open");
+      });
+
+      document.getElementById("reportProblemBtn").addEventListener("click", () => {
+        document.getElementById("reportProblemModal").classList.add("open");
+        document.body.classList.add("modal-open");
+      });
+
+      document.getElementById("aboutAlistoBtn").addEventListener("click", () => {
+        document.getElementById("aboutAlistoModal").classList.add("open");
+        document.body.classList.add("modal-open");
+      });
+
+      document.getElementById("contactSupportBtn").addEventListener("click", () => {
+        document.getElementById("contactSupportModal").classList.add("open");
+        document.body.classList.add("modal-open");
+      });
+
+      // Close modals
+      closeButtons.forEach((btn) => {
+        btn.addEventListener("click", (e) => {
+          const modalId = btn.getAttribute("data-modal");
+          closeModal(modalId);
         });
+      });
+
+      document.querySelectorAll("[data-modal]").forEach((btn) => {
+        if (btn.classList.contains("modal-close-btn")) return;
+        btn.addEventListener("click", () => {
+          const modalId = btn.getAttribute("data-modal");
+          closeModal(modalId);
+        });
+      });
+
+      function closeModal(modalId) {
+        const modal = document.getElementById(modalId);
+        modal.classList.remove("open");
+        const anyModalOpen = Array.from(modalOverlays).some((m) => m.classList.contains("open"));
+        if (!anyModalOpen) {
+          document.body.classList.remove("modal-open");
+        }
       }
 
-      // FAQ accordion
+      // Close on backdrop click
+      modalOverlays.forEach((overlay) => {
+        overlay.addEventListener("click", (e) => {
+          if (e.target === overlay) {
+            closeModal(overlay.id);
+          }
+        });
+      });
+
+      // Close on Escape
+      document.addEventListener("keydown", (e) => {
+        if (e.key === "Escape") {
+          const openModal = document.querySelector(".modal-overlay.open");
+          if (openModal) {
+            closeModal(openModal.id);
+          }
+        }
+      });
+
+      // FAQ modal population
+      function populateFaqModal() {
+        const faqList = document.getElementById("faqModalList");
+        faqList.innerHTML = "";
+
+        allFaqs.forEach((faq) => {
+          const faqItem = document.createElement("div");
+          faqItem.className = "faq-modal-item";
+          faqItem.innerHTML = `
+            <button type="button" class="faq-modal-question">
+              <i data-lucide="circle-help"></i>
+              <span>${faq.question}</span>
+            </button>
+            <div class="faq-modal-answer">
+              <p>${faq.answer}</p>
+            </div>
+          `;
+
+          const question = faqItem.querySelector(".faq-modal-question");
+          question.addEventListener("click", () => {
+            faqItem.classList.toggle("open");
+            lucide.createIcons();
+          });
+
+          faqList.appendChild(faqItem);
+        });
+
+        lucide.createIcons();
+      }
+
+      // Report problem form
+      document.getElementById("reportProblemForm").addEventListener("submit", async (e) => {
+        e.preventDefault();
+
+        const formData = {
+          category: document.querySelector('input[name="category"]:checked').value,
+          description: document.getElementById("problemDescription").value,
+          email: document.getElementById("problemEmail").value || "Not provided",
+          userEmail: "{{ account.email }}",
+          userName: "{{ account.full_name }}",
+          timestamp: new Date().toISOString(),
+        };
+
+        const submitBtn = document.getElementById("submitReportBtn");
+        submitBtn.disabled = true;
+        submitBtn.innerHTML = '<i data-lucide="loader"></i> Submitting...';
+        lucide.createIcons();
+
+        try {
+          await window.addDoc(window.collection(window.db, "reports"), {
+            ...formData,
+            createdAt: window.serverTimestamp(),
+          });
+
+          document.getElementById("reportProblemForm").reset();
+          closeModal("reportProblemModal");
+          showToast("Problem reported successfully! Thank you.", "success");
+        } catch (error) {
+          console.error("Error submitting report:", error);
+          showToast("Failed to submit report. Please try again.", "error");
+        } finally {
+          submitBtn.disabled = false;
+          submitBtn.innerHTML = '<i data-lucide="send"></i> Submit';
+          lucide.createIcons();
+        }
+      });
+
+      // Contact support form
+      document.getElementById("contactSupportForm").addEventListener("submit", async (e) => {
+        e.preventDefault();
+
+        const formData = {
+          name: document.getElementById("supportName").value,
+          email: document.getElementById("supportEmail").value,
+          subject: document.getElementById("supportSubject").value,
+          message: document.getElementById("supportMessage").value,
+          userEmail: "{{ account.email }}",
+          userId: "{{ account.id }}",
+          timestamp: new Date().toISOString(),
+        };
+
+        const submitBtn = document.getElementById("submitContactBtn");
+        submitBtn.disabled = true;
+        submitBtn.innerHTML = '<i data-lucide="loader"></i> Sending...';
+        lucide.createIcons();
+
+        try {
+          await window.addDoc(window.collection(window.db, "support_messages"), {
+            ...formData,
+            createdAt: window.serverTimestamp(),
+          });
+
+          document.getElementById("contactSupportForm").reset();
+          closeModal("contactSupportModal");
+          showToast("Message sent! We'll respond within 24 hours.", "success");
+        } catch (error) {
+          console.error("Error sending message:", error);
+          showToast("Failed to send message. Please try again.", "error");
+        } finally {
+          submitBtn.disabled = false;
+          submitBtn.innerHTML = '<i data-lucide="send"></i> Send';
+          lucide.createIcons();
+        }
+      });
+
+      // Toast notifications
+      function showToast(message, type = "success") {
+        const toast = document.createElement("div");
+        toast.className = `toast ${type}`;
+        toast.innerHTML = `
+          <i data-lucide="${type === "success" ? "check-circle" : "alert-circle"}"></i>
+          <span>${message}</span>
+        `;
+        document.body.appendChild(toast);
+        lucide.createIcons();
+
+        setTimeout(() => {
+          toast.remove();
+        }, 4000);
+      }
+
+      // Existing FAQ accordion
       const faqItems = document.querySelectorAll("#faqList .faq-item");
       faqItems.forEach((item) => {
         const question = item.querySelector(".faq-question");
@@ -554,7 +1605,7 @@
         });
       });
 
-      // ---- Profile dropdown + logout confirmation ----
+      // Profile dropdown + logout
       (function () {
         const pill = document.getElementById("profilePill");
         const menu = document.getElementById("profileMenu");
@@ -580,34 +1631,30 @@
           menu.classList.contains("open") ? closeMenu() : openMenu();
         });
 
-        // Clicking anywhere outside closes the dropdown
         document.addEventListener("click", (e) => {
           if (!menu.contains(e.target) && !pill.contains(e.target)) closeMenu();
         });
 
-        function openConfirm() {
+        logoutBtn.addEventListener("click", () => {
+          closeMenu();
           overlay.classList.add("open");
           overlay.setAttribute("aria-hidden", "false");
           document.body.classList.add("modal-open");
           setTimeout(() => confirmBtn.focus(), 60);
-        }
+        });
 
-        function closeConfirm() {
+        cancelBtn.addEventListener("click", () => {
           overlay.classList.remove("open");
           overlay.setAttribute("aria-hidden", "true");
           document.body.classList.remove("modal-open");
-        }
-
-        logoutBtn.addEventListener("click", () => {
-          closeMenu();
-          openConfirm();
         });
 
-        cancelBtn.addEventListener("click", closeConfirm);
-
-        // Clicking the dimmed backdrop cancels; clicks inside the dialog don't
         overlay.addEventListener("click", (e) => {
-          if (e.target === overlay) closeConfirm();
+          if (e.target === overlay) {
+            overlay.classList.remove("open");
+            overlay.setAttribute("aria-hidden", "true");
+            document.body.classList.remove("modal-open");
+          }
         });
 
         confirmBtn.addEventListener("click", () => {
@@ -618,10 +1665,23 @@
 
         document.addEventListener("keydown", (e) => {
           if (e.key !== "Escape") return;
-          if (overlay.classList.contains("open")) closeConfirm();
-          else if (menu.classList.contains("open")) closeMenu();
+          if (overlay.classList.contains("open")) {
+            overlay.classList.remove("open");
+            document.body.classList.remove("modal-open");
+          } else if (menu.classList.contains("open")) {
+            closeMenu();
+          }
         });
       })();
+
+      // Menu toggle (mobile)
+      const menuToggle = document.querySelector(".menu-toggle");
+      const sidebar = document.querySelector(".sidebar");
+      if (menuToggle) {
+        menuToggle.addEventListener("click", () => {
+          sidebar.classList.toggle("open");
+        });
+      }
     </script>
   </body>
 </html>

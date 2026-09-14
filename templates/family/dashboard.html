@@ -18,131 +18,11 @@
       href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
     />
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-    <style>
-      .map-modal-overlay {
-        display: none;
-        position: fixed;
-        top: 0;
-        left: 0;
-        width: 100%;
-        height: 100%;
-        background-color: rgba(0, 0, 0, 0.7);
-        z-index: 9999;
-        animation: fadeIn 0.3s ease;
-      }
-
-      .map-modal-overlay.active {
-        display: flex;
-        align-items: center;
-        justify-content: center;
-      }
-
-      @keyframes fadeIn {
-        from {
-          opacity: 0;
-        }
-        to {
-          opacity: 1;
-        }
-      }
-
-      .map-modal-content {
-        background: white;
-        border-radius: 12px;
-        width: 96%;
-        max-width: 1800px; /* mas gidak-on na, gikan sa 900px */
-        height: 95vh; /* mas taas na, gikan sa 80vh */
-        display: flex;
-        flex-direction: column;
-        box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
-        animation: slideUp 0.3s ease;
-      }
-
-      @keyframes slideUp {
-        from {
-          transform: translateY(50px);
-          opacity: 0;
-        }
-        to {
-          transform: translateY(0);
-          opacity: 1;
-        }
-      }
-
-      .map-modal-header {
-        display: flex;
-        justify-content: space-between;
-        align-items: center;
-        padding: 20px;
-        border-bottom: 1px solid #e0e0e0;
-      }
-
-      .map-modal-header h2 {
-        font-size: 20px;
-        font-weight: 600;
-        color: #333;
-      }
-
-      .map-modal-close {
-        background: none;
-        border: none;
-        font-size: 28px;
-        cursor: pointer;
-        color: #999;
-        transition: color 0.2s;
-      }
-
-      .map-modal-close:hover {
-        color: #333;
-      }
-
-      .map-modal-body {
-        flex: 1;
-        position: relative;
-        overflow: hidden;
-      }
-
-      #mapContainer {
-        width: 100%;
-        height: 100%;
-      }
-
-      .map-info {
-        position: absolute;
-        bottom: 20px;
-        left: 20px;
-        background: white;
-        padding: 15px 20px;
-        border-radius: 8px;
-        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
-        max-width: 400px;
-        z-index: 1000;
-      }
-
-      .map-info h3 {
-        font-size: 14px;
-        font-weight: 600;
-        color: #5088fe;
-        margin-bottom: 5px;
-      }
-
-      .map-info p {
-        font-size: 13px;
-        color: #666;
-        line-height: 1.5;
-      }
-
-      @media (max-width: 768px) {
-        .map-modal-content {
-          width: 98%;
-          height: 96vh;
-        }
-
-        .map-info {
-          max-width: 90%;
-        }
-      }
-    </style>
+    <!-- Live map: every loved one with a registered device -->
+    <link
+      rel="stylesheet"
+      href="{{ url_for('static', filename='css/map_view.css') }}"
+    />
   </head>
   <body>
     <div class="app-shell">
@@ -240,10 +120,17 @@
               aria-haspopup="true"
               aria-expanded="false"
             >
-              <span class="avatar">{{ full_name[:1] }}</span>
+              <span class="avatar">
+                {% if account.photo_base64 %}
+                <img
+                  src="data:image/jpeg;base64,{{ account.photo_base64 }}"
+                  alt=""
+                />
+                {% else %}{{ account.initials }}{% endif %}
+              </span>
               <span class="profile-text">
-                <strong>{{ full_name }}</strong>
-                <small>{{ role|capitalize }}</small>
+                <strong>{{ account.full_name }}</strong>
+                <small>{{ account.role|capitalize }}</small>
               </span>
               <i data-lucide="chevron-down"></i>
             </button>
@@ -251,16 +138,16 @@
             <!-- ---- PROFILE DROPDOWN ---- -->
             <div class="profile-menu" id="profileMenu" role="menu">
               <div class="profile-menu-head">
-                <strong>{{ full_name }}</strong>
-                <small>{{ role|capitalize }}</small>
+                <strong>{{ account.full_name }}</strong>
+                <small>{{ account.role|capitalize }}</small>
               </div>
               <a
                 class="profile-menu-item"
                 role="menuitem"
-                href="{{ url_for('settings') }}"
+                href="{{ url_for('my_profile') }}"
               >
-                <i data-lucide="settings"></i>
-                <span>Settings</span>
+                <i data-lucide="user-round"></i>
+                <span>My Profile</span>
               </a>
               <button
                 type="button"
@@ -403,10 +290,13 @@
                   <span>{{ location.last_updated }}</span>
                 </div>
               </div>
-              {% if location.latitude and location.longitude %}
+
+              <!-- Opens the live map for EVERY linked device, not just this
+                   one. No coordinates are passed in — the modal fetches its
+                   own data, so it works with 0, 1 or many devices. -->
               <button
                 type="button"
-                onclick="openMapModal()"
+                data-alisto-map
                 class="panel-link"
                 style="
                   background: none;
@@ -419,7 +309,6 @@
               >
                 View on Map <i data-lucide="chevron-right"></i>
               </button>
-              {% endif %}
             </div>
           </section>
 
@@ -457,21 +346,65 @@
       </div>
     </div>
 
-    <!-- ============ MAP MODAL (EMBEDDED) ============ -->
-    <div class="map-modal-overlay" id="mapModalOverlay">
-      <div class="map-modal-content">
-        <div class="map-modal-header">
-          <h2>📍 Last Known Location — {{ loved_one.name }}</h2>
-          <button class="map-modal-close" onclick="closeMapModal()">
-            &times;
+    <!-- ============ LIVE MAP MODAL ============ -->
+    <!-- Markers, zoom and counts all come from /api/loved-ones/map.
+         There is nothing to fill in here per page. -->
+    <div class="alisto-map-overlay" id="alistoMapOverlay" aria-hidden="true">
+      <div
+        class="alisto-map-dialog"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="alistoMapTitle"
+      >
+        <div class="alisto-map-head">
+          <div>
+            <h2 id="alistoMapTitle">Loved ones on the map</h2>
+            <p>Live positions reported by each linked ALISTO device.</p>
+          </div>
+          <button
+            type="button"
+            class="alisto-map-close"
+            id="alistoMapClose"
+            aria-label="Close"
+          >
+            <i data-lucide="x"></i>
           </button>
         </div>
-        <div class="map-modal-body">
-          <div id="mapContainer"></div>
-          <div class="map-info">
-            <h3>Current Location</h3>
-            <p>{{ location.address }}</p>
+
+        <div class="alisto-map-body">
+          <div id="alistoMapCanvas"></div>
+
+          <!-- Floats over the map when there is nothing to pin yet, so the
+               map itself stays visible instead of a blank panel. -->
+          <div class="alisto-map-notice" id="alistoMapNotice">
+            <i data-lucide="map-pin-off"></i>
+            <div>
+              <strong></strong>
+              <span></span>
+            </div>
           </div>
+
+          <div class="alisto-map-state" id="alistoMapLoading">
+            <i data-lucide="loader"></i>
+            <strong>Loading the map…</strong>
+            <span>Fetching the latest position for each device.</span>
+          </div>
+
+          <div class="alisto-map-state" id="alistoMapError">
+            <i data-lucide="triangle-alert"></i>
+            <strong>Could not load the map</strong>
+            <span></span>
+          </div>
+        </div>
+
+        <div class="alisto-map-foot">
+          <div class="alisto-map-legend">
+            <span><i class="online"></i> Safe / Online</span>
+            <span><i class="offline"></i> Offline</span>
+            <span><i class="emergency"></i> Emergency</span>
+            <span><i class="responded"></i> Responded</span>
+          </div>
+          <div class="alisto-map-count" id="alistoMapCount"></div>
         </div>
       </div>
     </div>
@@ -546,7 +479,7 @@
         });
       })();
 
-      // ---- Last Known Location map (Leaflet + OpenStreetMap, avatar marker) ----
+      // ---- Last Known Location map (small card, first linked elder only) ----
       (function () {
         const mapEl = document.getElementById("locationMap");
         if (!mapEl) return;
@@ -581,60 +514,9 @@
 
         L.marker([lat, lng], { icon: avatarIcon }).addTo(map);
       })();
-
-      // ---- MAP MODAL FUNCTIONS ----
-      let modalMap = null;
-
-      function openMapModal() {
-        const overlay = document.getElementById('mapModalOverlay');
-        overlay.classList.add('active');
-
-        // Initialize map in modal
-        setTimeout(() => {
-          if (!modalMap) {
-            const lat = {{ location.latitude }};
-            const lng = {{ location.longitude }};
-
-            modalMap = L.map('mapContainer').setView([lat, lng], 15);
-
-            L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-              attribution: '© OpenStreetMap contributors',
-              maxZoom: 19
-            }).addTo(modalMap);
-
-            L.circleMarker([lat, lng], {
-              radius: 12,
-              fillColor: '#5088FE',
-              color: '#fff',
-              weight: 3,
-              opacity: 1,
-              fillOpacity: 0.8
-            }).addTo(modalMap).bindPopup(`<b>{{ loved_one.name }}</b><br>Last seen here`).openPopup();
-
-            setTimeout(() => modalMap.invalidateSize(), 100);
-          } else {
-            modalMap.invalidateSize();
-          }
-        }, 100);
-      }
-
-      function closeMapModal() {
-        document.getElementById('mapModalOverlay').classList.remove('active');
-      }
-
-      // Close on overlay click
-      document.getElementById('mapModalOverlay').addEventListener('click', function(e) {
-        if (e.target === this) {
-          closeMapModal();
-        }
-      });
-
-      // Close on Escape key
-      document.addEventListener('keydown', function(e) {
-        if (e.key === 'Escape' && document.getElementById('mapModalOverlay').classList.contains('active')) {
-          closeMapModal();
-        }
-      });
     </script>
+
+    <!-- Handles the live map modal above. Must load after the markup. -->
+    <script src="{{ url_for('static', filename='js/map_view.js') }}"></script>
   </body>
 </html>

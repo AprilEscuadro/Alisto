@@ -1,0 +1,372 @@
+/* ============================================================
+   LIVE MAP — all loved ones with a registered device, plotted
+   from whatever DEVICE_LOCATION currently holds. Nothing here
+   assumes a fixed number of elders or a fallback coordinate.
+   ============================================================ */
+
+.alisto-map-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 1200;
+  display: none;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  background: rgba(15, 23, 42, 0.55);
+}
+
+.alisto-map-overlay.open {
+  display: flex;
+}
+
+.alisto-map-dialog {
+  background: var(--white);
+  border-radius: 16px;
+  width: 100%;
+  max-width: 960px;
+  height: min(640px, calc(100vh - 48px));
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  box-shadow: 0 24px 48px rgba(15, 23, 42, 0.18);
+}
+
+.alisto-map-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 18px 22px 16px;
+  border-bottom: 1px solid var(--border);
+}
+
+.alisto-map-head h2 {
+  font-family: "Nunito", sans-serif;
+  font-size: 17px;
+  font-weight: 800;
+  color: var(--ink);
+  margin: 0 0 3px;
+}
+
+.alisto-map-head p {
+  font-size: 12.5px;
+  color: var(--muted);
+  margin: 0;
+}
+
+.alisto-map-close {
+  border: none;
+  background: transparent;
+  color: var(--muted);
+  border-radius: 8px;
+  padding: 6px;
+  cursor: pointer;
+  display: flex;
+  flex-shrink: 0;
+}
+
+.alisto-map-close:hover {
+  background: var(--bg);
+  color: var(--ink);
+}
+
+.alisto-map-close i,
+.alisto-map-close svg {
+  width: 18px;
+  height: 18px;
+}
+
+.alisto-map-body {
+  position: relative;
+  flex: 1;
+  min-height: 0;
+}
+
+#alistoMapCanvas {
+  width: 100%;
+  height: 100%;
+}
+
+/* ---------- states shown instead of the map ---------- */
+
+.alisto-map-state {
+  position: absolute;
+  inset: 0;
+  display: none;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  padding: 32px;
+  text-align: center;
+  background: var(--bg);
+  z-index: 500;
+}
+
+.alisto-map-state.show {
+  display: flex;
+}
+
+.alisto-map-state i,
+.alisto-map-state svg {
+  width: 34px;
+  height: 34px;
+  color: var(--muted);
+}
+
+.alisto-map-state strong {
+  font-size: 15px;
+  color: var(--ink);
+}
+
+.alisto-map-state span {
+  font-size: 13px;
+  color: var(--muted);
+  max-width: 42ch;
+  line-height: 1.55;
+}
+
+/* ---------- floating notice (map stays visible behind it) ---------- */
+
+.alisto-map-notice {
+  position: absolute;
+  top: 14px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 600;
+  display: none;
+  align-items: flex-start;
+  gap: 10px;
+  max-width: min(460px, calc(100% - 28px));
+  padding: 12px 16px;
+  border-radius: 12px;
+  background: var(--white);
+  border: 1px solid var(--border);
+  box-shadow: 0 8px 24px rgba(15, 23, 42, 0.16);
+}
+
+.alisto-map-notice.show {
+  display: flex;
+}
+
+.alisto-map-notice i,
+.alisto-map-notice svg {
+  width: 17px;
+  height: 17px;
+  color: var(--muted);
+  flex-shrink: 0;
+  margin-top: 1px;
+}
+
+.alisto-map-notice strong {
+  display: block;
+  font-size: 13.5px;
+  color: var(--ink);
+  margin-bottom: 2px;
+}
+
+.alisto-map-notice span {
+  font-size: 12.5px;
+  color: var(--muted);
+  line-height: 1.5;
+}
+
+/* ---------- legend + counts ---------- */
+
+.alisto-map-foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  flex-wrap: wrap;
+  padding: 12px 22px;
+  border-top: 1px solid var(--border);
+  background: var(--bg);
+}
+
+.alisto-map-legend {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+
+.alisto-map-legend span {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.alisto-map-legend i {
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.alisto-map-legend i.online {
+  background: #2563eb;
+}
+.alisto-map-legend i.offline {
+  background: #9aa3af;
+}
+.alisto-map-legend i.emergency {
+  background: #dc2626;
+}
+.alisto-map-legend i.responded {
+  background: #d97706;
+}
+
+.alisto-map-count {
+  font-size: 12px;
+  color: var(--muted);
+}
+
+/* ---------- markers ---------- */
+
+.alisto-pin {
+  position: relative;
+  width: 38px;
+  height: 38px;
+  border-radius: 50%;
+  border: 3px solid var(--white);
+  box-shadow: 0 3px 10px rgba(15, 23, 42, 0.3);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-family: "Inter", sans-serif;
+  font-size: 13px;
+  font-weight: 700;
+  color: #ffffff;
+  overflow: hidden;
+}
+
+.alisto-pin img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.alisto-pin.online {
+  background: #2563eb;
+}
+.alisto-pin.offline {
+  background: #9aa3af;
+}
+.alisto-pin.emergency {
+  background: #dc2626;
+}
+.alisto-pin.responded {
+  background: #d97706;
+}
+
+/* An emergency pin pulses so it is findable on a crowded map. */
+@media (prefers-reduced-motion: no-preference) {
+  .alisto-pin.emergency::after {
+    content: "";
+    position: absolute;
+    inset: -3px;
+    border-radius: 50%;
+    border: 3px solid #dc2626;
+    animation: alisto-pulse 1.6s ease-out infinite;
+  }
+}
+
+@keyframes alisto-pulse {
+  from {
+    transform: scale(1);
+    opacity: 0.8;
+  }
+  to {
+    transform: scale(1.9);
+    opacity: 0;
+  }
+}
+
+/* ---------- popup ---------- */
+
+.alisto-popup {
+  min-width: 210px;
+  font-family: "Inter", sans-serif;
+}
+
+.alisto-popup h4 {
+  font-family: "Nunito", sans-serif;
+  font-size: 14.5px;
+  font-weight: 800;
+  color: var(--ink);
+  margin: 0 0 2px;
+}
+
+.alisto-popup .alisto-popup-rel {
+  font-size: 12px;
+  color: var(--muted);
+  margin: 0 0 8px;
+}
+
+.alisto-popup-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 3px 9px;
+  border-radius: 999px;
+  font-size: 11.5px;
+  font-weight: 600;
+  margin-bottom: 10px;
+}
+
+.alisto-popup-status.online {
+  background: #eaf1ff;
+  color: #2563eb;
+}
+.alisto-popup-status.offline {
+  background: #f1f3f6;
+  color: #6b7280;
+}
+.alisto-popup-status.emergency {
+  background: #fdeceb;
+  color: #dc2626;
+}
+.alisto-popup-status.responded {
+  background: #fef3e2;
+  color: #d97706;
+}
+
+.alisto-popup-rows {
+  display: grid;
+  gap: 6px;
+  margin: 0;
+}
+
+.alisto-popup-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  font-size: 12px;
+}
+
+.alisto-popup-row span {
+  color: var(--muted);
+  flex-shrink: 0;
+}
+
+.alisto-popup-row strong {
+  color: var(--ink);
+  font-weight: 600;
+  text-align: right;
+  word-break: break-word;
+}
+
+@media (max-width: 640px) {
+  .alisto-map-overlay {
+    padding: 0;
+  }
+
+  .alisto-map-dialog {
+    max-width: 100%;
+    height: 100vh;
+    border-radius: 0;
+  }
+}

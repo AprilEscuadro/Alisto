@@ -623,6 +623,29 @@
             <span>Help &amp; Support</span>
           </a>
         </nav>
+
+        <div class="care-plan-card">
+          <div class="care-plan-top">
+            <span class="care-plan-title">Alisto Care Plan</span>
+            <span class="badge badge-active">
+              <i data-lucide="check-circle-2"></i> Active
+            </span>
+          </div>
+          <div class="care-plan-row">
+            <i data-lucide="calendar-clock"></i>
+            <span
+              >Renews in {{ care_plan.days_left }} days<br /><small
+                >{{ care_plan.renew_date }}</small
+              ></span
+            >
+          </div>
+          <div class="care-plan-price">
+            ₱{{ care_plan.price }} <span>/ month</span>
+          </div>
+          <button type="button" class="care-plan-btn">
+            <i data-lucide="credit-card"></i> Pay / Renew Now
+          </button>
+        </div>
       </aside>
 
       <!-- ============ MAIN ============ -->
@@ -654,10 +677,17 @@
               aria-haspopup="true"
               aria-expanded="false"
             >
-              <span class="avatar">{{ full_name[:1] }}</span>
+              <span class="avatar">
+                {% if account.photo_base64 %}
+                <img
+                  src="data:image/jpeg;base64,{{ account.photo_base64 }}"
+                  alt=""
+                />
+                {% else %}{{ account.initials }}{% endif %}
+              </span>
               <span class="profile-text">
-                <strong>{{ full_name }}</strong>
-                <small>{{ role|capitalize }}</small>
+                <strong>{{ account.full_name }}</strong>
+                <small>{{ account.role|capitalize }}</small>
               </span>
               <i data-lucide="chevron-down"></i>
             </button>
@@ -665,16 +695,16 @@
             <!-- ---- PROFILE DROPDOWN ---- -->
             <div class="profile-menu" id="profileMenu" role="menu">
               <div class="profile-menu-head">
-                <strong>{{ full_name }}</strong>
-                <small>{{ role|capitalize }}</small>
+                <strong>{{ account.full_name }}</strong>
+                <small>{{ account.role|capitalize }}</small>
               </div>
               <a
                 class="profile-menu-item"
                 role="menuitem"
-                href="{{ url_for('settings') }}"
+                href="{{ url_for('my_profile') }}"
               >
-                <i data-lucide="settings"></i>
-                <span>Settings</span>
+                <i data-lucide="user-round"></i>
+                <span>My Profile</span>
               </a>
               <button
                 type="button"
@@ -1217,6 +1247,7 @@
         </div>
       </div>
     </div>
+
     <!-- ============ LOGOUT CONFIRMATION ============ -->
     <div class="confirm-overlay" id="logoutConfirm" aria-hidden="true">
       <div

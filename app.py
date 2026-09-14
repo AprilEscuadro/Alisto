@@ -10,6 +10,7 @@ import requests
 import os
 import uuid
 import re
+import base64
 
 app = Flask(__name__)
 app.secret_key = 'alisto-secret-key-change-this-later'
@@ -49,6 +50,25 @@ TEMP_LOCATION = {
     'last_updated': 'Sample data (waiting for device)',
 }
 
+@app.context_processor
+def inject_account():
+    """Keeps the top-right profile pill in sync with Firestore on every page,
+    instead of showing whatever the session held at sign-in time."""
+    if 'user_id' not in session:
+        return {}
+
+    doc = db.collection('user_account').document(session['user_id']).get()
+    user = doc.to_dict() if doc.exists else {}
+
+    name = user.get('full_name') or session.get('full_name') or ''
+    return {
+        'account': {
+            'full_name': name,
+            'initials': _initials(name) if name else '?',
+            'role': user.get('role') or session.get('role') or '',
+            'photo_base64': user.get('photoBase64') or None,
+        }
+    }
 
 def _get_care_plan():
     return {'status': 'Active', 'days_left': 12,
@@ -647,6 +667,7 @@ def my_loved_ones():
     return render_template(
         'family/my_loved_ones.html',
         full_name=session['full_name'], role=session['role'],
+        care_plan=_get_care_plan(),
         loved_ones=loved_ones,
         online_count=online_count, offline_count=offline_count,
         attention_count=attention_count, notification_count=0,
@@ -1030,7 +1051,6 @@ def activity_details(activity_id):
     flash('Activity details page not implemented yet.', 'info')
     return redirect(url_for('history'))
 
-
 # ---------- SETTINGS ----------
 
 @app.route('/settings')
@@ -1054,12 +1074,208 @@ def settings():
 
 @app.route('/settings/change-password')
 def change_password():
+    """The real change-password form lives on My Profile now."""
     if 'user_id' not in session:
         flash('Please log in first.', 'error')
         return redirect(url_for('login'))
-    flash('Change Password page not implemented yet.', 'info')
-    return redirect(url_for('settings'))
+    return redirect(url_for('my_profile'))
+# ---------- MY PROFILE ----------
 
+# Photos are stored inline on the user_account document as base64, the same
+# way the mobile app does it (FirestoreService.saveProfilePhoto). Firebase
+# Storage is not used because it requires billing to be enabled.
+MAX_PHOTO_BASE64_BYTES = 700 * 1024
+
+
+@app.route('/my-profile')
+def my_profile():
+    if 'user_id' not in session:
+        flash('Please log in first.', 'error')
+        return redirect(url_for('login'))
+    if session.get('role') == 'admin':
+        return redirect(url_for('admin.dashboard'))
+    if session.get('role') == 'bhw':
+        return redirect(url_for('bhw.profile'))
+
+    user_doc = db.collection('user_account').document(session['user_id']).get()
+    user = user_doc.to_dict() if user_doc.exists else {}
+
+    created_at = user.get('created_at')
+    member_since = (
+        created_at.astimezone(timezone(timedelta(hours=8))).strftime('%B %Y')
+        if hasattr(created_at, 'astimezone') else '—'
+    )
+
+    full_name = user.get('full_name') or session['full_name']
+    profile = {
+        'full_name': full_name,
+        'initials': _initials(full_name),
+        'email': user.get('email') or '',
+        'contact_number': user.get('contact_number') or '',
+        'member_since': member_since,
+        'photo_base64': user.get('photoBase64') or None,
+    }
+
+    return render_template(
+        'family/profile.html',
+        full_name=session['full_name'], role=session['role'],
+        profile=profile, care_plan=_get_care_plan(),
+        notification_count=0, current_year=datetime.now().year,
+    )
+
+
+@app.route('/my-profile/update', methods=['POST'])
+def update_my_profile():
+    if 'user_id' not in session:
+        flash('Please log in first.', 'error')
+        return redirect(url_for('login'))
+
+    user_ref = db.collection('user_account').document(session['user_id'])
+    doc = user_ref.get()
+    user = doc.to_dict() if doc.exists else None
+    if not user:
+        flash('Your account could not be found.', 'profile_error')
+        return redirect(url_for('my_profile'))
+
+    full_name = request.form.get('full_name', '').strip()
+    email = request.form.get('email', '').strip().lower()
+    contact_number = request.form.get('contact_number', '').strip()
+
+    if not full_name:
+        flash('Full name cannot be empty.', 'profile_error')
+        return redirect(url_for('my_profile'))
+    if not email:
+        flash('Email address cannot be empty.', 'profile_error')
+        return redirect(url_for('my_profile'))
+
+    # Email must stay unique (Firestore has no UNIQUE constraint).
+    if email != user.get('email'):
+        clash = list(db.collection('user_account')
+                     .where('email', '==', email).limit(1).stream())
+        if clash and clash[0].id != session['user_id']:
+            flash('Another account already uses that email address.', 'profile_error')
+            return redirect(url_for('my_profile'))
+
+    try:
+        # Accounts without password_hash live in Firebase Auth — keep it in
+        # sync, or the sign-in email and this one would drift apart.
+        if 'password_hash' not in user:
+            firebase_auth.update_user(session['user_id'],
+                                      email=email, display_name=full_name)
+
+        user_ref.update({
+            'full_name': full_name,
+            'email': email,
+            'contact_number': contact_number,
+            'profile_updated_at': firestore.SERVER_TIMESTAMP,
+        })
+    except Exception as e:
+        flash(f'Could not save your changes: {e}', 'profile_error')
+        return redirect(url_for('my_profile'))
+
+    session['full_name'] = full_name
+    flash('Your profile has been updated.', 'profile_success')
+    return redirect(url_for('my_profile'))
+
+
+@app.route('/my-profile/password', methods=['POST'])
+def change_my_password():
+    if 'user_id' not in session:
+        flash('Please log in first.', 'error')
+        return redirect(url_for('login'))
+
+    user_ref = db.collection('user_account').document(session['user_id'])
+    doc = user_ref.get()
+    user = doc.to_dict() if doc.exists else None
+    if not user:
+        flash('Your account could not be found.', 'profile_error')
+        return redirect(url_for('my_profile'))
+
+    current = request.form.get('current_password', '')
+    new = request.form.get('new_password', '')
+    confirm = request.form.get('confirm_password', '')
+
+    # Verify the current password on whichever system this account uses.
+    if 'password_hash' in user:
+        current_ok = check_password_hash(user['password_hash'], current)
+    else:
+        current_ok = _verify_firebase_password(user.get('email'), current) is not None
+
+    if not current_ok:
+        flash('Your current password is incorrect.', 'profile_error')
+        return redirect(url_for('my_profile'))
+    if new != confirm:
+        flash('New password and confirm password do not match.', 'profile_error')
+        return redirect(url_for('my_profile'))
+    if new == current:
+        flash('Your new password must be different from your current one.', 'profile_error')
+        return redirect(url_for('my_profile'))
+
+    error = _check_family_password(new)
+    if error:
+        flash(error, 'profile_error')
+        return redirect(url_for('my_profile'))
+
+    try:
+        if 'password_hash' in user:
+            user_ref.update({
+                'password_hash': generate_password_hash(new),
+                'password_changed_at': firestore.SERVER_TIMESTAMP,
+            })
+        else:
+            firebase_auth.update_user(session['user_id'], password=new)
+            user_ref.update({'password_changed_at': firestore.SERVER_TIMESTAMP})
+    except Exception as e:
+        flash(f'Could not update your password: {e}', 'profile_error')
+        return redirect(url_for('my_profile'))
+
+    flash('Your password has been updated.', 'profile_success')
+    return redirect(url_for('my_profile'))
+
+
+@app.route('/my-profile/photo', methods=['POST'])
+def upload_my_photo():
+    if 'user_id' not in session:
+        flash('Please log in first.', 'error')
+        return redirect(url_for('login'))
+
+    encoded = (request.form.get('photo_base64') or '').strip()
+    if not encoded:
+        flash('No photo was selected.', 'profile_error')
+        return redirect(url_for('my_profile'))
+    if len(encoded) > MAX_PHOTO_BASE64_BYTES:
+        flash('That photo is too large. Please choose a different one.', 'profile_error')
+        return redirect(url_for('my_profile'))
+
+    try:
+        base64.b64decode(encoded, validate=True)
+    except Exception:
+        flash('That photo could not be read.', 'profile_error')
+        return redirect(url_for('my_profile'))
+
+    # Field names match the mobile app exactly, so both read the same photo.
+    db.collection('user_account').document(session['user_id']).set({
+        'photoBase64': encoded,
+        'photoUpdatedAt': firestore.SERVER_TIMESTAMP,
+    }, merge=True)
+
+    flash('Your profile photo has been updated.', 'profile_success')
+    return redirect(url_for('my_profile'))
+
+
+@app.route('/my-profile/photo/remove', methods=['POST'])
+def remove_my_photo():
+    if 'user_id' not in session:
+        flash('Please log in first.', 'error')
+        return redirect(url_for('login'))
+
+    db.collection('user_account').document(session['user_id']).update({
+        'photoBase64': firestore.DELETE_FIELD,
+        'photoUpdatedAt': firestore.DELETE_FIELD,
+    })
+
+    flash('Your profile photo has been removed.', 'profile_success')
+    return redirect(url_for('my_profile'))
 
 # ---------- HELP & SUPPORT ----------
 
@@ -1309,6 +1525,154 @@ def dashboard():
         current_year=datetime.now().year,
     )
 
+# ---------- LIVE MAP ----------
 
+# How recently a device must have reported to count as online.
+DEVICE_ONLINE_WINDOW = timedelta(minutes=10)
+
+# Where emergencies are written. The mobile app uses 'alert'; schema.sql
+# called it 'emergency_alert'. Change this one constant once the team
+# settles on a name — nothing else here needs to move.
+ALERT_COLLECTION = 'alert'
+
+RESPONDED_STATUSES = {'ACKNOWLEDGED', 'RESPONDED', 'acknowledged', 'responded'}
+RESOLVED_STATUSES = {'RESOLVED', 'CANCELLED', 'resolved', 'cancelled'}
+
+
+def _latest_device_location(device_serial):
+    """Newest DEVICE_LOCATION row for a device, or None if it never reported."""
+    if not device_serial:
+        return None
+    try:
+        docs = list(
+            db.collection('DEVICE_LOCATION')
+            .where('device_id', '==', device_serial)
+            .order_by('recorded_at', direction=firestore.Query.DESCENDING)
+            .limit(1)
+            .stream()
+        )
+    except Exception:
+        return None
+    return docs[0].to_dict() if docs else None
+
+
+def _open_alert_for_elder(elder_id):
+    """Newest alert for this elder that has not been resolved or cancelled."""
+    try:
+        docs = list(
+            db.collection(ALERT_COLLECTION)
+            .where('elder_id', '==', elder_id)
+            .order_by('created_at', direction=firestore.Query.DESCENDING)
+            .limit(5)
+            .stream()
+        )
+    except Exception:
+        return None
+
+    for doc in docs:
+        alert = doc.to_dict() or {}
+        if str(alert.get('status') or '') in RESOLVED_STATUSES:
+            continue
+        return alert
+    return None
+
+
+def _elder_map_status(alert, recorded_at):
+    """One of: emergency, responded, online, offline.
+
+    Emergency outranks everything. A device that has gone quiet during an
+    emergency is the most important pin on the map, not the least.
+    """
+    if alert:
+        status = str(alert.get('status') or '')
+        return 'responded' if status in RESPONDED_STATUSES else 'emergency'
+
+    if hasattr(recorded_at, 'timestamp'):
+        seen = recorded_at if recorded_at.tzinfo else recorded_at.replace(
+            tzinfo=timezone.utc)
+        if datetime.now(timezone.utc) - seen < DEVICE_ONLINE_WINDOW:
+            return 'online'
+
+    return 'offline'
+
+
+@app.route('/api/loved-ones/map')
+def loved_ones_map_data():
+    """Every loved one on this account who has a device, with their newest
+    reported position.
+
+    An elder whose device has never reported comes back with
+    has_location false rather than a placeholder coordinate — the map
+    counts them but does not pin them. A pin in the wrong place is worse
+    than no pin at all.
+    """
+    if 'user_id' not in session:
+        return jsonify(success=False, message='Please log in first.'), 401
+
+    ph_tz = timezone(timedelta(hours=8))
+    links = list(
+        db.collection('family_elder_link')
+        .where('family_user_id', '==', session['user_id'])
+        .stream()
+    )
+
+    elders = []
+    for link in links:
+        link_data = link.to_dict() or {}
+        elder_id = link_data.get('elder_id')
+        if not elder_id:
+            continue
+
+        elder_doc = db.collection('elder_profile').document(elder_id).get()
+        if not elder_doc.exists or elder_doc.to_dict().get('deleted_at'):
+            continue
+        elder = elder_doc.to_dict()
+
+        device_docs = list(
+            db.collection('device')
+            .where('elder_id', '==', elder_id)
+            .limit(1)
+            .stream()
+        )
+        if not device_docs:
+            continue  # no device, nothing to plot
+        device_serial = device_docs[0].id
+        device = device_docs[0].to_dict() or {}
+
+        loc = _latest_device_location(device_serial)
+        recorded_at = loc.get('recorded_at') if loc else None
+        alert = _open_alert_for_elder(elder_id)
+
+        lat = loc.get('gps_lat') if loc else None
+        lng = loc.get('gps_long') if loc else None
+        has_location = isinstance(lat, (int, float)) and isinstance(lng, (int, float))
+
+        name = elder.get('full_name') or 'Unnamed'
+        elders.append({
+            'id': elder_id,
+            'name': name,
+            'initials': _initials(name),
+            'photo_url': elder.get('photo_url') or None,
+            'relationship': link_data.get('relationship') or 'Family',
+            'device_id': device_serial,
+            'device_registered': bool(device.get('is_registered')),
+            'status': _elder_map_status(alert, recorded_at),
+            'has_location': has_location,
+            'latitude': lat if has_location else None,
+            'longitude': lng if has_location else None,
+            'address': (loc or {}).get('location_address') or 'Address not reported',
+            'last_seen': (
+                recorded_at.astimezone(ph_tz).strftime('%b %d, %Y %I:%M %p')
+                if hasattr(recorded_at, 'astimezone') else 'No report yet'
+            ),
+            'alert_title': (alert or {}).get('title') or None,
+        })
+
+    plotted = [e for e in elders if e['has_location']]
+    return jsonify(
+        success=True, elders=elders, total=len(elders),
+        plotted=len(plotted), waiting=len(elders) - len(plotted),
+    )
+    
 if __name__ == '__main__':
     app.run(debug=True)

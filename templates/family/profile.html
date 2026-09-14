@@ -1,0 +1,895 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>My Profile - ALISTO</title>
+    <link
+      href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Nunito:wght@400;600;700;800&display=swap"
+      rel="stylesheet"
+    />
+    <script src="https://unpkg.com/lucide@latest/dist/umd/lucide.js"></script>
+    <link
+      rel="stylesheet"
+      href="{{ url_for('static', filename='css/dashboard.css') }}"
+    />
+    <link
+      rel="stylesheet"
+      href="{{ url_for('static', filename='css/profile.css') }}"
+    />
+
+    <!-- ============ PROFILE DROPDOWN + LOGOUT CONFIRM ============ -->
+    <style>
+      body.modal-open {
+        overflow: hidden;
+      }
+
+      /* ---- dropdown ---- */
+      .header-right {
+        position: relative;
+      }
+
+      .profile-menu {
+        position: absolute;
+        top: calc(100% + 10px);
+        right: 0;
+        min-width: 220px;
+        background: var(--white);
+        border: 1px solid var(--border);
+        border-radius: 12px;
+        box-shadow: 0 12px 28px rgba(15, 23, 42, 0.12);
+        padding: 6px;
+        z-index: 200;
+        display: none;
+      }
+
+      .profile-menu.open {
+        display: block;
+      }
+
+      .profile-menu-head {
+        display: flex;
+        flex-direction: column;
+        gap: 2px;
+        padding: 10px 12px 12px;
+        border-bottom: 1px solid var(--border);
+        margin-bottom: 6px;
+      }
+      .profile-menu-head strong {
+        font-size: 13.5px;
+        color: var(--ink);
+      }
+      .profile-menu-head small {
+        font-size: 11.5px;
+        color: var(--muted);
+      }
+
+      .profile-menu-item {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        width: 100%;
+        padding: 10px 12px;
+        border: none;
+        border-radius: 8px;
+        background: transparent;
+        color: var(--ink);
+        font-family: inherit;
+        font-size: 13.5px;
+        font-weight: 600;
+        text-align: left;
+        cursor: pointer;
+        transition: background 0.15s;
+      }
+      .profile-menu-item:hover {
+        background: var(--bg);
+      }
+      .profile-menu-item svg,
+      .profile-menu-item i {
+        width: 16px;
+        height: 16px;
+        color: var(--muted);
+        flex-shrink: 0;
+      }
+
+      .profile-menu-item.danger {
+        color: #dc2626;
+      }
+      .profile-menu-item.danger:hover {
+        background: #fef2f2;
+      }
+      .profile-menu-item.danger svg,
+      .profile-menu-item.danger i {
+        color: #dc2626;
+      }
+
+      /* ---- confirmation modal ---- */
+      .confirm-overlay {
+        position: fixed;
+        inset: 0;
+        z-index: 1100;
+        display: none;
+        align-items: center;
+        justify-content: center;
+        padding: 24px;
+        background: rgba(15, 23, 42, 0.55);
+      }
+
+      .confirm-overlay.open {
+        display: flex;
+      }
+
+      .confirm-dialog {
+        background: var(--white);
+        border-radius: 16px;
+        width: 100%;
+        max-width: 400px;
+        padding: 28px 24px 22px;
+        text-align: center;
+        box-shadow: 0 24px 48px rgba(15, 23, 42, 0.18);
+      }
+
+      @media (prefers-reduced-motion: no-preference) {
+        .confirm-overlay.open .confirm-dialog {
+          animation: confirm-rise 0.18s ease-out;
+        }
+      }
+
+      @keyframes confirm-rise {
+        from {
+          opacity: 0;
+          transform: translateY(12px);
+        }
+        to {
+          opacity: 1;
+          transform: translateY(0);
+        }
+      }
+
+      .confirm-icon {
+        width: 52px;
+        height: 52px;
+        margin: 0 auto 16px;
+        border-radius: 50%;
+        background: #fef2f2;
+        color: #dc2626;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+      }
+      .confirm-icon svg,
+      .confirm-icon i {
+        width: 24px;
+        height: 24px;
+      }
+
+      .confirm-title {
+        font-size: 17px;
+        font-weight: 700;
+        color: var(--ink);
+        margin: 0 0 8px;
+      }
+
+      .confirm-text {
+        font-size: 13.5px;
+        color: var(--muted);
+        line-height: 1.6;
+        margin: 0 0 22px;
+      }
+
+      .confirm-actions {
+        display: flex;
+        gap: 10px;
+      }
+
+      .confirm-actions .btn-ghost,
+      .confirm-actions .btn-danger-action {
+        flex: 1;
+        padding: 11px 16px;
+        border-radius: 10px;
+        font-family: inherit;
+        font-size: 14px;
+        font-weight: 600;
+        cursor: pointer;
+      }
+
+      .btn-ghost {
+        border: 1px solid var(--border);
+        background: var(--white);
+        color: var(--ink);
+      }
+      .btn-ghost:hover {
+        background: var(--bg);
+      }
+
+      .btn-danger-action {
+        border: none;
+        background: #dc2626;
+        color: var(--white);
+      }
+      .btn-danger-action:hover {
+        background: #b91c1c;
+      }
+      .btn-danger-action:disabled {
+        opacity: 0.65;
+        cursor: not-allowed;
+      }
+
+      .confirm-dialog button:focus-visible,
+      .profile-menu-item:focus-visible {
+        outline: 2px solid var(--blue);
+        outline-offset: 2px;
+      }
+
+      @media (max-width: 480px) {
+        .confirm-actions {
+          flex-direction: column-reverse;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <div class="app-shell">
+      <!-- ============ SIDEBAR ============ -->
+      <aside class="sidebar">
+        <a href="{{ url_for('dashboard') }}" class="sidebar-logo">
+          <img
+            src="{{ url_for('static', filename='images/alistoLogo.png') }}"
+            alt="ALISTO Logo"
+            class="logo-mark-img"
+          />
+        </a>
+
+        <nav class="sidebar-nav">
+          <a href="{{ url_for('dashboard') }}" class="nav-item">
+            <i data-lucide="layout-dashboard"></i>
+            <span>Dashboard</span>
+          </a>
+          <a href="{{ url_for('my_loved_ones') }}" class="nav-item">
+            <i data-lucide="users-round"></i>
+            <span>My Loved Ones</span>
+          </a>
+          <a href="{{ url_for('alerts') }}" class="nav-item">
+            <i data-lucide="bell-ring"></i>
+            <span>Alerts</span>
+          </a>
+          <a href="{{ url_for('medication_reminders') }}" class="nav-item">
+            <i data-lucide="pill"></i>
+            <span>Medication Reminders</span>
+          </a>
+          <a href="{{ url_for('history') }}" class="nav-item">
+            <i data-lucide="history"></i>
+            <span>History</span>
+          </a>
+          <a href="{{ url_for('settings') }}" class="nav-item">
+            <i data-lucide="settings"></i>
+            <span>Settings</span>
+          </a>
+          <a href="{{ url_for('help_support') }}" class="nav-item">
+            <i data-lucide="circle-help"></i>
+            <span>Help &amp; Support</span>
+          </a>
+        </nav>
+
+        <div class="care-plan-card">
+          <div class="care-plan-top">
+            <span class="care-plan-title">Alisto Care Plan</span>
+            <span class="badge badge-active">
+              <i data-lucide="check-circle-2"></i> Active
+            </span>
+          </div>
+          <div class="care-plan-row">
+            <i data-lucide="calendar-clock"></i>
+            <span
+              >Renews in {{ care_plan.days_left }} days<br /><small
+                >{{ care_plan.renew_date }}</small
+              ></span
+            >
+          </div>
+          <div class="care-plan-price">
+            ₱{{ care_plan.price }} <span>/ month</span>
+          </div>
+          <button type="button" class="care-plan-btn">
+            <i data-lucide="credit-card"></i> Pay / Renew Now
+          </button>
+        </div>
+      </aside>
+
+      <!-- ============ MAIN ============ -->
+      <main class="main-wrapper">
+        <!-- ---- TOP HEADER ---- -->
+        <header class="top-header">
+          <div class="header-left">
+            <button class="menu-toggle">
+              <i data-lucide="menu"></i>
+            </button>
+            <div class="header-breadcrumb">
+              <span class="org-name">Emergency Response System</span>
+              <h2 class="system-title">ALISTO</h2>
+            </div>
+          </div>
+
+          <div class="header-right">
+            <button type="button" class="icon-btn" aria-label="Notifications">
+              <i data-lucide="bell"></i>
+              {% if notification_count %}
+              <span class="notif-dot">{{ notification_count }}</span>
+              {% endif %}
+            </button>
+
+            <button
+              type="button"
+              class="profile-pill"
+              id="profilePill"
+              aria-haspopup="true"
+              aria-expanded="false"
+            >
+              <span class="avatar">
+                {% if account.photo_base64 %}
+                <img
+                  src="data:image/jpeg;base64,{{ account.photo_base64 }}"
+                  alt=""
+                />
+                {% else %}{{ account.initials }}{% endif %}
+              </span>
+              <span class="profile-text">
+                <strong>{{ account.full_name }}</strong>
+                <small>{{ account.role|capitalize }}</small>
+              </span>
+              <i data-lucide="chevron-down"></i>
+            </button>
+
+            <!-- ---- PROFILE DROPDOWN ---- -->
+            <div class="profile-menu" id="profileMenu" role="menu">
+              <div class="profile-menu-head">
+                <strong>{{ account.full_name }}</strong>
+                <small>{{ account.role|capitalize }}</small>
+              </div>
+              <a
+                class="profile-menu-item"
+                role="menuitem"
+                href="{{ url_for('my_profile') }}"
+              >
+                <i data-lucide="user-round"></i>
+                <span>My Profile</span>
+              </a>
+              <button
+                type="button"
+                class="profile-menu-item danger"
+                role="menuitem"
+                id="profileLogoutBtn"
+              >
+                <i data-lucide="log-out"></i>
+                <span>Log out</span>
+              </button>
+            </div>
+          </div>
+        </header>
+        <!-- ---- MAIN CONTENT ---- -->
+        <div class="main">
+          <div class="page-header">
+            <div>
+              <h1 class="page-title">My Profile</h1>
+              <p class="page-subtitle">
+                Manage your account and personal details.
+              </p>
+            </div>
+          </div>
+
+          <!-- Only profile_* categories render here, so the "Welcome back"
+               flash from login never leaks onto this page. -->
+          {% with messages = get_flashed_messages(with_categories=true) %}
+          {% set profile_messages = messages
+             | selectattr('0', 'in', ['profile_success', 'profile_error'])
+             | list %}
+          {% if profile_messages %}
+          <div class="flash-stack">
+            {% for category, message in profile_messages %}
+            <div
+              class="flash flash-{{ 'success' if category == 'profile_success' else 'error' }}"
+            >
+              <i
+                data-lucide="{{ 'check-circle-2' if category == 'profile_success' else 'alert-circle' }}"
+              ></i>
+              <span>{{ message }}</span>
+            </div>
+            {% endfor %}
+          </div>
+          {% endif %}
+          {% endwith %}
+
+          <div class="profile-layout">
+            <!-- ---- IDENTITY + PHOTO ---- -->
+            <section class="profile-card profile-identity">
+              <div class="profile-avatar-form">
+                <button
+                  type="button"
+                  class="profile-identity-avatar"
+                  id="photoTrigger"
+                  aria-label="Change profile photo"
+                >
+                  {% if profile.photo_base64 %}
+                  <img
+                    src="data:image/jpeg;base64,{{ profile.photo_base64 }}"
+                    alt=""
+                    id="photoPreview"
+                  />
+                  {% else %}
+                  <span id="photoInitials">{{ profile.initials }}</span>
+                  {% endif %}
+                  <span class="profile-avatar-edit">
+                    <i data-lucide="camera"></i>
+                  </span>
+                </button>
+                <input
+                  type="file"
+                  id="profilePhoto"
+                  accept="image/jpeg,image/png,image/gif,image/webp"
+                  hidden
+                />
+
+                <!-- The browser downscales the image and posts it as base64,
+                     so the web and the mobile app read the exact same
+                     photoBase64 field on the user_account document. -->
+                <form
+                  method="POST"
+                  action="{{ url_for('upload_my_photo') }}"
+                  id="photoForm"
+                >
+                  <input type="hidden" name="photo_base64" id="photoData" />
+                </form>
+
+                {% if profile.photo_base64 %}
+                <form
+                  method="POST"
+                  action="{{ url_for('remove_my_photo') }}"
+                  class="profile-avatar-remove-form"
+                >
+                  <button type="submit" class="profile-avatar-remove">
+                    <i data-lucide="trash-2"></i> Remove photo
+                  </button>
+                </form>
+                {% endif %}
+              </div>
+
+              <div class="profile-identity-text">
+                <h2>{{ profile.full_name }}</h2>
+                <span class="profile-role-badge">
+                  <i data-lucide="user"></i> {{ role|capitalize }} Member
+                </span>
+                <p>Member since {{ profile.member_since }}</p>
+                <p class="profile-avatar-hint">
+                  Click the photo to change it. It is resized to 512px before
+                  saving, the same way the mobile app does it.
+                </p>
+              </div>
+            </section>
+
+            <div class="profile-columns">
+              <!-- ---- PERSONAL INFORMATION (left) ---- -->
+              <section class="profile-card">
+                <div class="profile-card-head">
+                  <h3>Personal Information</h3>
+                  <p>Update your details and save the changes.</p>
+                </div>
+
+                <form
+                  method="POST"
+                  action="{{ url_for('update_my_profile') }}"
+                  class="profile-form"
+                >
+                  <div class="profile-field-group">
+                    <label for="full_name">Full Name</label>
+                    <div class="profile-input-wrap">
+                      <i data-lucide="user"></i>
+                      <input
+                        type="text"
+                        id="full_name"
+                        name="full_name"
+                        value="{{ profile.full_name }}"
+                        placeholder="Enter your full name"
+                        required
+                      />
+                    </div>
+                  </div>
+
+                  <div class="profile-field-group">
+                    <label for="email">Email Address</label>
+                    <div class="profile-input-wrap">
+                      <i data-lucide="mail"></i>
+                      <input
+                        type="email"
+                        id="email"
+                        name="email"
+                        value="{{ profile.email }}"
+                        placeholder="Enter your email address"
+                        required
+                      />
+                    </div>
+                    <small class="profile-field-hint">
+                      You will sign in with this email from now on.
+                    </small>
+                  </div>
+
+                  <div class="profile-field-group">
+                    <label for="contact_number">Phone Number</label>
+                    <div class="profile-input-wrap">
+                      <i data-lucide="phone"></i>
+                      <input
+                        type="text"
+                        id="contact_number"
+                        name="contact_number"
+                        value="{{ profile.contact_number }}"
+                        placeholder="09XX XXX XXXX"
+                      />
+                    </div>
+                  </div>
+
+                  <button type="submit" class="profile-btn">
+                    <i data-lucide="save"></i> Save Changes
+                  </button>
+                </form>
+              </section>
+
+              <!-- ---- CHANGE PASSWORD (right) ---- -->
+              <section class="profile-card">
+                <div class="profile-card-head">
+                  <h3>Change Password</h3>
+                  <p>Choose a strong password you do not use anywhere else.</p>
+                </div>
+
+                <form
+                  method="POST"
+                  action="{{ url_for('change_my_password') }}"
+                  class="profile-form"
+                  id="passwordForm"
+                >
+                  <div class="profile-field-group">
+                    <label for="current_password">Current Password</label>
+                    <div class="profile-input-wrap">
+                      <i data-lucide="lock"></i>
+                      <input
+                        type="password"
+                        id="current_password"
+                        name="current_password"
+                        placeholder="Enter your current password"
+                        required
+                      />
+                      <button
+                        type="button"
+                        class="profile-eye"
+                        data-toggle="current_password"
+                        aria-label="Show password"
+                      >
+                        <i data-lucide="eye"></i>
+                      </button>
+                    </div>
+                  </div>
+
+                  <div class="profile-field-group">
+                    <label for="new_password">New Password</label>
+                    <div class="profile-input-wrap">
+                      <i data-lucide="lock"></i>
+                      <input
+                        type="password"
+                        id="new_password"
+                        name="new_password"
+                        placeholder="Enter your new password"
+                        required
+                      />
+                      <button
+                        type="button"
+                        class="profile-eye"
+                        data-toggle="new_password"
+                        aria-label="Show password"
+                      >
+                        <i data-lucide="eye"></i>
+                      </button>
+                    </div>
+                  </div>
+
+                  <div class="profile-field-group">
+                    <label for="confirm_password">Confirm New Password</label>
+                    <div class="profile-input-wrap">
+                      <i data-lucide="lock"></i>
+                      <input
+                        type="password"
+                        id="confirm_password"
+                        name="confirm_password"
+                        placeholder="Re-enter your new password"
+                        required
+                      />
+                      <button
+                        type="button"
+                        class="profile-eye"
+                        data-toggle="confirm_password"
+                        aria-label="Show password"
+                      >
+                        <i data-lucide="eye"></i>
+                      </button>
+                    </div>
+                  </div>
+
+                  <!-- Same rules as the register page. Dots stay grey until the
+                       user types, then turn green (met) or red (not met). -->
+                  <div class="password-rules" id="passwordRules">
+                    <p class="password-rules-title">New password must:</p>
+                    <ul>
+                      <li data-rule="length">
+                        <span>Be at least 6 characters</span>
+                      </li>
+                      <li data-rule="upper">
+                        <span>Include an uppercase letter</span>
+                      </li>
+                      <li data-rule="lower">
+                        <span>Include a lowercase letter</span>
+                      </li>
+                      <li data-rule="number"><span>Include a number</span></li>
+                      <li data-rule="special">
+                        <span>Include a special character</span>
+                      </li>
+                      <li data-rule="match">
+                        <span>Both passwords match</span>
+                      </li>
+                    </ul>
+                  </div>
+
+                  <button type="submit" class="profile-btn">
+                    <i data-lucide="key-round"></i> Update Password
+                  </button>
+                </form>
+              </section>
+            </div>
+          </div>
+        </div>
+      </main>
+
+    </div>
+
+    <!-- ============ LOGOUT CONFIRMATION ============ -->
+    <div class="confirm-overlay" id="logoutConfirm" aria-hidden="true">
+      <div
+        class="confirm-dialog"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="logoutConfirmTitle"
+      >
+        <div class="confirm-icon"><i data-lucide="log-out"></i></div>
+        <h2 class="confirm-title" id="logoutConfirmTitle">
+          Are you sure you want to log out?
+        </h2>
+        <p class="confirm-text">
+          You will need to sign in again to view your loved ones and receive
+          alerts on this device.
+        </p>
+        <div class="confirm-actions">
+          <button type="button" class="btn-ghost" id="logoutCancel">
+            Cancel
+          </button>
+          <button
+            type="button"
+            class="btn-danger-action"
+            id="logoutConfirmBtn"
+          >
+            Log out
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <script>
+      lucide.createIcons();
+
+      // ---- Show / hide password ----
+      document.querySelectorAll(".profile-eye").forEach((btn) => {
+        btn.addEventListener("click", () => {
+          const input = document.getElementById(btn.dataset.toggle);
+          if (!input) return;
+          const showing = input.type === "text";
+          input.type = showing ? "password" : "text";
+          btn.querySelector("i, svg").setAttribute(
+            "data-lucide",
+            showing ? "eye" : "eye-off",
+          );
+          lucide.createIcons();
+        });
+      });
+
+      // ---- Live password checklist (same rules as the register page) ----
+      (function () {
+        const RULES = [
+          { key: "length", test: (p) => p.length >= 6 },
+          { key: "upper", test: (p) => /[A-Z]/.test(p) },
+          { key: "lower", test: (p) => /[a-z]/.test(p) },
+          { key: "number", test: (p) => /\d/.test(p) },
+          { key: "special", test: (p) => /[^A-Za-z0-9]/.test(p) },
+        ];
+
+        const list = document.getElementById("passwordRules");
+        const pw = document.getElementById("new_password");
+        const confirm = document.getElementById("confirm_password");
+        const form = document.getElementById("passwordForm");
+        if (!list || !pw || !confirm || !form) return;
+
+        function update() {
+          const typed = pw.value.length > 0;
+
+          RULES.forEach((rule) => {
+            const li = list.querySelector(`[data-rule="${rule.key}"]`);
+            if (!li) return;
+            li.classList.remove("ok", "bad");
+            if (!typed) return;
+            li.classList.add(rule.test(pw.value) ? "ok" : "bad");
+          });
+
+          const matchLi = list.querySelector('[data-rule="match"]');
+          if (matchLi) {
+            matchLi.classList.remove("ok", "bad");
+            if (confirm.value.length > 0) {
+              matchLi.classList.add(
+                pw.value === confirm.value ? "ok" : "bad",
+              );
+            }
+          }
+        }
+
+        pw.addEventListener("input", update);
+        confirm.addEventListener("input", update);
+        update();
+
+        // Block the submit early so the server round-trip is not wasted.
+        form.addEventListener("submit", (e) => {
+          if (!RULES.every((r) => r.test(pw.value))) {
+            e.preventDefault();
+            update();
+            pw.focus();
+          } else if (pw.value !== confirm.value) {
+            e.preventDefault();
+            update();
+            confirm.focus();
+          }
+        });
+      })();
+
+      // ---- Profile photo ----
+      // Downscale in the browser to 512px / quality 70 and post as base64,
+      // matching FirestoreService.saveProfilePhoto() in the mobile app so
+      // both read the same photoBase64 field. Firebase Storage is not used
+      // because it requires billing to be enabled.
+      (function () {
+        const MAX_SIDE = 512;
+        const QUALITY = 0.7;
+        const MAX_BYTES = 700 * 1024; // same cap as the app
+
+        const trigger = document.getElementById("photoTrigger");
+        const input = document.getElementById("profilePhoto");
+        const form = document.getElementById("photoForm");
+        const field = document.getElementById("photoData");
+        if (!trigger || !input || !form || !field) return;
+
+        trigger.addEventListener("click", () => input.click());
+
+        input.addEventListener("change", () => {
+          const file = input.files[0];
+          if (!file) return;
+
+          const reader = new FileReader();
+          reader.onload = () => {
+            const img = new Image();
+            img.onload = () => {
+              let { width, height } = img;
+              if (width > MAX_SIDE || height > MAX_SIDE) {
+                const scale = Math.min(MAX_SIDE / width, MAX_SIDE / height);
+                width = Math.round(width * scale);
+                height = Math.round(height * scale);
+              }
+
+              const canvas = document.createElement("canvas");
+              canvas.width = width;
+              canvas.height = height;
+              const ctx = canvas.getContext("2d");
+              // JPEG has no transparency, so flatten onto white first.
+              ctx.fillStyle = "#ffffff";
+              ctx.fillRect(0, 0, width, height);
+              ctx.drawImage(img, 0, 0, width, height);
+
+              const encoded = canvas
+                .toDataURL("image/jpeg", QUALITY)
+                .split(",")[1];
+
+              if (encoded.length > MAX_BYTES) {
+                alert(
+                  "That photo is too large even after resizing. Please choose a different one.",
+                );
+                input.value = "";
+                return;
+              }
+
+              field.value = encoded;
+              form.submit();
+            };
+            img.onerror = () => {
+              alert("That file could not be read as an image.");
+              input.value = "";
+            };
+            img.src = reader.result;
+          };
+          reader.onerror = () => {
+            alert("That file could not be read.");
+            input.value = "";
+          };
+          reader.readAsDataURL(file);
+        });
+      })();
+
+      // ---- Profile dropdown + logout confirmation ----
+      (function () {
+        const pill = document.getElementById("profilePill");
+        const menu = document.getElementById("profileMenu");
+        const overlay = document.getElementById("logoutConfirm");
+        const logoutBtn = document.getElementById("profileLogoutBtn");
+        const cancelBtn = document.getElementById("logoutCancel");
+        const confirmBtn = document.getElementById("logoutConfirmBtn");
+
+        if (!pill || !menu) return;
+
+        function openMenu() {
+          menu.classList.add("open");
+          pill.setAttribute("aria-expanded", "true");
+        }
+
+        function closeMenu() {
+          menu.classList.remove("open");
+          pill.setAttribute("aria-expanded", "false");
+        }
+
+        pill.addEventListener("click", (e) => {
+          e.stopPropagation();
+          menu.classList.contains("open") ? closeMenu() : openMenu();
+        });
+
+        // Clicking anywhere outside closes the dropdown
+        document.addEventListener("click", (e) => {
+          if (!menu.contains(e.target) && !pill.contains(e.target)) closeMenu();
+        });
+
+        function openConfirm() {
+          overlay.classList.add("open");
+          overlay.setAttribute("aria-hidden", "false");
+          document.body.classList.add("modal-open");
+          setTimeout(() => confirmBtn.focus(), 60);
+        }
+
+        function closeConfirm() {
+          overlay.classList.remove("open");
+          overlay.setAttribute("aria-hidden", "true");
+          document.body.classList.remove("modal-open");
+        }
+
+        logoutBtn.addEventListener("click", () => {
+          closeMenu();
+          openConfirm();
+        });
+
+        cancelBtn.addEventListener("click", closeConfirm);
+
+        // Clicking the dimmed backdrop cancels; clicks inside the dialog don't
+        overlay.addEventListener("click", (e) => {
+          if (e.target === overlay) closeConfirm();
+        });
+
+        confirmBtn.addEventListener("click", () => {
+          confirmBtn.disabled = true;
+          confirmBtn.textContent = "Logging out...";
+          window.location.href = "{{ url_for('logout') }}";
+        });
+
+        document.addEventListener("keydown", (e) => {
+          if (e.key !== "Escape") return;
+          if (overlay.classList.contains("open")) closeConfirm();
+          else if (menu.classList.contains("open")) closeMenu();
+        });
+      })();
+    </script>
+  </body>
+</html>

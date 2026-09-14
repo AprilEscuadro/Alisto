@@ -226,6 +226,43 @@
           flex-direction: column-reverse;
         }
       }
+
+      /* ---- save confirmation toast ---- */
+      .settings-toast {
+        position: fixed;
+        left: 50%;
+        bottom: 28px;
+        transform: translate(-50%, 16px);
+        z-index: 1200;
+        display: flex;
+        align-items: center;
+        gap: 9px;
+        padding: 12px 18px;
+        border-radius: 999px;
+        font-size: 13.5px;
+        font-weight: 600;
+        box-shadow: 0 10px 28px rgba(15, 23, 42, 0.18);
+        opacity: 0;
+        pointer-events: none;
+        transition:
+          opacity 0.2s ease,
+          transform 0.2s ease;
+      }
+
+      .settings-toast.show {
+        opacity: 1;
+        transform: translate(-50%, 0);
+      }
+
+      .settings-toast.success {
+        background: var(--green-bg);
+        color: #14612f;
+      }
+
+      .settings-toast.error {
+        background: #fef2f2;
+        color: #b91c1c;
+      }
     </style>
   </head>
   <body>
@@ -324,10 +361,17 @@
               aria-haspopup="true"
               aria-expanded="false"
             >
-              <span class="avatar">{{ full_name[:1] }}</span>
+              <span class="avatar">
+                {% if account.photo_base64 %}
+                <img
+                  src="data:image/jpeg;base64,{{ account.photo_base64 }}"
+                  alt=""
+                />
+                {% else %}{{ account.initials }}{% endif %}
+              </span>
               <span class="profile-text">
-                <strong>{{ full_name }}</strong>
-                <small>{{ role|capitalize }}</small>
+                <strong>{{ account.full_name }}</strong>
+                <small>{{ account.role|capitalize }}</small>
               </span>
               <i data-lucide="chevron-down"></i>
             </button>
@@ -335,16 +379,16 @@
             <!-- ---- PROFILE DROPDOWN ---- -->
             <div class="profile-menu" id="profileMenu" role="menu">
               <div class="profile-menu-head">
-                <strong>{{ full_name }}</strong>
-                <small>{{ role|capitalize }}</small>
+                <strong>{{ account.full_name }}</strong>
+                <small>{{ account.role|capitalize }}</small>
               </div>
               <a
                 class="profile-menu-item"
                 role="menuitem"
-                href="{{ url_for('settings') }}"
+                href="{{ url_for('my_profile') }}"
               >
-                <i data-lucide="settings"></i>
-                <span>Settings</span>
+                <i data-lucide="user-round"></i>
+                <span>My Profile</span>
               </a>
               <button
                 type="button"
@@ -407,12 +451,7 @@
                   <input
                     type="checkbox"
                     name="emergency_alerts"
-                    {%
-                    if
-                    settings.emergency_alerts
-                    %}checked{%
-                    endif
-                    %}
+                    {% if settings.emergency_alerts %}checked{% endif %}
                   />
                   <span class="toggle-slider"></span>
                 </label>
@@ -433,12 +472,7 @@
                   <input
                     type="checkbox"
                     name="medicine_reminders"
-                    {%
-                    if
-                    settings.medicine_reminders
-                    %}checked{%
-                    endif
-                    %}
+                    {% if settings.medicine_reminders %}checked{% endif %}
                   />
                   <span class="toggle-slider"></span>
                 </label>
@@ -459,66 +493,13 @@
                   <input
                     type="checkbox"
                     name="device_alerts"
-                    {%
-                    if
-                    settings.device_alerts
-                    %}checked{%
-                    endif
-                    %}
+                    {% if settings.device_alerts %}checked{% endif %}
                   />
                   <span class="toggle-slider"></span>
                 </label>
               </div>
             </div>
 
-            <div class="settings-section">
-              <h3 class="settings-section-title">App &amp; Data</h3>
-
-              <div
-                class="settings-row"
-                data-label="location updates allow location access for tracking"
-              >
-                <div class="settings-row-icon purple">
-                  <i data-lucide="map-pin"></i>
-                </div>
-                <div class="settings-row-text">
-                  <strong>Location Updates</strong>
-                  <small>Allow location access for tracking</small>
-                </div>
-                <label class="toggle-switch">
-                  <input
-                    type="checkbox"
-                    name="location_updates"
-                    {%
-                    if
-                    settings.location_updates
-                    %}checked{%
-                    endif
-                    %}
-                  />
-                  <span class="toggle-slider"></span>
-                </label>
-              </div>
-            </div>
-
-            <div class="settings-section">
-              <h3 class="settings-section-title">Security</h3>
-
-              <a
-                href="{{ url_for('change_password') }}"
-                class="settings-row settings-row-link"
-                data-label="change password update your account password"
-              >
-                <div class="settings-row-icon primary">
-                  <i data-lucide="lock"></i>
-                </div>
-                <div class="settings-row-text">
-                  <strong>Change Password</strong>
-                  <small>Update your account password</small>
-                </div>
-                <i data-lucide="chevron-right" class="settings-row-chevron"></i>
-              </a>
-            </div>
           </section>
 
           <footer class="main-footer">
@@ -527,6 +508,9 @@
         </div>
       </main>
     </div>
+
+    <!-- Confirms the write actually reached Firestore. -->
+    <div class="settings-toast" id="settingsToast" role="status"></div>
 
     <!-- ============ LOGOUT CONFIRMATION ============ -->
     <div class="confirm-overlay" id="logoutConfirm" aria-hidden="true">
@@ -596,19 +580,54 @@
         });
       }
 
-      // Save Changes — collect toggle states (wire up to a real endpoint later)
-      const saveBtn = document.getElementById("saveChangesBtn");
-      if (saveBtn) {
-        saveBtn.addEventListener("click", () => {
-          const toggles = document.querySelectorAll(
-            '.toggle-switch input[type="checkbox"]',
-          );
-          const payload = {};
-          toggles.forEach((t) => (payload[t.name] = t.checked));
-          console.log("Settings payload:", payload);
-          // TODO: POST payload to /settings
+      // ---- Save Changes — writes the toggle states to Firestore ----
+      (function () {
+        const saveBtn = document.getElementById("saveChangesBtn");
+        const toast = document.getElementById("settingsToast");
+        if (!saveBtn) return;
+
+        let toastTimer = null;
+
+        function showToast(message, type) {
+          if (!toast) return;
+          clearTimeout(toastTimer);
+          toast.textContent = message;
+          toast.className = "settings-toast show " + type;
+          toastTimer = setTimeout(() => {
+            toast.className = "settings-toast " + type;
+          }, 2600);
+        }
+
+        saveBtn.addEventListener("click", async () => {
+          const form = new FormData();
+          document
+            .querySelectorAll('.toggle-switch input[type="checkbox"]')
+            .forEach((t) => form.append(t.name, t.checked ? "on" : "off"));
+
+          saveBtn.disabled = true;
+          const original = saveBtn.innerHTML;
+          saveBtn.textContent = "Saving...";
+
+          try {
+            const res = await fetch("/settings/save", {
+              method: "POST",
+              body: form,
+            });
+            const data = await res.json();
+            showToast(
+              data.message || (data.success ? "Settings saved." : "Could not save."),
+              data.success ? "success" : "error",
+            );
+          } catch (err) {
+            console.error(err);
+            showToast("Cannot reach the server. Please try again.", "error");
+          }
+
+          saveBtn.disabled = false;
+          saveBtn.innerHTML = original;
+          lucide.createIcons();
         });
-      }
+      })();
 
       // ---- Profile dropdown + logout confirmation ----
       (function () {

@@ -1,0 +1,451 @@
+/* ============================================================
+   MY PROFILE (family)
+   Reads the signed-in account from Firestore and lets the user
+   edit their name, email, phone, and password.
+   Loads on top of dashboard.css, which provides the shell, the
+   header, and the :root design tokens.
+   ============================================================ */
+
+.profile-layout {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+  max-width: 1080px;
+}
+
+/* Personal Information on the left, Change Password on the right. */
+.profile-columns {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 18px;
+  align-items: start;
+}
+
+/* ---------- flash messages ---------- */
+
+.flash-stack {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  max-width: 1080px;
+  margin-bottom: 18px;
+}
+
+.flash {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 12px 15px;
+  border-radius: 11px;
+  font-size: 13.5px;
+  line-height: 1.5;
+  border: 1px solid transparent;
+}
+
+.flash i {
+  width: 17px;
+  height: 17px;
+  flex-shrink: 0;
+  margin-top: 1px;
+}
+
+.flash-success {
+  background: var(--green-bg);
+  border-color: rgba(22, 163, 74, 0.25);
+  color: #14612f;
+}
+
+.flash-error {
+  background: var(--red-bg);
+  border-color: rgba(220, 38, 38, 0.25);
+  color: #a3231f;
+}
+
+.flash-info {
+  background: var(--blue-light);
+  border-color: rgba(37, 99, 235, 0.25);
+  color: #1c3f8f;
+}
+
+/* ---------- shared card ---------- */
+
+.profile-card {
+  background: var(--white);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 22px;
+}
+
+.profile-card-head {
+  margin-bottom: 20px;
+}
+
+.profile-card-head h3 {
+  font-family: "Nunito", sans-serif;
+  font-size: 16.5px;
+  font-weight: 800;
+  color: var(--ink);
+  margin: 0 0 3px;
+}
+
+.profile-card-head p {
+  font-size: 13px;
+  color: var(--muted);
+  margin: 0;
+}
+
+/* ---------- identity card ---------- */
+
+.profile-identity {
+  display: flex;
+  align-items: center;
+  gap: 18px;
+}
+
+.profile-avatar-form {
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+}
+
+.profile-avatar-remove-form {
+  margin: 0;
+}
+
+.profile-avatar-remove {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 4px 8px;
+  border: none;
+  border-radius: 7px;
+  background: transparent;
+  color: #dc2626;
+  font-family: "Inter", sans-serif;
+  font-size: 11.5px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.profile-avatar-remove:hover {
+  background: var(--red-bg);
+}
+
+.profile-avatar-remove i,
+.profile-avatar-remove svg {
+  width: 12px;
+  height: 12px;
+}
+
+.profile-identity-avatar {
+  position: relative;
+  cursor: pointer;
+  padding: 0;
+  border: none;
+  width: 72px;
+  height: 72px;
+  border-radius: 50%;
+  background: var(--blue-light);
+  color: var(--blue);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-family: "Nunito", sans-serif;
+  font-size: 25px;
+  font-weight: 800;
+  flex-shrink: 0;
+  overflow: hidden;
+}
+
+.profile-identity-avatar img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.profile-avatar-edit {
+  position: absolute;
+  right: -2px;
+  bottom: -2px;
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  background: var(--blue);
+  color: var(--white);
+  border: 2px solid var(--white);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: filter 0.15s ease;
+}
+
+.profile-avatar-edit i,
+.profile-avatar-edit svg {
+  width: 13px;
+  height: 13px;
+}
+
+.profile-identity-avatar:hover .profile-avatar-edit {
+  filter: brightness(0.9);
+}
+
+.profile-avatar-hint {
+  font-size: 12px;
+  color: var(--muted);
+  margin-top: 6px !important;
+}
+
+.profile-identity-text h2 {
+  font-family: "Nunito", sans-serif;
+  font-size: 21px;
+  font-weight: 800;
+  color: var(--ink);
+  margin: 0 0 6px;
+}
+
+.profile-role-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--blue);
+  margin-bottom: 5px;
+}
+
+.profile-role-badge i {
+  width: 14px;
+  height: 14px;
+}
+
+.profile-identity-text p {
+  font-size: 13px;
+  color: var(--muted);
+  margin: 0;
+}
+
+/* ---------- forms ---------- */
+
+.profile-form {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.profile-field-group {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+}
+
+.profile-field-group label {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--ink);
+}
+
+.profile-input-wrap {
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+
+.profile-input-wrap > i {
+  position: absolute;
+  left: 13px;
+  width: 17px;
+  height: 17px;
+  color: var(--muted);
+  pointer-events: none;
+}
+
+.profile-input-wrap input {
+  width: 100%;
+  padding: 12px 14px 12px 40px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--bg);
+  font-family: "Inter", sans-serif;
+  font-size: 14px;
+  color: var(--ink);
+  transition: border-color 0.15s ease, background 0.15s ease;
+}
+
+.profile-input-wrap input::placeholder {
+  color: #9aa3af;
+}
+
+.profile-input-wrap input:focus {
+  outline: none;
+  border-color: var(--blue);
+  background: var(--white);
+}
+
+.profile-eye {
+  position: absolute;
+  right: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  border: none;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+}
+
+.profile-eye:hover {
+  background: var(--border);
+}
+
+.profile-eye i,
+.profile-eye svg {
+  width: 17px;
+  height: 17px;
+}
+
+/* Hide the browser's own password reveal button (Edge / Chromium). */
+.profile-input-wrap input[type="password"]::-ms-reveal,
+.profile-input-wrap input[type="password"]::-ms-clear {
+  display: none;
+  width: 0;
+  height: 0;
+}
+
+.profile-field-hint {
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.profile-btn {
+  align-self: flex-start;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 12px 20px;
+  border: none;
+  border-radius: 10px;
+  background: var(--blue);
+  color: var(--white);
+  font-family: "Inter", sans-serif;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: filter 0.15s ease;
+}
+
+.profile-btn:hover {
+  filter: brightness(0.94);
+}
+
+.profile-btn i {
+  width: 16px;
+  height: 16px;
+}
+
+/* ---------- live password checklist ---------- */
+
+.password-rules {
+  margin: -2px 0 2px;
+}
+
+.password-rules-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--ink);
+  margin: 0 0 8px;
+}
+
+.password-rules ul {
+  list-style: none;
+  display: grid;
+  gap: 6px;
+  padding: 0;
+  margin: 0;
+}
+
+.password-rules li {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  font-size: 13px;
+  color: var(--muted);
+  transition: color 0.18s ease;
+}
+
+.password-rules li::before {
+  content: "";
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #cbd5e0;
+  flex-shrink: 0;
+  transition: background 0.18s ease, box-shadow 0.18s ease;
+}
+
+.password-rules li.ok {
+  color: var(--green);
+}
+
+.password-rules li.ok::before {
+  background: var(--green);
+  box-shadow: 0 0 0 3px rgba(22, 163, 74, 0.15);
+}
+
+.password-rules li.bad {
+  color: #dc2626;
+}
+
+.password-rules li.bad::before {
+  background: #dc2626;
+  box-shadow: 0 0 0 3px rgba(220, 38, 38, 0.12);
+}
+
+/* ---------- responsive ---------- */
+
+@media (max-width: 1100px) {
+  .profile-columns {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 560px) {
+  .profile-card {
+    padding: 18px;
+  }
+
+  .profile-identity {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 14px;
+  }
+
+  .profile-btn {
+    align-self: stretch;
+    justify-content: center;
+  }
+}
+
+/* ============================================================
+   HEADER AVATAR — clips the Firestore photo to the 32px circle.
+   Without overflow:hidden the image renders at its natural size
+   and spills out of the pill.
+   ============================================================ */
+
+.avatar {
+  overflow: hidden;
+  padding: 0;
+}
+
+.avatar img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+  border-radius: 50%;
+  flex-shrink: 0;
+}

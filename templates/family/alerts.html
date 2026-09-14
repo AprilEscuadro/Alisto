@@ -324,27 +324,35 @@
               aria-haspopup="true"
               aria-expanded="false"
             >
-              <span class="avatar">{{ full_name[:1] }}</span>
+                           <span class="avatar">
+                {% if account.photo_base64 %}
+                <img
+                  src="data:image/jpeg;base64,{{ account.photo_base64 }}"
+                  alt=""
+                />
+                {% else %}{{ account.initials }}{% endif %}
+              </span>
               <span class="profile-text">
-                <strong>{{ full_name }}</strong>
-                <small>{{ role|capitalize }}</small>
+                <strong>{{ account.full_name }}</strong>
+                <small>{{ account.role|capitalize }}</small>
               </span>
               <i data-lucide="chevron-down"></i>
             </button>
 
             <!-- ---- PROFILE DROPDOWN ---- -->
             <div class="profile-menu" id="profileMenu" role="menu">
-              <div class="profile-menu-head">
-                <strong>{{ full_name }}</strong>
-                <small>{{ role|capitalize }}</small>
+                            <div class="profile-menu-head">
+                <strong>{{ account.full_name }}</strong>
+                <small>{{ account.role|capitalize }}</small>
               </div>
               <a
+                              
                 class="profile-menu-item"
                 role="menuitem"
-                href="{{ url_for('settings') }}"
+                href="{{ url_for('my_profile') }}"
               >
-                <i data-lucide="settings"></i>
-                <span>Settings</span>
+                <i data-lucide="user-round"></i>
+                <span>My Profile</span>
               </a>
               <button
                 type="button"

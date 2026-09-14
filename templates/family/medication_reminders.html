@@ -226,6 +226,244 @@
           flex-direction: column-reverse;
         }
       }
+
+      /* ================= ADD / EDIT REMINDER MODAL ================= */
+      .modal-overlay {
+        position: fixed;
+        inset: 0;
+        z-index: 1000;
+        display: none;
+        align-items: center;
+        justify-content: center;
+        padding: 24px;
+        background: rgba(15, 23, 42, 0.55);
+      }
+      .modal-overlay.open {
+        display: flex;
+      }
+
+      .modal-dialog {
+        background: var(--white);
+        border-radius: 16px;
+        width: 100%;
+        max-width: 620px;
+        max-height: calc(100vh - 48px);
+        display: flex;
+        flex-direction: column;
+        overflow: hidden;
+        box-shadow: 0 24px 48px rgba(15, 23, 42, 0.18);
+      }
+
+      .modal-head {
+        display: flex;
+        align-items: flex-start;
+        justify-content: space-between;
+        gap: 16px;
+        padding: 22px 24px 18px;
+        border-bottom: 1px solid var(--border);
+      }
+      .modal-title {
+        font-size: 18px;
+        font-weight: 700;
+        color: var(--ink);
+        margin: 0;
+      }
+      .modal-sub {
+        font-size: 13px;
+        color: var(--muted);
+        margin: 4px 0 0;
+        max-width: 46ch;
+      }
+      .modal-close {
+        border: none;
+        background: transparent;
+        color: var(--muted);
+        border-radius: 8px;
+        padding: 6px;
+        cursor: pointer;
+        display: flex;
+        flex-shrink: 0;
+      }
+      .modal-close:hover {
+        background: var(--bg);
+        color: var(--ink);
+      }
+      .modal-close i {
+        width: 18px;
+        height: 18px;
+      }
+
+      .modal-body {
+        padding: 20px 24px 24px;
+        overflow-y: auto;
+      }
+
+      .form-section-title {
+        font-size: 12.5px;
+        font-weight: 700;
+        color: var(--ink);
+        margin: 0 0 12px;
+      }
+      .form-section-title:not(:first-of-type) {
+        margin-top: 24px;
+        padding-top: 20px;
+        border-top: 1px solid var(--border);
+      }
+
+      .form-grid {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 14px 16px;
+      }
+      .form-field {
+        display: flex;
+        flex-direction: column;
+        gap: 6px;
+        min-width: 0;
+      }
+      .form-field.span-2 {
+        grid-column: 1 / -1;
+      }
+      .form-field label {
+        font-size: 12.5px;
+        font-weight: 600;
+        color: var(--ink);
+      }
+      .form-field input[type="text"],
+      .form-field input[type="time"],
+      .form-field select {
+        width: 100%;
+        border: 1px solid var(--border);
+        border-radius: 10px;
+        padding: 10px 12px;
+        font-size: 14px;
+        font-family: inherit;
+        color: var(--ink);
+        background: var(--white);
+        outline: none;
+        transition:
+          border-color 0.15s,
+          box-shadow 0.15s;
+      }
+      .form-field input:focus,
+      .form-field select:focus {
+        border-color: var(--blue);
+        box-shadow: 0 0 0 3px var(--blue-light);
+      }
+
+      .form-hint {
+        font-size: 11.5px;
+        color: var(--muted);
+        line-height: 1.5;
+      }
+
+      .checkbox-row {
+        display: flex;
+        align-items: center;
+        gap: 9px;
+        font-size: 13px;
+        font-weight: 500;
+        color: var(--ink);
+        cursor: pointer;
+      }
+
+      /* ---- day picker ---- */
+      .day-picker {
+        display: flex;
+        gap: 6px;
+        flex-wrap: wrap;
+      }
+      .day-picker label {
+        cursor: pointer;
+      }
+      .day-picker input {
+        position: absolute;
+        opacity: 0;
+        pointer-events: none;
+      }
+      .day-picker span {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        min-width: 46px;
+        padding: 8px 10px;
+        border: 1px solid var(--border);
+        border-radius: 9px;
+        font-size: 12.5px;
+        font-weight: 600;
+        color: var(--muted);
+        background: var(--white);
+        transition:
+          background 0.15s,
+          color 0.15s,
+          border-color 0.15s;
+      }
+      .day-picker input:checked + span {
+        background: var(--blue);
+        border-color: var(--blue);
+        color: var(--white);
+      }
+      .day-picker input:focus-visible + span {
+        outline: 2px solid var(--blue);
+        outline-offset: 2px;
+      }
+
+      /* ---- alert ---- */
+      .form-alert {
+        display: none;
+        border-radius: 10px;
+        padding: 11px 14px;
+        font-size: 13px;
+        font-weight: 600;
+        margin-bottom: 18px;
+      }
+      .form-alert.show {
+        display: block;
+      }
+      .form-alert.error {
+        background: #fef2f2;
+        color: #b91c1c;
+      }
+      .form-alert.success {
+        background: var(--green-bg);
+        color: var(--green);
+      }
+
+      .modal-foot {
+        display: flex;
+        justify-content: flex-end;
+        gap: 10px;
+        padding: 16px 24px;
+        border-top: 1px solid var(--border);
+        background: var(--bg);
+      }
+      .modal-foot .btn-primary-action:disabled {
+        opacity: 0.65;
+        cursor: not-allowed;
+      }
+
+      @media (max-width: 640px) {
+        .modal-overlay {
+          padding: 0;
+          align-items: flex-end;
+        }
+        .modal-dialog {
+          max-width: 100%;
+          max-height: 92vh;
+          border-radius: 16px 16px 0 0;
+        }
+        .form-grid {
+          grid-template-columns: 1fr;
+        }
+        .modal-foot {
+          flex-direction: column-reverse;
+        }
+        .modal-foot .btn-ghost,
+        .modal-foot .btn-primary-action {
+          width: 100%;
+          justify-content: center;
+        }
+      }
     </style>
   </head>
   <body>
@@ -327,10 +565,17 @@
               aria-haspopup="true"
               aria-expanded="false"
             >
-              <span class="avatar">{{ full_name[:1] }}</span>
+              <span class="avatar">
+                {% if account.photo_base64 %}
+                <img
+                  src="data:image/jpeg;base64,{{ account.photo_base64 }}"
+                  alt=""
+                />
+                {% else %}{{ account.initials }}{% endif %}
+              </span>
               <span class="profile-text">
-                <strong>{{ full_name }}</strong>
-                <small>{{ role|capitalize }}</small>
+                <strong>{{ account.full_name }}</strong>
+                <small>{{ account.role|capitalize }}</small>
               </span>
               <i data-lucide="chevron-down"></i>
             </button>
@@ -338,16 +583,16 @@
             <!-- ---- PROFILE DROPDOWN ---- -->
             <div class="profile-menu" id="profileMenu" role="menu">
               <div class="profile-menu-head">
-                <strong>{{ full_name }}</strong>
-                <small>{{ role|capitalize }}</small>
+                <strong>{{ account.full_name }}</strong>
+                <small>{{ account.role|capitalize }}</small>
               </div>
               <a
                 class="profile-menu-item"
                 role="menuitem"
-                href="{{ url_for('settings') }}"
+                href="{{ url_for('my_profile') }}"
               >
-                <i data-lucide="settings"></i>
-                <span>Settings</span>
+                <i data-lucide="user-round"></i>
+                <span>My Profile</span>
               </a>
               <button
                 type="button"
@@ -469,6 +714,14 @@
               class="med-card"
               data-day="{{ med.day_filter }}"
               data-time-of-day="{{ med.time_of_day }}"
+              data-elder-id="{{ med.elder_id }}"
+              data-medicine-name="{{ med.medicine_name }}"
+              data-dosage="{{ med.dosage }}"
+              data-purpose="{{ med.purpose }}"
+              data-time-value="{{ med.time_value }}"
+              data-frequency="{{ med.frequency }}"
+              data-days="{{ med.days_csv }}"
+              data-voice="{{ '1' if med.voice_reminder_enabled else '0' }}"
             >
               <div class="med-card-top">
                 <div class="med-avatar">
@@ -572,6 +825,169 @@
       </main>
     </div>
 
+    <!-- ============ ADD / EDIT REMINDER MODAL ============ -->
+    <!-- One modal for both. Opening it with a med id loads that reminder's
+         values and posts to /medication-reminders/<id>/update; opening it
+         empty posts to /medication-reminders/add. -->
+    <div class="modal-overlay" id="medModal" aria-hidden="true">
+      <div
+        class="modal-dialog"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="medModalTitle"
+      >
+        <div class="modal-head">
+          <div>
+            <h2 class="modal-title" id="medModalTitle">Add a reminder</h2>
+            <p class="modal-sub">
+              The device reads this schedule out loud at the set time.
+            </p>
+          </div>
+          <button
+            type="button"
+            class="modal-close"
+            id="medModalClose"
+            aria-label="Close"
+          >
+            <i data-lucide="x"></i>
+          </button>
+        </div>
+
+        <div class="modal-body">
+          <div class="form-alert" id="medAlert" role="alert"></div>
+
+          <form id="medForm" novalidate>
+            <p class="form-section-title">Who is it for</p>
+            <div class="form-grid">
+              <div class="form-field span-2">
+                <label for="med_elder_id">Loved one</label>
+                <select id="med_elder_id" name="elder_id" required>
+                  <option value="">Select a loved one</option>
+                  {% for elder in elders %}
+                  <option value="{{ elder.id }}">{{ elder.name }}</option>
+                  {% endfor %}
+                </select>
+              </div>
+            </div>
+
+            <p class="form-section-title">Medicine</p>
+            <div class="form-grid">
+              <div class="form-field">
+                <label for="med_name">Medicine name</label>
+                <input
+                  type="text"
+                  id="med_name"
+                  name="medicine_name"
+                  placeholder="Losartan"
+                  autocomplete="off"
+                  required
+                />
+              </div>
+
+              <div class="form-field">
+                <label for="med_dosage">Dosage</label>
+                <input
+                  type="text"
+                  id="med_dosage"
+                  name="dosage"
+                  placeholder="50mg, 1 tablet"
+                  autocomplete="off"
+                />
+              </div>
+
+              <div class="form-field span-2">
+                <label for="med_purpose">What it is for</label>
+                <input
+                  type="text"
+                  id="med_purpose"
+                  name="purpose"
+                  placeholder="High blood pressure"
+                  autocomplete="off"
+                />
+              </div>
+            </div>
+
+            <p class="form-section-title">Schedule</p>
+            <div class="form-grid">
+              <div class="form-field">
+                <label for="med_time">Time</label>
+                <input type="time" id="med_time" name="reminder_time" required />
+              </div>
+
+              <div class="form-field">
+                <label for="med_frequency">Frequency</label>
+                <select id="med_frequency" name="frequency">
+                  <option value="Daily">Daily</option>
+                  <option value="Weekly">Weekly</option>
+                </select>
+              </div>
+
+              <div class="form-field span-2">
+                <label>Days</label>
+                <div class="day-picker" id="medDayPicker">
+                  <label><input type="checkbox" name="schedule_days" value="Mon" /><span>Mon</span></label>
+                  <label><input type="checkbox" name="schedule_days" value="Tue" /><span>Tue</span></label>
+                  <label><input type="checkbox" name="schedule_days" value="Wed" /><span>Wed</span></label>
+                  <label><input type="checkbox" name="schedule_days" value="Thu" /><span>Thu</span></label>
+                  <label><input type="checkbox" name="schedule_days" value="Fri" /><span>Fri</span></label>
+                  <label><input type="checkbox" name="schedule_days" value="Sat" /><span>Sat</span></label>
+                  <label><input type="checkbox" name="schedule_days" value="Sun" /><span>Sun</span></label>
+                </div>
+                <span class="form-hint">
+                  Leave every day unticked to repeat daily.
+                </span>
+              </div>
+
+              <div class="form-field span-2">
+                <label class="checkbox-row">
+                  <input
+                    type="checkbox"
+                    id="med_voice"
+                    name="voice_reminder_enabled"
+                    checked
+                  />
+                  <span>Read this reminder out loud on the device</span>
+                </label>
+              </div>
+            </div>
+          </form>
+        </div>
+
+        <div class="modal-foot">
+          <button type="button" class="btn-ghost" id="medCancel">Cancel</button>
+          <button type="button" class="btn-primary-action" id="medSubmit">
+            <i data-lucide="check"></i>
+            <span>Save reminder</span>
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- ============ DELETE REMINDER CONFIRMATION ============ -->
+    <div class="confirm-overlay" id="medDeleteConfirm" aria-hidden="true">
+      <div
+        class="confirm-dialog"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="medDeleteTitle"
+      >
+        <div class="confirm-icon"><i data-lucide="trash-2"></i></div>
+        <h2 class="confirm-title" id="medDeleteTitle">Delete this reminder?</h2>
+        <p class="confirm-text">
+          <strong id="medDeleteName">This reminder</strong> will stop being read
+          out on the device. This cannot be undone.
+        </p>
+        <div class="confirm-actions">
+          <button type="button" class="btn-ghost" id="medDeleteCancel">
+            Cancel
+          </button>
+          <button type="button" class="btn-danger-action" id="medDeleteConfirmBtn">
+            Delete
+          </button>
+        </div>
+      </div>
+    </div>
+
     <!-- ============ LOGOUT CONFIRMATION ============ -->
     <div class="confirm-overlay" id="logoutConfirm" aria-hidden="true">
       <div
@@ -631,7 +1047,10 @@
             if (filter === "all") {
               card.style.display = "";
             } else if (filter === "today" || filter === "tomorrow") {
-              card.style.display = card.dataset.day === filter ? "" : "none";
+              // data-day is a space separated list, so a daily reminder
+              // matches BOTH tabs instead of neither.
+              const days = (card.dataset.day || "").split(" ");
+              card.style.display = days.includes(filter) ? "" : "none";
             } else {
               card.style.display =
                 card.dataset.timeOfDay === filter ? "" : "none";
@@ -718,6 +1137,206 @@
           if (e.key !== "Escape") return;
           if (overlay.classList.contains("open")) closeConfirm();
           else if (menu.classList.contains("open")) closeMenu();
+        });
+      })();
+
+      // ---- Add / edit / delete reminders ----
+      (function () {
+        const modal = document.getElementById("medModal");
+        const form = document.getElementById("medForm");
+        const alertBox = document.getElementById("medAlert");
+        const titleEl = document.getElementById("medModalTitle");
+        const submitBtn = document.getElementById("medSubmit");
+        const submitLabel = submitBtn.querySelector("span");
+
+        const deleteConfirm = document.getElementById("medDeleteConfirm");
+        const deleteNameEl = document.getElementById("medDeleteName");
+        const deleteCancelBtn = document.getElementById("medDeleteCancel");
+        const deleteConfirmBtn = document.getElementById("medDeleteConfirmBtn");
+
+        let editingId = null;
+        let deletingId = null;
+
+        function showAlert(message, type) {
+          alertBox.textContent = message;
+          alertBox.className = "form-alert show " + type;
+        }
+
+        function clearAlert() {
+          alertBox.textContent = "";
+          alertBox.className = "form-alert";
+        }
+
+        function openModal(med) {
+          clearAlert();
+          form.reset();
+          editingId = med ? med.id : null;
+
+          titleEl.textContent = med ? "Edit reminder" : "Add a reminder";
+          submitLabel.textContent = med ? "Save changes" : "Save reminder";
+
+          if (med) {
+            form.elder_id.value = med.elderId || "";
+            form.medicine_name.value = med.name || "";
+            form.dosage.value = med.dosage || "";
+            form.purpose.value = med.purpose || "";
+            form.reminder_time.value = med.time || "";
+            form.frequency.value = med.frequency || "Daily";
+            document.getElementById("med_voice").checked = med.voice !== "0";
+
+            const days = (med.days || "").split(",").filter(Boolean);
+            form
+              .querySelectorAll('input[name="schedule_days"]')
+              .forEach((cb) => (cb.checked = days.includes(cb.value)));
+          }
+
+          modal.classList.add("open");
+          modal.setAttribute("aria-hidden", "false");
+          document.body.classList.add("modal-open");
+          setTimeout(() => document.getElementById("med_name").focus(), 60);
+        }
+
+        function closeModal() {
+          modal.classList.remove("open");
+          modal.setAttribute("aria-hidden", "true");
+          document.body.classList.remove("modal-open");
+          editingId = null;
+        }
+
+        [
+          document.getElementById("addReminderBtn"),
+          document.getElementById("emptyAddReminderBtn"),
+        ]
+          .filter(Boolean)
+          .forEach((btn) => btn.addEventListener("click", () => openModal(null)));
+
+        [
+          document.getElementById("medModalClose"),
+          document.getElementById("medCancel"),
+        ]
+          .filter(Boolean)
+          .forEach((btn) => btn.addEventListener("click", closeModal));
+
+        modal.addEventListener("click", (e) => {
+          if (e.target === modal) closeModal();
+        });
+
+        // ---- Edit / delete buttons on each card ----
+        document.querySelectorAll(".med-action-btn").forEach((btn) => {
+          btn.addEventListener("click", () => {
+            const card = btn.closest(".med-card");
+            if (!card) return;
+
+            if (btn.dataset.action === "edit") {
+              openModal({
+                id: btn.dataset.medId,
+                elderId: card.dataset.elderId,
+                name: card.dataset.medicineName,
+                dosage: card.dataset.dosage,
+                purpose: card.dataset.purpose,
+                time: card.dataset.timeValue,
+                frequency: card.dataset.frequency,
+                days: card.dataset.days,
+                voice: card.dataset.voice,
+              });
+              return;
+            }
+
+            deletingId = btn.dataset.medId;
+            deleteNameEl.textContent = card.dataset.medicineName || "This reminder";
+            deleteConfirm.classList.add("open");
+            deleteConfirm.setAttribute("aria-hidden", "false");
+            document.body.classList.add("modal-open");
+          });
+        });
+
+        function closeDeleteConfirm() {
+          deleteConfirm.classList.remove("open");
+          deleteConfirm.setAttribute("aria-hidden", "true");
+          document.body.classList.remove("modal-open");
+          deletingId = null;
+        }
+
+        deleteCancelBtn.addEventListener("click", closeDeleteConfirm);
+        deleteConfirm.addEventListener("click", (e) => {
+          if (e.target === deleteConfirm) closeDeleteConfirm();
+        });
+
+        deleteConfirmBtn.addEventListener("click", async () => {
+          if (!deletingId) return;
+          deleteConfirmBtn.disabled = true;
+          deleteConfirmBtn.textContent = "Deleting...";
+
+          try {
+            const res = await fetch(
+              `/medication-reminders/${deletingId}/delete`,
+              { method: "POST" },
+            );
+            const data = await res.json();
+            if (data.success) {
+              window.location.reload();
+              return;
+            }
+            closeDeleteConfirm();
+            alert(data.message || "Could not delete the reminder.");
+          } catch (err) {
+            closeDeleteConfirm();
+            alert("Cannot reach the server. Please try again.");
+          }
+
+          deleteConfirmBtn.disabled = false;
+          deleteConfirmBtn.textContent = "Delete";
+        });
+
+        // ---- Save ----
+        submitBtn.addEventListener("click", async () => {
+          clearAlert();
+
+          if (!form.elder_id.value) {
+            showAlert("Choose which loved one this reminder is for.", "error");
+            return;
+          }
+          if (!form.medicine_name.value.trim()) {
+            showAlert("Enter the medicine name.", "error");
+            return;
+          }
+          if (!form.reminder_time.value) {
+            showAlert("Set the time this reminder should go off.", "error");
+            return;
+          }
+
+          submitBtn.disabled = true;
+          submitLabel.textContent = "Saving...";
+
+          const url = editingId
+            ? `/medication-reminders/${editingId}/update`
+            : "/medication-reminders/add";
+
+          try {
+            const res = await fetch(url, {
+              method: "POST",
+              body: new FormData(form),
+            });
+            const data = await res.json();
+
+            if (data.success) {
+              submitLabel.textContent = "Saved";
+              setTimeout(() => window.location.reload(), 600);
+              return;
+            }
+            showAlert(data.message || "Could not save. Please try again.", "error");
+          } catch (err) {
+            showAlert("Cannot reach the server. Please try again.", "error");
+          }
+
+          submitBtn.disabled = false;
+          submitLabel.textContent = editingId ? "Save changes" : "Save reminder";
+        });
+
+        document.addEventListener("keydown", (e) => {
+          if (e.key !== "Escape") return;
+          if (deleteConfirm.classList.contains("open")) closeDeleteConfirm();
+          else if (modal.classList.contains("open")) closeModal();
         });
       })();
     </script>

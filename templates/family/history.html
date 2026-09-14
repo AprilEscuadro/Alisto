@@ -324,10 +324,17 @@
               aria-haspopup="true"
               aria-expanded="false"
             >
-              <span class="avatar">{{ full_name[:1] }}</span>
+              <span class="avatar">
+                {% if account.photo_base64 %}
+                <img
+                  src="data:image/jpeg;base64,{{ account.photo_base64 }}"
+                  alt=""
+                />
+                {% else %}{{ account.initials }}{% endif %}
+              </span>
               <span class="profile-text">
-                <strong>{{ full_name }}</strong>
-                <small>{{ role|capitalize }}</small>
+                <strong>{{ account.full_name }}</strong>
+                <small>{{ account.role|capitalize }}</small>
               </span>
               <i data-lucide="chevron-down"></i>
             </button>
@@ -335,16 +342,16 @@
             <!-- ---- PROFILE DROPDOWN ---- -->
             <div class="profile-menu" id="profileMenu" role="menu">
               <div class="profile-menu-head">
-                <strong>{{ full_name }}</strong>
-                <small>{{ role|capitalize }}</small>
+                <strong>{{ account.full_name }}</strong>
+                <small>{{ account.role|capitalize }}</small>
               </div>
               <a
                 class="profile-menu-item"
                 role="menuitem"
-                href="{{ url_for('settings') }}"
+                href="{{ url_for('my_profile') }}"
               >
-                <i data-lucide="settings"></i>
-                <span>Settings</span>
+                <i data-lucide="user-round"></i>
+                <span>My Profile</span>
               </a>
               <button
                 type="button"
@@ -379,13 +386,13 @@
                   autocomplete="off"
                 />
               </div>
-              <button
-                type="button"
+              <a
+                href="{{ url_for('export_history') }}"
                 class="btn-primary-action"
                 id="exportHistoryBtn"
               >
                 <i data-lucide="download"></i> Export History
-              </button>
+              </a>
             </div>
           </div>
 
@@ -398,7 +405,7 @@
               <div class="summary-content">
                 <span class="summary-label">Emergency Alerts</span>
                 <span class="summary-value">{{ alert_count }}</span>
-                <span class="summary-sub">This Month</span>
+                <span class="summary-sub">All Time</span>
               </div>
             </div>
 
@@ -409,7 +416,7 @@
               <div class="summary-content">
                 <span class="summary-label">Medication Reminders</span>
                 <span class="summary-value">{{ med_reminder_count }}</span>
-                <span class="summary-sub">This Month</span>
+                <span class="summary-sub">All Time</span>
               </div>
             </div>
 
@@ -420,7 +427,7 @@
               <div class="summary-content">
                 <span class="summary-label">Device Activities</span>
                 <span class="summary-value">{{ device_activity_count }}</span>
-                <span class="summary-sub">This Month</span>
+                <span class="summary-sub">All Time</span>
               </div>
             </div>
 
@@ -430,8 +437,8 @@
               </div>
               <div class="summary-content">
                 <span class="summary-label">Total Activities</span>
-                <span class="summary-value">{{ activities|length }}</span>
-                <span class="summary-sub">This Month</span>
+                <span class="summary-value">{{ total_activity_count }}</span>
+                <span class="summary-sub">All Time</span>
               </div>
             </div>
           </section>
@@ -439,12 +446,12 @@
           <!-- ---- FILTER TABS + DATE RANGE ---- -->
           <div class="filter-tabs" id="historyFilters">
             <button type="button" class="filter-tab active" data-filter="all">
-              All Activities ({{ activities|length }})
+              All Activities ({{ total_activity_count }})
             </button>
             <button type="button" class="filter-tab" data-filter="alert">
               <span class="dot emergency"></span> Alerts ({{ alert_count }})
             </button>
-            <button type="button" class="filter-tab" data-filter="med-reminder">
+            <button type="button" class="filter-tab" data-filter="med_reminder">
               <span class="dot online"></span> Med Reminders ({{
               med_reminder_count }})
             </button>
@@ -452,12 +459,9 @@
               <span class="dot success"></span> Device Activities ({{
               device_activity_count }})
             </button>
-            <button type="button" class="filter-tab" id="dateRangeBtn">
+            <span class="filter-tab filter-tab-static">
               <i data-lucide="calendar"></i> {{ date_range_label }}
-            </button>
-            <button type="button" class="filter-tab" id="advancedFilterBtn">
-              <i data-lucide="list-filter"></i> Filter
-            </button>
+            </span>
           </div>
 
           <!-- ---- HISTORY TABLE ---- -->
@@ -542,30 +546,43 @@
               pagination.total }} activities</span
             >
             <div class="pagination-controls">
-              <button
-                type="button"
+              {% if pagination.current_page > 1 %}
+              <a
                 class="page-btn"
-                {{ 'disabled' if pagination.current_page == 1 else '' }}
+                href="{{ url_for('history', page=pagination.current_page - 1) }}"
               >
                 <i data-lucide="chevron-left"></i>
-              </button>
-              {% for page in pagination.pages %} {% if page == '...' %}
-              <span class="page-ellipsis">…</span>
+              </a>
               {% else %}
-              <button
-                type="button"
-                class="page-btn {{ 'active' if page == pagination.current_page else '' }}"
-              >
+              <span class="page-btn disabled">
+                <i data-lucide="chevron-left"></i>
+              </span>
+              {% endif %}
+
+              {% for page in pagination.pages %}
+              {% if page == '...' %}
+              <span class="page-ellipsis">…</span>
+              {% elif page == pagination.current_page %}
+              <span class="page-btn active">{{ page }}</span>
+              {% else %}
+              <a class="page-btn" href="{{ url_for('history', page=page) }}">
                 {{ page }}
-              </button>
-              {% endif %} {% endfor %}
-              <button
-                type="button"
+              </a>
+              {% endif %}
+              {% endfor %}
+
+              {% if pagination.current_page < pagination.total_pages %}
+              <a
                 class="page-btn"
-                {{ 'disabled' if pagination.current_page == pagination.total_pages else '' }}
+                href="{{ url_for('history', page=pagination.current_page + 1) }}"
               >
                 <i data-lucide="chevron-right"></i>
-              </button>
+              </a>
+              {% else %}
+              <span class="page-btn disabled">
+                <i data-lucide="chevron-right"></i>
+              </span>
+              {% endif %}
             </div>
           </div>
           {% endif %}
@@ -620,36 +637,53 @@
         });
       }
 
-      // Filter tabs
-      const filterButtons = document.querySelectorAll(
-        "#historyFilters .filter-tab[data-filter]",
-      );
-      const rows = document.querySelectorAll("#historyTableBody tr[data-type]");
+      // ---- Filter tabs + search ----
+      // Both run through one apply() so typing a search does not wipe out
+      // the active type filter, and vice versa.
+      (function () {
+        const filterButtons = document.querySelectorAll(
+          "#historyFilters .filter-tab[data-filter]",
+        );
+        const rows = document.querySelectorAll("#historyTableBody tr[data-type]");
+        const searchInput = document.getElementById("historySearch");
+        const emptyRow = document.querySelector(".history-empty");
 
-      filterButtons.forEach((btn) => {
-        btn.addEventListener("click", () => {
-          filterButtons.forEach((b) => b.classList.remove("active"));
-          btn.classList.add("active");
+        let activeFilter = "all";
 
-          const filter = btn.dataset.filter;
+        function apply() {
+          const query = searchInput
+            ? searchInput.value.trim().toLowerCase()
+            : "";
+          let visible = 0;
+
           rows.forEach((row) => {
-            row.style.display =
-              filter === "all" || row.dataset.type === filter ? "" : "none";
+            const typeOk =
+              activeFilter === "all" || row.dataset.type === activeFilter;
+            const textOk =
+              !query || row.textContent.toLowerCase().includes(query);
+            const show = typeOk && textOk;
+            row.style.display = show ? "" : "none";
+            if (show) visible += 1;
+          });
+
+          // Only meaningful when the page rendered rows to begin with.
+          if (emptyRow && rows.length) {
+            emptyRow.closest("tr").style.display = visible ? "none" : "";
+            emptyRow.textContent = "No activity matches this filter.";
+          }
+        }
+
+        filterButtons.forEach((btn) => {
+          btn.addEventListener("click", () => {
+            filterButtons.forEach((b) => b.classList.remove("active"));
+            btn.classList.add("active");
+            activeFilter = btn.dataset.filter;
+            apply();
           });
         });
-      });
 
-      // Search
-      const searchInput = document.getElementById("historySearch");
-      if (searchInput) {
-        searchInput.addEventListener("input", () => {
-          const query = searchInput.value.trim().toLowerCase();
-          rows.forEach((row) => {
-            const text = row.textContent.toLowerCase();
-            row.style.display = text.includes(query) ? "" : "none";
-          });
-        });
-      }
+        if (searchInput) searchInput.addEventListener("input", apply);
+      })();
 
       // ---- Profile dropdown + logout confirmation ----
       (function () {
