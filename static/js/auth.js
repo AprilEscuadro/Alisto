@@ -106,6 +106,28 @@ function validateStep(step) {
     }
 
     if (step === 1) {
+        const state = getPasswordState();
+
+        if (!state.allPassed) {
+            updatePasswordChecklist();
+            document.getElementById('password').focus();
+            showFieldError(
+                document.getElementById('password'),
+                'Your password does not meet the requirements below yet.'
+            );
+            return false;
+        }
+
+        if (!state.matches) {
+            updatePasswordChecklist();
+            document.getElementById('confirm_password').focus();
+            showFieldError(
+                document.getElementById('confirm_password'),
+                'Both passwords must match.'
+            );
+            return false;
+        }
+
         const terms = document.getElementById('terms');
         if (!terms.checked) {
             showTermsError("Please read and agree to the Terms and Privacy Policy first.");
@@ -215,42 +237,60 @@ async function nextStep(currentStep, btn) {
             const res = await fetch('/check_device', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ device_id: deviceId })
+                body: JSON.stringify({ device_id: deviceId, role: 'family' })
             });
             const data = await res.json();
 
             if (!data.valid) {
                 showFieldError(deviceInput, data.message || 'Invalid Device ID.');
-                if (btn) {
-                    btn.disabled = false;
-                    btn.textContent = 'Continue';
-                }
+                if (btn) { btn.disabled = false; btn.textContent = 'Continue'; }
                 return; // STOP — do not proceed to step 3
+            }
+
+            // Device is taken AND full — no room for another family member.
+            if (data.already_registered && !data.can_join) {
+                showFieldError(deviceInput, data.message || 'This device has no free family slots left.');
+                if (btn) { btn.disabled = false; btn.textContent = 'Continue'; }
+                return;
+            }
+
+            // Any family member after the first one joins the existing elder.
+            if (data.already_registered) {
+                applyJoinMode(data);
+            } else {
+                clearJoinMode();
             }
         } catch (err) {
             console.error(err);
             showFieldError(deviceInput, 'There was a problem verifying the Device ID. Please try again.');
-            if (btn) {
-                btn.disabled = false;
-                btn.textContent = 'Continue';
-            }
+            if (btn) { btn.disabled = false; btn.textContent = 'Continue'; }
             return;
         }
 
-        if (btn) {
-            btn.disabled = false;
-            btn.textContent = 'Continue';
-        }
+        if (btn) { btn.disabled = false; btn.textContent = 'Continue'; }
     }
 
-    // 3. Fill the review fields right before showing the Review step
+    // 3. Join mode: the address is already on file, so step 4 is skipped.
+    if (joinContext && currentStep === 3) {
+        fillReview();
+        showStep(5);
+        return;
+    }
+
+    // 4. Fill the review fields right before showing the Review step
     if (currentStep === 4) fillReview();
 
-    // 4. Finally, advance to the next step
+    // 5. Finally, advance to the next step
     showStep(currentStep + 1);
 }
 
 function prevStep(current) {
+    // Join mode skips step 4 (Home Address), so going back from Review
+    // must land on step 3, not step 4.
+    if (joinContext && current === 5) {
+        showStep(3);
+        return;
+    }
     showStep(current - 1);
 }
 
@@ -270,11 +310,16 @@ function fillReview() {
 
     setReviewText('rev_occupation', document.getElementById('occupation')?.value);
 
-    const house = document.getElementById('house_no')?.value || '';
-    const street = document.getElementById('street')?.value || '';
-    const brgy = document.getElementById('barangay')?.value || '';
-    const city = document.getElementById('city')?.value || '';
-    setReviewText('rev_address', [house, street, brgy, city].filter(Boolean).join(', '));
+    // Join mode never collects an address — it is already on the elder profile.
+    if (joinContext) {
+        setReviewText('rev_address', 'Already on file for this loved one');
+    } else {
+        const house = document.getElementById('house_no')?.value || '';
+        const street = document.getElementById('street')?.value || '';
+        const brgy = document.getElementById('barangay')?.value || '';
+        const city = document.getElementById('city')?.value || '';
+        setReviewText('rev_address', [house, street, brgy, city].filter(Boolean).join(', '));
+    }
 }
 
 function setReviewText(elementId, value) {
@@ -440,4 +485,132 @@ function handleScanSuccess(deviceId) {
             nextStep(2, continueBtn);
         }, 900);
     }, 500);
+}
+
+// ============================================================
+// PASSWORD RULES — live checklist under the password fields
+// ============================================================
+
+const PASSWORD_RULES = [
+    { key: 'length',  test: p => p.length >= 6 },
+    { key: 'upper',   test: p => /[A-Z]/.test(p) },
+    { key: 'lower',   test: p => /[a-z]/.test(p) },
+    { key: 'number',  test: p => /\d/.test(p) },
+    { key: 'special', test: p => /[^A-Za-z0-9]/.test(p) },
+];
+
+function getPasswordState() {
+    const pwEl = document.getElementById('password');
+    const confirmEl = document.getElementById('confirm_password');
+    const pw = pwEl ? pwEl.value : '';
+    const confirm = confirmEl ? confirmEl.value : '';
+
+    return {
+        password: pw,
+        confirm: confirm,
+        allPassed: PASSWORD_RULES.every(r => r.test(pw)),
+        matches: pw.length > 0 && pw === confirm,
+    };
+}
+
+function updatePasswordChecklist() {
+    const list = document.getElementById('passwordRules');
+    if (!list) return;
+
+    const state = getPasswordState();
+    const typed = state.password.length > 0;
+
+    PASSWORD_RULES.forEach(rule => {
+        const li = list.querySelector(`[data-rule="${rule.key}"]`);
+        if (!li) return;
+        li.classList.remove('ok', 'bad');
+        if (!typed) return;                       // stay neutral until they start typing
+        li.classList.add(rule.test(state.password) ? 'ok' : 'bad');
+    });
+
+    const matchLi = list.querySelector('[data-rule="match"]');
+    if (matchLi) {
+        matchLi.classList.remove('ok', 'bad');
+        if (state.confirm.length > 0) {
+            matchLi.classList.add(state.matches ? 'ok' : 'bad');
+        }
+    }
+}
+
+document.addEventListener('DOMContentLoaded', function () {
+    ['password', 'confirm_password'].forEach(id => {
+        const el = document.getElementById(id);
+        if (el) el.addEventListener('input', updatePasswordChecklist);
+    });
+    updatePasswordChecklist();
+});
+
+// ============================================================
+// JOIN MODE — every family member after the first, on a device
+// that is already linked to an elder
+// ============================================================
+
+let joinContext = null;
+
+function lockField(el) {
+    if (!el) return;
+    el.readOnly = true;                 // readOnly, NOT disabled — disabled fields don't submit
+    el.classList.add('field-locked');
+}
+
+function unlockField(el) {
+    if (!el) return;
+    el.readOnly = false;
+    el.classList.remove('field-locked');
+}
+
+function applyJoinMode(data) {
+    joinContext = data;
+
+    document.getElementById('join_mode').value = 'join';
+    document.getElementById('existing_elder_id').value = data.elder_id || '';
+
+    const nameEl = document.getElementById('senior_full_name');
+    const dobEl = document.getElementById('dob');
+
+    if (nameEl) { nameEl.value = data.elder_full_name || ''; lockField(nameEl); }
+    if (dobEl)  { dobEl.value  = data.elder_dob || '';       lockField(dobEl); }
+
+    const notice = document.getElementById('joinNotice');
+    const noticeText = document.getElementById('joinNoticeText');
+    if (notice && noticeText) {
+        const who = data.elder_full_name || data.elder_display_name || 'this loved one';
+        noticeText.textContent =
+            `This device is already registered to ${who}. Their details are filled in ` +
+            `for you — just tell us how you are related. ` +
+            `(${data.family_count} of ${data.family_limit} family slots used.)`;
+        notice.style.display = 'flex';
+    }
+
+    // Step 4 is skipped in join mode, so its fields must not block anything.
+    document
+        .querySelectorAll('.wizard-step[data-step="4"] input, .wizard-step[data-step="4"] select')
+        .forEach(el => el.removeAttribute('required'));
+
+    if (typeof lucide !== 'undefined') lucide.createIcons();
+}
+
+function clearJoinMode() {
+    joinContext = null;
+
+    document.getElementById('join_mode').value = 'claim';
+    document.getElementById('existing_elder_id').value = '';
+
+    const nameEl = document.getElementById('senior_full_name');
+    const dobEl = document.getElementById('dob');
+
+    if (nameEl) { unlockField(nameEl); nameEl.value = ''; }
+    if (dobEl)  { unlockField(dobEl);  dobEl.value = ''; }
+
+    const notice = document.getElementById('joinNotice');
+    if (notice) notice.style.display = 'none';
+
+    document
+        .querySelectorAll('.wizard-step[data-step="4"] input, .wizard-step[data-step="4"] select')
+        .forEach(el => el.setAttribute('required', 'required'));
 }

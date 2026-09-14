@@ -997,3 +997,108 @@ input[type="date"] {
         transform: rotate(360deg);
     }
 }
+
+/* ============================================================
+   PASSWORD RULES CHECKLIST — live feedback on the account step
+   ============================================================ */
+
+.password-rules {
+    margin: -6px 0 18px;
+}
+
+.password-rules-title {
+    font-size: 13px;
+    font-weight: 600;
+    color: #444;
+    margin-bottom: 8px;
+}
+
+.password-rules ul {
+    list-style: none;
+    display: grid;
+    gap: 6px;
+    padding: 0;
+    margin: 0;
+}
+
+.password-rules li {
+    display: flex;
+    align-items: center;
+    gap: 9px;
+    font-size: 13px;
+    color: #8a8a8a;
+    transition: color 0.18s ease;
+}
+
+.password-rules li::before {
+    content: '';
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: #cbd5e0;
+    flex-shrink: 0;
+    transition: background 0.18s ease, box-shadow 0.18s ease;
+}
+
+.password-rules li.ok {
+    color: var(--success);
+}
+
+.password-rules li.ok::before {
+    background: var(--success);
+    box-shadow: 0 0 0 3px rgba(40, 167, 69, 0.15);
+}
+
+.password-rules li.bad {
+    color: var(--danger);
+}
+
+.password-rules li.bad::before {
+    background: var(--danger);
+    box-shadow: 0 0 0 3px rgba(220, 53, 69, 0.12);
+}
+
+/* Hide the browser's own password reveal button (Edge / Chromium) so only
+   our .toggle-password eye shows. */
+input[type="password"]::-ms-reveal,
+input[type="password"]::-ms-clear {
+    display: none;
+    width: 0;
+    height: 0;
+}
+
+/* ============================================================
+   JOIN MODE — notice banner + locked (pre-filled) fields
+   ============================================================ */
+
+.join-notice {
+    display: flex;
+    align-items: flex-start;
+    gap: 10px;
+    background: rgba(80, 136, 254, 0.08);
+    border: 1px solid rgba(80, 136, 254, 0.25);
+    border-radius: 12px;
+    padding: 12px 14px;
+    margin-bottom: 20px;
+}
+
+.join-notice-icon {
+    width: 18px;
+    height: 18px;
+    color: var(--primary);
+    flex-shrink: 0;
+    margin-top: 1px;
+}
+
+.join-notice p {
+    font-size: 13px;
+    line-height: 1.5;
+    color: #3a4a63;
+    margin: 0;
+}
+
+input.field-locked {
+    background: #f4f6f9;
+    color: #6b7280;
+    cursor: not-allowed;
+}

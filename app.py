@@ -9,6 +9,7 @@ from datetime import datetime, timedelta, timezone
 import requests
 import os
 import uuid
+import re
 
 app = Flask(__name__)
 app.secret_key = 'alisto-secret-key-change-this-later'
@@ -72,6 +73,21 @@ def _family_link_count(elder_id: str) -> int:
                 count += 1
     return count
 
+# ---------- FAMILY PASSWORD RULES ----------
+# Mirrors PASSWORD_RULES in static/js/auth.js — keep the two in sync.
+FAMILY_PASSWORD_RULES = [
+    (lambda p: len(p) >= 6,                   'be at least 6 characters'),
+    (lambda p: re.search(r'[A-Z]', p),        'include an uppercase letter'),
+    (lambda p: re.search(r'[a-z]', p),        'include a lowercase letter'),
+    (lambda p: re.search(r'\d', p),           'include a number'),
+    (lambda p: re.search(r'[^A-Za-z0-9]', p), 'include a special character'),
+]
+
+
+def _check_family_password(password):
+    """Returns an error message, or None if the password is fine."""
+    missing = [label for rule, label in FAMILY_PASSWORD_RULES if not rule(password)]
+    return 'Password must ' + ', '.join(missing) + '.' if missing else None
 
 @app.route('/check_device', methods=['POST'])
 def check_device():
@@ -100,23 +116,29 @@ def check_device():
         requesting_role = (data.get('role') or 'family').strip()
         family_count = _family_link_count(elder_id)
 
+        # No free family slots left on this device.
         if requesting_role == 'family' and family_count >= MAX_FAMILY_PER_DEVICE:
             return jsonify(
                 valid=True, already_registered=True, can_join=False,
-                elder_id=elder_id, elder_display_name=_first_name(
-                    elder.get('full_name')),
+                elder_id=elder_id,
+                elder_display_name=_first_name(elder.get('full_name')),
                 family_count=family_count, family_limit=MAX_FAMILY_PER_DEVICE,
                 message=f"This device already has the maximum of {MAX_FAMILY_PER_DEVICE} linked family members."
             )
 
+        # There is room — this family member joins the existing elder.
+        # elder_full_name and elder_dob pre-fill step 3 on the register page.
         return jsonify(
             valid=True, already_registered=True, can_join=True,
-            elder_id=elder_id, elder_display_name=_first_name(
-                elder.get('full_name')),
+            elder_id=elder_id,
+            elder_display_name=_first_name(elder.get('full_name')),
+            elder_full_name=elder.get('full_name'),
+            elder_dob=elder.get('date_of_birth'),
             family_count=family_count, family_limit=MAX_FAMILY_PER_DEVICE,
             message='This device is already linked to an ALISTO user.'
         )
 
+    # Device exists but has never been claimed — this is the first family member.
     return jsonify(valid=True, already_registered=False, message='Device ID verified!')
 
 
@@ -166,8 +188,16 @@ def register():
 
         # NEW: BHWs don't register a device or an elder. They go through their own flow
         # and wait for admin approval.
+                # NEW: BHWs don't register a device or an elder. They go through their own flow
+        # and wait for admin approval.
         if role == 'bhw':
             return _register_bhw(full_name, email, password, contact_number, barangay_assigned)
+
+        # NEW: family password strength. Mirrors PASSWORD_RULES in static/js/auth.js.
+        # BHW passwords are not checked here — that flow returns above.
+        password_error = _check_family_password(password)
+        if password_error:
+            return jsonify(success=False, message=password_error), 400
 
         if not serial_number:
             return jsonify(success=False, message='Please enter a Device ID.'), 400
@@ -182,7 +212,7 @@ def register():
                 return jsonify(success=False, message='Missing elder reference for joining.'), 400
             if not relationship:
                 return jsonify(success=False, message='Please specify your relationship to the elder.'), 400
-
+            
         # Email uniqueness (Firestore has no UNIQUE constraint — check manually)
         existing_user = list(
             db.collection('user_account').where(

@@ -72,6 +72,19 @@
           action="{{ url_for('register') }}"
           enctype="multipart/form-data"
         >
+          <!-- JOIN MODE STATE -->
+          <!-- 'claim' = first family member on a fresh device (types the loved
+               one's details). 'join'  = any later family member on a device that
+               already has an elder (details are pre-filled and locked).
+               Both are set by applyJoinMode() / clearJoinMode() in auth.js. -->
+          <input type="hidden" id="join_mode" name="join_mode" value="claim" />
+          <input
+            type="hidden"
+            id="existing_elder_id"
+            name="existing_elder_id"
+            value=""
+          />
+
           <!-- STEP 1: ACCOUNT INFO -->
           <div class="wizard-step active" data-step="1">
             <h1>Create Your Account</h1>
@@ -160,7 +173,6 @@
                     name="password"
                     placeholder="Password"
                     required
-                    minlength="6"
                   />
                   <button
                     type="button"
@@ -181,7 +193,6 @@
                     name="confirm_password"
                     placeholder="Confirm Password"
                     required
-                    minlength="6"
                   />
                   <button
                     type="button"
@@ -192,6 +203,27 @@
                   </button>
                 </div>
               </div>
+            </div>
+
+            <!-- Live password checklist. Dots are grey until the user starts
+                 typing, then turn green (rule met) or red (rule not met).
+                 Driven by updatePasswordChecklist() in auth.js. -->
+            <div class="password-rules" id="passwordRules">
+              <p class="password-rules-title">Password must:</p>
+              <ul>
+                <li data-rule="length"><span>Be at least 6 characters</span></li>
+                <li data-rule="upper">
+                  <span>Include an uppercase letter</span>
+                </li>
+                <li data-rule="lower">
+                  <span>Include a lowercase letter</span>
+                </li>
+                <li data-rule="number"><span>Include a number</span></li>
+                <li data-rule="special">
+                  <span>Include a special character</span>
+                </li>
+                <li data-rule="match"><span>Both passwords match</span></li>
+              </ul>
             </div>
 
             <div class="terms-row">
@@ -300,6 +332,14 @@
           <div class="wizard-step" data-step="3">
             <h1>Loved one's Personal Information</h1>
             <p class="auth-subtitle">Tell us about your loved one.</p>
+
+            <!-- Shown only in join mode: the device already has an elder, so the
+                 name and date of birth below are pre-filled and locked. Filled
+                 in by applyJoinMode() in auth.js. -->
+            <div class="join-notice" id="joinNotice" style="display: none">
+              <i data-lucide="info" class="join-notice-icon"></i>
+              <p id="joinNoticeText"></p>
+            </div>
 
             <div class="form-group">
               <label class="field-label">Full Name</label>
