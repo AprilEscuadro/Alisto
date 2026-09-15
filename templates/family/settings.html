@@ -546,37 +546,12 @@
         });
       }
 
-      // Search settings — filters rows by their data-label text
-      const searchInput = document.getElementById("settingsSearch");
-      const settingsRows = document.querySelectorAll(
-        ".settings-row[data-label]",
-      );
-      const settingsSections = document.querySelectorAll(".settings-section");
-
-      if (searchInput) {
-        searchInput.addEventListener("input", () => {
-          const query = searchInput.value.trim().toLowerCase();
-
-          settingsRows.forEach((row) => {
-            const match = row.dataset.label.includes(query);
-            row.style.display = match ? "" : "none";
-          });
-
-          settingsSections.forEach((section) => {
-            const visibleRows = section.querySelectorAll(
-              '.settings-row:not([style*="display: none"])',
-            );
-            section.style.display = visibleRows.length ? "" : "none";
-          });
-        });
-      }
-
-      // ---- Save Changes — writes the toggle states to Firestore ----
+      // ---- Toggles save to Firestore as soon as they are flipped ----
       (function () {
-        const saveBtn = document.getElementById("saveChangesBtn");
+        const toggles = document.querySelectorAll(
+          '#settingsPanel .toggle-switch input[type="checkbox"]',
+        );
         const toast = document.getElementById("settingsToast");
-        if (!saveBtn) return;
-
         let toastTimer = null;
 
         function showToast(message, type) {
@@ -589,35 +564,34 @@
           }, 2600);
         }
 
-        saveBtn.addEventListener("click", async () => {
-          const form = new FormData();
-          document
-            .querySelectorAll('.toggle-switch input[type="checkbox"]')
-            .forEach((t) => form.append(t.name, t.checked ? "on" : "off"));
+        toggles.forEach((toggle) => {
+          toggle.addEventListener("change", async () => {
+            const wanted = toggle.checked;
+            const form = new FormData();
+            form.append(toggle.name, wanted ? "on" : "off");
+            toggle.disabled = true;
 
-          saveBtn.disabled = true;
-          const original = saveBtn.innerHTML;
-          saveBtn.textContent = "Saving...";
-
-          try {
-            const res = await fetch("/settings/save", {
-              method: "POST",
-              body: form,
-            });
-            const data = await res.json();
-            showToast(
-              data.message ||
-                (data.success ? "Settings saved." : "Could not save."),
-              data.success ? "success" : "error",
-            );
-          } catch (err) {
-            console.error(err);
-            showToast("Cannot reach the server. Please try again.", "error");
-          }
-
-          saveBtn.disabled = false;
-          saveBtn.innerHTML = original;
-          lucide.createIcons();
+            try {
+              const res = await fetch("{{ url_for('save_settings') }}", {
+                method: "POST",
+                body: form,
+              });
+              const data = await res.json();
+              if (!data.success)
+                throw new Error(data.message || "Could not save.");
+              showToast(data.message || "Settings saved.", "success");
+            } catch (err) {
+              // Put the switch back so the page matches what is really saved.
+              toggle.checked = !wanted;
+              showToast(
+                err.message && err.message !== "Failed to fetch"
+                  ? err.message
+                  : "Cannot reach the server. Please try again.",
+                "error",
+              );
+            }
+            toggle.disabled = false;
+          });
         });
       })();
 

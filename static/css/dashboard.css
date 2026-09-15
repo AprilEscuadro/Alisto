@@ -1079,3 +1079,12 @@ body.modal-open {
   display: block;
   border-radius: 50%;
 }
+/* -- dashboard status states (set from Firestore data) -- */
+.pill-status.offline,
+.pill-status.none { background: #f1f2f4; color: var(--muted); }
+.pill-status.attention { background: var(--amber-bg); color: var(--amber); }
+.pill-status.emergency { background: var(--red-bg); color: #dc2626; }
+
+.device-online-label.offline,
+.device-online-label.none { color: var(--muted); }
+.device-online-label.attention { color: var(--amber); }

@@ -479,3 +479,51 @@
   }
   .search-box input { width: 200px; }
 }
+/* ---- statuses, actions, details modal ---- */
+.status-pending { color: var(--warning); }
+.status-responded { color: var(--primary); }
+.status-resolved { color: var(--success); }
+.status-cancelled { color: var(--muted); }
+
+.alert-card.is-open { box-shadow: 0 0 0 3px var(--danger-light), var(--shadow-card); }
+
+.alert-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  flex: none;
+}
+button.alert-btn { border: none; cursor: pointer; font-family: inherit; }
+button.alert-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+.alert-btn-danger { background: var(--danger-light); color: var(--danger); }
+.alert-btn-danger:hover { background: var(--danger); color: #fff; }
+.alert-btn-success { background: var(--success-light); color: var(--success); }
+.alert-btn-success:hover { background: var(--success); color: #fff; }
+
+.alert-details-dialog { max-width: 520px; width: 100%; text-align: left; }
+.alert-details-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+.alert-details-head .confirm-title { margin: 0; }
+.alert-details-body { max-height: 60vh; overflow-y: auto; font-size: 13.5px; }
+.alert-details-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 7px 0;
+  border-bottom: 1px solid var(--border);
+}
+.alert-details-row span { color: var(--text-soft); }
+.alert-details-row strong { color: var(--text); text-align: right; }
+.alert-details-subtitle { margin: 16px 0 6px; font-weight: 700; color: var(--text); }
+.alert-timeline { margin: 0; padding-left: 18px; color: var(--text-soft); line-height: 1.7; }
+.alert-map-link {
+  display: inline-block;
+  margin-top: 10px;
+  color: var(--primary);
+  font-weight: 600;
+}

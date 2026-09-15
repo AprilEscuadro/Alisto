@@ -375,25 +375,6 @@
                 View past alerts and medication reminder activities.
               </p>
             </div>
-
-            <div class="page-actions">
-              <div class="search-box">
-                <i data-lucide="search"></i>
-                <input
-                  type="text"
-                  id="historySearch"
-                  placeholder="Search by name, type, or date..."
-                  autocomplete="off"
-                />
-              </div>
-              <a
-                href="{{ url_for('export_history') }}"
-                class="btn-primary-action"
-                id="exportHistoryBtn"
-              >
-                <i data-lucide="download"></i> Export History
-              </a>
-            </div>
           </div>
 
           <!-- ---- SUMMARY CARDS ---- -->
@@ -405,7 +386,7 @@
               <div class="summary-content">
                 <span class="summary-label">Emergency Alerts</span>
                 <span class="summary-value">{{ alert_count }}</span>
-                <span class="summary-sub">All Time</span>
+                <span class="summary-sub">{{ date_range_label }}</span>
               </div>
             </div>
 
@@ -445,23 +426,31 @@
 
           <!-- ---- FILTER TABS + DATE RANGE ---- -->
           <div class="filter-tabs" id="historyFilters">
-            <button type="button" class="filter-tab active" data-filter="all">
-              All Activities ({{ total_activity_count }})
-            </button>
-            <button type="button" class="filter-tab" data-filter="alert">
-              <span class="dot emergency"></span> Alerts ({{ alert_count }})
-            </button>
-            <button type="button" class="filter-tab" data-filter="med_reminder">
-              <span class="dot online"></span> Med Reminders ({{
-              med_reminder_count }})
-            </button>
-            <button type="button" class="filter-tab" data-filter="device">
-              <span class="dot success"></span> Device Activities ({{
-              device_activity_count }})
-            </button>
-            <span class="filter-tab filter-tab-static">
-              <i data-lucide="calendar"></i> {{ date_range_label }}
-            </span>
+            {% set tabs = [
+              ('all', 'All Activities', '', total_activity_count),
+              ('alert', 'Alerts', 'emergency', alert_count),
+              ('med_reminder', 'Med Reminders', 'online', med_reminder_count),
+              ('device', 'Device Activities', 'success', device_activity_count),
+            ] %}
+            {% for key, label, dot, count in tabs %}
+            <a
+              class="filter-tab {{ 'active' if active_type == key }}"
+              href="{{ url_for('history', type=key, range=active_range) }}"
+            >
+              {% if dot %}<span class="dot {{ dot }}"></span>{% endif %}
+              {{ label }} ({{ count }})
+            </a>
+            {% endfor %}
+            <label class="filter-tab filter-range">
+              <i data-lucide="calendar"></i>
+              <select id="historyRange" aria-label="Date range">
+                {% for key, label in history_ranges.items() %}
+                <option value="{{ key }}" {{ 'selected' if key == active_range }}>
+                  {{ label }}
+                </option>
+                {% endfor %}
+              </select>
+            </label>
           </div>
 
           <!-- ---- HISTORY TABLE ---- -->
@@ -479,7 +468,7 @@
               </thead>
               <tbody id="historyTableBody">
                 {% for item in activities %}
-                <tr data-type="{{ item.type_filter }}">
+                  <tr data-type="{{ item.type_filter }}" data-activity-id="{{ item.id }}">
                   <td class="col-datetime">
                     {{ item.date }}<br /><small>{{ item.time }}</small>
                   </td>
@@ -509,7 +498,10 @@
                   </td>
                   <td>
                     <div class="history-details">
-                      <span>{{ item.detail_main }}</span>
+                                            <span>{{ item.detail_main }}</span>
+                      {% if item.detail_sub %}
+                      <small class="history-detail-sub">{{ item.detail_sub }}</small>
+                      {% endif %}
                       <span
                         class="history-detail-badge {{ item.detail_badge_class }}"
                         >{{ item.detail_badge }}</span
@@ -517,20 +509,29 @@
                     </div>
                   </td>
                   <td class="col-location">
+                    {% if item.location %}
                     <i data-lucide="map-pin"></i> {{ item.location }}
+                    {% else %}—{% endif %}
                   </td>
                   <td class="col-chevron">
-                    <a
-                      href="{{ url_for('activity_details', activity_id=item.id) }}"
+                    <button
+                      type="button"
+                      class="history-open-btn"
+                      data-activity-id="{{ item.id }}"
+                      aria-label="View details"
                     >
                       <i data-lucide="chevron-right"></i>
-                    </a>
+                    </button>
                   </td>
                 </tr>
                 {% else %}
                 <tr>
                   <td colspan="6" class="history-empty">
+                    {% if active_type != 'all' or active_range != 'all' %}
+                    No activity matches this filter.
+                    {% else %}
                     No activity recorded yet.
+                    {% endif %}
                   </td>
                 </tr>
                 {% endfor %}
@@ -549,7 +550,7 @@
               {% if pagination.current_page > 1 %}
               <a
                 class="page-btn"
-                href="{{ url_for('history', page=pagination.current_page - 1) }}"
+                href="{{ url_for('history', page=pagination.current_page - 1, type=active_type, range=active_range) }}"
               >
                 <i data-lucide="chevron-left"></i>
               </a>
@@ -563,14 +564,14 @@
               {% elif page == pagination.current_page %}
               <span class="page-btn active">{{ page }}</span>
               {% else %}
-              <a class="page-btn" href="{{ url_for('history', page=page) }}">
+              <a class="page-btn" href="{{ url_for('history', page=page, type=active_type, range=active_range) }}">
                 {{ page }}
               </a>
               {% endif %} {% endfor %} {% if pagination.current_page <
               pagination.total_pages %}
               <a
                 class="page-btn"
-                href="{{ url_for('history', page=pagination.current_page + 1) }}"
+                href="{{ url_for('history', page=pagination.current_page + 1, type=active_type, range=active_range) }}"
               >
                 <i data-lucide="chevron-right"></i>
               </a>
@@ -589,8 +590,21 @@
         </div>
       </main>
     </div>
+    <!-- ============ ACTIVITY DETAILS MODAL ============ -->
+    <div class="confirm-overlay" id="activityModal" aria-hidden="true">
+      <div class="confirm-dialog activity-dialog" role="dialog" aria-modal="true"
+           aria-labelledby="activityModalTitle">
+        <div class="activity-dialog-head">
+          <h2 class="confirm-title" id="activityModalTitle">Activity details</h2>
+          <button type="button" class="btn-ghost" id="activityModalClose">Close</button>
+        </div>
+        <div class="activity-dialog-body" id="activityModalBody">Loading...</div>
+        <div class="activity-dialog-foot">
+          <a class="activity-open-link" id="activityModalOpen" href="#" hidden></a>
+        </div>
+      </div>
+    </div>
 
-    <!-- ============ LOGOUT CONFIRMATION ============ -->
     <div class="confirm-overlay" id="logoutConfirm" aria-hidden="true">
       <div
         class="confirm-dialog"
@@ -629,54 +643,87 @@
         });
       }
 
-      // ---- Filter tabs + search ----
-      // Both run through one apply() so typing a search does not wipe out
-      // the active type filter, and vice versa.
+           // ---- Date range (type tabs are plain links, filtered on the server) ----
+      const rangeSelect = document.getElementById("historyRange");
+      if (rangeSelect) {
+        rangeSelect.addEventListener("change", () => {
+          const params = new URLSearchParams(window.location.search);
+          params.set("range", rangeSelect.value);
+          params.delete("page");
+          window.location.search = params.toString();
+        });
+      }
+
+      // ---- Activity details modal ----
       (function () {
-        const filterButtons = document.querySelectorAll(
-          "#historyFilters .filter-tab[data-filter]",
-        );
-        const rows = document.querySelectorAll(
-          "#historyTableBody tr[data-type]",
-        );
-        const searchInput = document.getElementById("historySearch");
-        const emptyRow = document.querySelector(".history-empty");
+        const modal = document.getElementById("activityModal");
+        const body = document.getElementById("activityModalBody");
+        const openLink = document.getElementById("activityModalOpen");
+        const closeBtn = document.getElementById("activityModalClose");
 
-        let activeFilter = "all";
+        function row(label, value) {
+          const div = document.createElement("div");
+          div.className = "activity-row";
+          const l = document.createElement("span");
+          l.textContent = label;
+          const v = document.createElement("strong");
+          v.textContent = value || "—";
+          div.append(l, v);
+          return div;
+        }
 
-        function apply() {
-          const query = searchInput
-            ? searchInput.value.trim().toLowerCase()
-            : "";
-          let visible = 0;
+        function close() {
+          modal.classList.remove("open");
+          modal.setAttribute("aria-hidden", "true");
+          document.body.classList.remove("modal-open");
+        }
 
-          rows.forEach((row) => {
-            const typeOk =
-              activeFilter === "all" || row.dataset.type === activeFilter;
-            const textOk =
-              !query || row.textContent.toLowerCase().includes(query);
-            const show = typeOk && textOk;
-            row.style.display = show ? "" : "none";
-            if (show) visible += 1;
-          });
-
-          // Only meaningful when the page rendered rows to begin with.
-          if (emptyRow && rows.length) {
-            emptyRow.closest("tr").style.display = visible ? "none" : "";
-            emptyRow.textContent = "No activity matches this filter.";
+        async function open(id) {
+          body.textContent = "Loading...";
+          openLink.hidden = true;
+          modal.classList.add("open");
+          modal.setAttribute("aria-hidden", "false");
+          document.body.classList.add("modal-open");
+          try {
+            const res = await fetch(`/history/${encodeURIComponent(id)}`);
+            const data = await res.json();
+            if (!data.success) {
+              body.textContent = data.message || "Could not load this activity.";
+              return;
+            }
+            const a = data.activity;
+            body.innerHTML = "";
+            body.append(
+              row("Date & time", `${a.date} ${a.time}`),
+              row("Type", a.type_label),
+              row("Loved one", `${a.person_name} (${a.person_relationship})`),
+              row("What happened", a.detail_main),
+            );
+            if (a.detail_sub) body.append(row("Details", a.detail_sub));
+            if (a.detail_badge) body.append(row("Status", a.detail_badge));
+            body.append(row("Location", a.location));
+            if (a.device_id) body.append(row("Device", a.device_id));
+            body.append(row("Done by", a.actor));
+            if (a.open_url) {
+              openLink.href = a.open_url;
+              openLink.textContent = a.open_label;
+              openLink.hidden = false;
+            }
+          } catch (err) {
+            body.textContent = "Cannot reach the server. Check your connection and try again.";
           }
         }
 
-        filterButtons.forEach((btn) => {
-          btn.addEventListener("click", () => {
-            filterButtons.forEach((b) => b.classList.remove("active"));
-            btn.classList.add("active");
-            activeFilter = btn.dataset.filter;
-            apply();
-          });
+        document.querySelectorAll("#historyTableBody tr[data-activity-id]").forEach((tr) => {
+          tr.addEventListener("click", () => open(tr.dataset.activityId));
         });
-
-        if (searchInput) searchInput.addEventListener("input", apply);
+        closeBtn.addEventListener("click", close);
+        modal.addEventListener("click", (e) => {
+          if (e.target === modal) close();
+        });
+        document.addEventListener("keydown", (e) => {
+          if (e.key === "Escape" && modal.classList.contains("open")) close();
+        });
       })();
 
       // ---- Profile dropdown + logout confirmation ----

@@ -854,7 +854,7 @@
             <div class="panel faq-panel">
               <h3 class="panel-title">Frequently Asked Questions</h3>
               <div class="faq-list" id="faqList">
-                {% for item in faqs %}
+                {% for item in top_faqs %}
                 <div class="faq-item">
                   <button type="button" class="faq-question">
                     <i data-lucide="circle-help"></i>
@@ -893,7 +893,8 @@
                 <i data-lucide="mail"></i> Contact Support
               </button>
               <p class="contact-card-note">
-                We usually respond within <strong>24 hours</strong>
+                We usually respond within
+                <strong>{{ contact_info.response_time }}</strong>
               </p>
             </div>
           </section>
@@ -967,7 +968,9 @@
               <div>
                 <span class="contact-info-label">Email</span>
                 <strong>{{ contact_info.email }}</strong>
-                <small>We respond within 24 hours</small>
+                <small
+                  >We respond within {{ contact_info.response_time }}</small
+                >
               </div>
             </div>
 
@@ -981,6 +984,37 @@
                 <small>{{ contact_info.address_line2 }}</small>
               </div>
             </div>
+          </section>
+
+          <!-- ---- MY REQUESTS (support_ticket in Firestore) ---- -->
+          <h3 class="section-heading">My Requests</h3>
+          <section class="panel my-requests">
+            {% for t in my_tickets %}
+            <details class="request-item">
+              <summary>
+                <span class="request-no">{{ t.ticket_no }}</span>
+                <span class="request-subject">{{ t.subject }}</span>
+                <span class="request-status {{ t.status }}"
+                  >{{ t.status_label }}</span
+                >
+                <span class="request-date">{{ t.created }}</span>
+              </summary>
+              <div class="request-body">
+                <p class="request-label">{{ t.type_label }}</p>
+                <p class="request-text">{{ t.message }}</p>
+                {% if t.admin_reply %}
+                <p class="request-label">Reply from ALISTO Support</p>
+                <p class="request-text request-reply">{{ t.admin_reply }}</p>
+                {% else %}
+                <p class="request-waiting">No reply yet. We'll respond here.</p>
+                {% endif %}
+              </div>
+            </details>
+            {% else %}
+            <p class="request-empty">
+              You haven't sent any reports or messages yet.
+            </p>
+            {% endfor %}
           </section>
 
           <footer class="main-footer">
@@ -1216,6 +1250,7 @@
                   name="email"
                   class="form-input"
                   placeholder="you@example.com"
+                  value="{{ user_email }}"
                 />
               </div>
             </form>
@@ -1381,6 +1416,7 @@
                 name="name"
                 class="form-input"
                 placeholder="Your full name"
+                value="{{ user_full_name }}"
                 required
               />
             </div>
@@ -1393,6 +1429,7 @@
                 name="email"
                 class="form-input"
                 placeholder="your@email.com"
+                value="{{ user_email }}"
                 required
               />
             </div>
@@ -1463,543 +1500,468 @@
       </div>
     </div>
 
-    <!-- ============ FIREBASE CONFIG ============ -->
-    <script type="module">
-      // Initialize Firebase (Update with your config)
-      import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.0/firebase-app.js";
-      import {
-        getFirestore,
-        collection,
-        addDoc,
-        serverTimestamp,
-      } from "https://www.gstatic.com/firebasejs/10.7.0/firebase-firestore.js";
-
-      const firebaseConfig = {
-        apiKey: "YOUR_API_KEY",
-        authDomain: "YOUR_AUTH_DOMAIN",
-        projectId: "YOUR_PROJECT_ID",
-        storageBucket: "YOUR_STORAGE_BUCKET",
-        messagingSenderId: "YOUR_MESSAGING_SENDER_ID",
-        appId: "YOUR_APP_ID",
-      };
-
-      const app = initializeApp(firebaseConfig);
-      const db = getFirestore(app);
-
-      window.db = db;
-      window.addDoc = addDoc;
-      window.collection = collection;
-      window.serverTimestamp = serverTimestamp;
-    </script>
-
     <script>
-      lucide.createIcons();
+        lucide.createIcons();
 
-      // Extended FAQ data
-      const allFaqs = [
-        {
-          question: "How do I set up the ALISTO device for my loved one?",
-          answer:
-            "To set up ALISTO: 1) Charge the device fully, 2) Register it in the app, 3) Add family members as emergency contacts, 4) Test the emergency trigger, 5) Keep the device within Bluetooth range.",
-        },
-        {
-          question: "What happens when an emergency alert is triggered?",
-          answer:
-            "When triggered, ALISTO immediately sends SMS alerts to all registered contacts with the user's location. The Barangay Health Worker is also notified and can provide emergency response.",
-        },
-        {
-          question: "Can more than one family member link to the same elder?",
-          answer:
-            "Yes! Multiple family members can be registered as emergency contacts for the same user. They will all receive alerts when an emergency is triggered.",
-        },
-        {
-          question: "How does ALISTO work without internet?",
-          answer:
-            "ALISTO has offline voice recognition built into the device itself. It continuously listens for emergency phrases without needing an internet connection.",
-        },
-        {
-          question: "What if I accidentally trigger an alarm?",
-          answer:
-            "You have 5 seconds to cancel the alarm after it's triggered by pressing the cancel button on the ALISTO device. This prevents false alerts from being sent.",
-        },
-        {
-          question: "How do I view my alert history?",
-          answer:
-            "Go to the 'History' section in the app. You can see all past emergencies with timestamps, who was notified, and the outcome of each incident.",
-        },
-        {
-          question: "What emergency phrases does ALISTO recognize?",
-          answer:
-            "ALISTO recognizes common Cebuano emergency phrases like 'Alisto, tabanag!' and similar variations. It's trained to understand natural speech.",
-        },
-        {
-          question: "How do I update my emergency contacts?",
-          answer:
-            "Go to Settings, then select 'Emergency Contacts'. You can add, edit, or remove contacts anytime. Changes will sync to your ALISTO device.",
-        },
-        {
-          question: "What should I do if the device is not detecting my voice?",
-          answer:
-            "Make sure the device is in a quiet environment and you're speaking clearly. Ensure the device firmware is up to date. If the issue persists, report it.",
-        },
-        {
-          question: "Is my location data secure and private?",
-          answer:
-            "Yes, location data is only shared with registered emergency contacts and Barangay Health Workers. We use encryption and follow strict privacy protocols.",
-        },
-      ];
+        const allFaqs = {{ faqs|tojson }};
 
-      // Modal functionality
-      const modalOverlays = document.querySelectorAll(".modal-overlay");
-      const closeButtons = document.querySelectorAll(".modal-close-btn");
+        // Modal functionality
+        const modalOverlays = document.querySelectorAll(".modal-overlay");
+        const closeButtons = document.querySelectorAll(".modal-close-btn");
 
-      // Open modals
-      document
-        .getElementById("viewMoreFaqsBtn")
-        .addEventListener("click", () => {
-          populateFaqModal();
-          document.getElementById("moreFaqsModal").classList.add("open");
+        // Open modals
+        document
+          .getElementById("viewMoreFaqsBtn")
+          .addEventListener("click", () => {
+            populateFaqModal();
+            document.getElementById("moreFaqsModal").classList.add("open");
+            document.body.classList.add("modal-open");
+          });
+
+        document.getElementById("userGuideBtn").addEventListener("click", () => {
+          document.getElementById("userGuideModal").classList.add("open");
           document.body.classList.add("modal-open");
         });
 
-      document.getElementById("userGuideBtn").addEventListener("click", () => {
-        document.getElementById("userGuideModal").classList.add("open");
-        document.body.classList.add("modal-open");
-      });
+        document
+          .getElementById("aboutAlistoBtn")
+          .addEventListener("click", () => {
+            document.getElementById("aboutAlistoModal").classList.add("open");
+            document.body.classList.add("modal-open");
+          });
 
-      document
-        .getElementById("aboutAlistoBtn")
-        .addEventListener("click", () => {
-          document.getElementById("aboutAlistoModal").classList.add("open");
-          document.body.classList.add("modal-open");
+        document
+          .getElementById("contactSupportBtn")
+          .addEventListener("click", () => {
+            document.getElementById("contactSupportModal").classList.add("open");
+            document.body.classList.add("modal-open");
+          });
+
+        // Close modals
+        closeButtons.forEach((btn) => {
+          btn.addEventListener("click", (e) => {
+            const modalId = btn.getAttribute("data-modal");
+            closeModal(modalId);
+          });
         });
 
-      document
-        .getElementById("contactSupportBtn")
-        .addEventListener("click", () => {
-          document.getElementById("contactSupportModal").classList.add("open");
-          document.body.classList.add("modal-open");
+        document.querySelectorAll("[data-modal]").forEach((btn) => {
+          if (btn.classList.contains("modal-close-btn")) return;
+          btn.addEventListener("click", () => {
+            const modalId = btn.getAttribute("data-modal");
+            closeModal(modalId);
+          });
         });
 
-      // Close modals
-      closeButtons.forEach((btn) => {
-        btn.addEventListener("click", (e) => {
-          const modalId = btn.getAttribute("data-modal");
-          closeModal(modalId);
-        });
-      });
-
-      document.querySelectorAll("[data-modal]").forEach((btn) => {
-        if (btn.classList.contains("modal-close-btn")) return;
-        btn.addEventListener("click", () => {
-          const modalId = btn.getAttribute("data-modal");
-          closeModal(modalId);
-        });
-      });
-
-      function closeModal(modalId) {
-        const modal = document.getElementById(modalId);
-        modal.classList.remove("open");
-        const anyModalOpen = Array.from(modalOverlays).some((m) =>
-          m.classList.contains("open"),
-        );
-        if (!anyModalOpen) {
-          document.body.classList.remove("modal-open");
-        }
-      }
-
-      // Close on backdrop click
-      modalOverlays.forEach((overlay) => {
-        overlay.addEventListener("click", (e) => {
-          if (e.target === overlay) {
-            closeModal(overlay.id);
-          }
-        });
-      });
-
-      // Close on Escape
-      document.addEventListener("keydown", (e) => {
-        if (e.key === "Escape") {
-          const openModal = document.querySelector(".modal-overlay.open");
-          if (openModal) {
-            closeModal(openModal.id);
+        function closeModal(modalId) {
+          const modal = document.getElementById(modalId);
+          modal.classList.remove("open");
+          const anyModalOpen = Array.from(modalOverlays).some((m) =>
+            m.classList.contains("open"),
+          );
+          if (!anyModalOpen) {
+            document.body.classList.remove("modal-open");
           }
         }
-      });
 
-      // FAQ modal population
-      function populateFaqModal() {
-        const faqList = document.getElementById("faqModalList");
-        faqList.innerHTML = "";
+        // Close on backdrop click
+        modalOverlays.forEach((overlay) => {
+          overlay.addEventListener("click", (e) => {
+            if (e.target === overlay) {
+              closeModal(overlay.id);
+            }
+          });
+        });
 
-        allFaqs.forEach((faq) => {
-          const faqItem = document.createElement("div");
-          faqItem.className = "faq-modal-item";
+        // Close on Escape
+        document.addEventListener("keydown", (e) => {
+          if (e.key === "Escape") {
+            const openModal = document.querySelector(".modal-overlay.open");
+            if (openModal) {
+              closeModal(openModal.id);
+            }
+          }
+        });
+
+        // FAQ modal population
+        function populateFaqModal() {
+          const faqList = document.getElementById("faqModalList");
+          faqList.innerHTML = "";
+
+          allFaqs.forEach((faq) => {
+            const faqItem = document.createElement("div");
+            faqItem.className = "faq-modal-item";
           faqItem.innerHTML = `
         <button type="button" class="faq-modal-question">
           <i data-lucide="circle-help"></i>
-          <span>${faq.question}</span>
+          <span></span>
         </button>
         <div class="faq-modal-answer">
-          <p>${faq.answer}</p>
+          <p></p>
         </div>
       `;
+          faqItem.querySelector(".faq-modal-question span").textContent = faq.question;
+          faqItem.querySelector(".faq-modal-answer p").textContent = faq.answer;
 
-          const question = faqItem.querySelector(".faq-modal-question");
-          question.addEventListener("click", () => {
-            faqItem.classList.toggle("open");
-            lucide.createIcons();
+            const question = faqItem.querySelector(".faq-modal-question");
+            question.addEventListener("click", () => {
+              faqItem.classList.toggle("open");
+              lucide.createIcons();
+            });
+
+            faqList.appendChild(faqItem);
           });
 
-          faqList.appendChild(faqItem);
-        });
-
-        lucide.createIcons();
-      }
-
-      // ---- Report a Problem — multi-step, Facebook-style tap-through flow ----
-      (function () {
-        const modal = document.getElementById("reportProblemModal");
-        if (!modal) return;
-
-        const steps = modal.querySelectorAll(".report-step");
-        const backBtn = document.getElementById("reportBackBtn");
-        const titleEl = document.getElementById("reportModalTitle");
-        const footer = document.getElementById("reportModalFooter");
-        const nextBtn = document.getElementById("reportNextBtn");
-        const subcategoryList = document.getElementById(
-          "reportSubcategoryList",
-        );
-
-        const SUBCATEGORIES = {
-          app: [
-            { value: "crash", label: "App crashes or freezes" },
-            { value: "buttons", label: "Buttons or links not working" },
-            { value: "slow", label: "App is slow" },
-            { value: "other_app", label: "Other app issue" },
-          ],
-          device: [
-            { value: "connect", label: "Device won't connect" },
-            { value: "battery", label: "Battery drains too fast" },
-            { value: "voice", label: "Device isn't detecting voice" },
-            { value: "other_device", label: "Other device issue" },
-          ],
-          alert: [
-            { value: "not_received", label: "Alert wasn't received" },
-            { value: "false_alarm", label: "False alarm triggered" },
-            { value: "wrong_location", label: "Location was incorrect" },
-            { value: "other_alert", label: "Other alert issue" },
-          ],
-          account: [
-            { value: "login", label: "Can't log in" },
-            { value: "reset_password", label: "Can't reset password" },
-            { value: "profile_info", label: "Profile info is wrong" },
-            { value: "other_account", label: "Other account issue" },
-          ],
-        };
-
-        let currentStep = 1;
-        let selection = {
-          category: null,
-          categoryLabel: null,
-          subcategory: null,
-          subcategoryLabel: null,
-        };
-
-        function showStep(stepNumber, title) {
-          steps.forEach((step) => {
-            step.hidden = Number(step.dataset.step) !== stepNumber;
-          });
-          currentStep = stepNumber;
-          titleEl.textContent = title;
-          backBtn.style.visibility = stepNumber === 1 ? "hidden" : "visible";
-
-          // Steps 1-2 are tap-to-choose lists, like Facebook's flow — no
-          // footer buttons needed there. Only description + review need one.
-          footer.style.display =
-            stepNumber === 3 || stepNumber === 4 ? "flex" : "none";
-          nextBtn.textContent = stepNumber === 4 ? "Submit" : "Continue";
+          lucide.createIcons();
         }
 
-        function resetFlow() {
-          selection = {
+        // ---- Report a Problem — multi-step, Facebook-style tap-through flow ----
+        (function () {
+          const modal = document.getElementById("reportProblemModal");
+          if (!modal) return;
+
+          const steps = modal.querySelectorAll(".report-step");
+          const backBtn = document.getElementById("reportBackBtn");
+          const titleEl = document.getElementById("reportModalTitle");
+          const footer = document.getElementById("reportModalFooter");
+          const nextBtn = document.getElementById("reportNextBtn");
+          const subcategoryList = document.getElementById(
+            "reportSubcategoryList",
+          );
+
+          const SUBCATEGORIES = {
+            app: [
+              { value: "crash", label: "App crashes or freezes" },
+              { value: "buttons", label: "Buttons or links not working" },
+              { value: "slow", label: "App is slow" },
+              { value: "other_app", label: "Other app issue" },
+            ],
+            device: [
+              { value: "connect", label: "Device won't connect" },
+              { value: "battery", label: "Battery drains too fast" },
+              { value: "voice", label: "Device isn't detecting voice" },
+              { value: "other_device", label: "Other device issue" },
+            ],
+            alert: [
+              { value: "not_received", label: "Alert wasn't received" },
+              { value: "false_alarm", label: "False alarm triggered" },
+              { value: "wrong_location", label: "Location was incorrect" },
+              { value: "other_alert", label: "Other alert issue" },
+            ],
+            account: [
+              { value: "login", label: "Can't log in" },
+              { value: "reset_password", label: "Can't reset password" },
+              { value: "profile_info", label: "Profile info is wrong" },
+              { value: "other_account", label: "Other account issue" },
+            ],
+          };
+
+          let currentStep = 1;
+          let selection = {
             category: null,
             categoryLabel: null,
             subcategory: null,
             subcategoryLabel: null,
           };
-          document.getElementById("reportProblemForm").reset();
-          showStep(1, "Report a Problem");
-        }
 
-        function buildSubcategoryList(category) {
-          subcategoryList.innerHTML = "";
-          (SUBCATEGORIES[category] || []).forEach((item) => {
-            const row = document.createElement("button");
-            row.type = "button";
-            row.className = "report-row";
-            row.innerHTML = `<span>${item.label}</span><i data-lucide="chevron-right"></i>`;
-            row.addEventListener("click", () => {
-              selection.subcategory = item.value;
-              selection.subcategoryLabel = item.label;
-              showStep(3, "Describe the Problem");
+          function showStep(stepNumber, title) {
+            steps.forEach((step) => {
+              step.hidden = Number(step.dataset.step) !== stepNumber;
             });
-            subcategoryList.appendChild(row);
-          });
-          lucide.createIcons();
-        }
+            currentStep = stepNumber;
+            titleEl.textContent = title;
+            backBtn.style.visibility = stepNumber === 1 ? "hidden" : "visible";
 
-        modal
-          .querySelectorAll('.report-step[data-step="1"] .report-row')
-          .forEach((row) => {
-            row.addEventListener("click", () => {
-              selection.category = row.dataset.category;
-              selection.categoryLabel = row.dataset.label;
+            // Steps 1-2 are tap-to-choose lists, like Facebook's flow — no
+            // footer buttons needed there. Only description + review need one.
+            footer.style.display =
+              stepNumber === 3 || stepNumber === 4 ? "flex" : "none";
+            nextBtn.textContent = stepNumber === 4 ? "Submit" : "Continue";
+          }
 
-              if (row.dataset.skipSubcategory) {
-                selection.subcategory = null;
-                selection.subcategoryLabel = null;
-                showStep(3, "Describe the Problem");
-              } else {
-                buildSubcategoryList(selection.category);
-                showStep(2, "Which best describes the problem?");
-              }
-            });
-          });
-
-        backBtn.addEventListener("click", () => {
-          if (currentStep === 4) {
-            showStep(3, "Describe the Problem");
-          } else if (currentStep === 3) {
-            if (SUBCATEGORIES[selection.category]) {
-              buildSubcategoryList(selection.category);
-              showStep(2, "Which best describes the problem?");
-            } else {
-              showStep(1, "Report a Problem");
-            }
-          } else if (currentStep === 2) {
+          function resetFlow() {
+            selection = {
+              category: null,
+              categoryLabel: null,
+              subcategory: null,
+              subcategoryLabel: null,
+            };
+            document.getElementById("reportProblemForm").reset();
             showStep(1, "Report a Problem");
           }
-        });
 
-        function populateReview() {
-          document.getElementById("reviewCategory").textContent =
-            selection.categoryLabel || "—";
-          document.getElementById("reviewSubcategory").textContent =
-            selection.subcategoryLabel || "Not specified";
-          document.getElementById("reviewDescription").textContent = document
-            .getElementById("problemDescription")
-            .value.trim();
-        }
+          function buildSubcategoryList(category) {
+            subcategoryList.innerHTML = "";
+            (SUBCATEGORIES[category] || []).forEach((item) => {
+              const row = document.createElement("button");
+              row.type = "button";
+              row.className = "report-row";
+              row.innerHTML = `<span>${item.label}</span><i data-lucide="chevron-right"></i>`;
+              row.addEventListener("click", () => {
+                selection.subcategory = item.value;
+                selection.subcategoryLabel = item.label;
+                showStep(3, "Describe the Problem");
+              });
+              subcategoryList.appendChild(row);
+            });
+            lucide.createIcons();
+          }
 
-        async function submitReport() {
+          modal
+            .querySelectorAll('.report-step[data-step="1"] .report-row')
+            .forEach((row) => {
+              row.addEventListener("click", () => {
+                selection.category = row.dataset.category;
+                selection.categoryLabel = row.dataset.label;
+
+                if (row.dataset.skipSubcategory) {
+                  selection.subcategory = null;
+                  selection.subcategoryLabel = null;
+                  showStep(3, "Describe the Problem");
+                } else {
+                  buildSubcategoryList(selection.category);
+                  showStep(2, "Which best describes the problem?");
+                }
+              });
+            });
+
+          backBtn.addEventListener("click", () => {
+            if (currentStep === 4) {
+              showStep(3, "Describe the Problem");
+            } else if (currentStep === 3) {
+              if (SUBCATEGORIES[selection.category]) {
+                buildSubcategoryList(selection.category);
+                showStep(2, "Which best describes the problem?");
+              } else {
+                showStep(1, "Report a Problem");
+              }
+            } else if (currentStep === 2) {
+              showStep(1, "Report a Problem");
+            }
+          });
+
+          function populateReview() {
+            document.getElementById("reviewCategory").textContent =
+              selection.categoryLabel || "—";
+            document.getElementById("reviewSubcategory").textContent =
+              selection.subcategoryLabel || "Not specified";
+            document.getElementById("reviewDescription").textContent = document
+              .getElementById("problemDescription")
+              .value.trim();
+          }
+
+          async function submitReport() {
           const formData = {
             category: selection.category,
             subcategory: selection.subcategory,
             description: document.getElementById("problemDescription").value,
-            email:
-              document.getElementById("problemEmail").value || "Not provided",
-            userEmail: "{{ account.email }}",
-            userName: "{{ account.full_name }}",
-            timestamp: new Date().toISOString(),
+            email: document.getElementById("problemEmail").value.trim(),
           };
 
-          nextBtn.disabled = true;
-          nextBtn.textContent = "Submitting...";
+            nextBtn.disabled = true;
+            nextBtn.textContent = "Submitting...";
 
-          try {
-            await window.addDoc(window.collection(window.db, "reports"), {
-              ...formData,
-              createdAt: window.serverTimestamp(),
+            try {
+            const res = await fetch("{{ url_for('submit_problem_report') }}", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify(formData),
             });
-
+            const data = await res.json();
+            if (!data.success) throw new Error(data.message || "Could not send your report.");
             closeModal("reportProblemModal");
-            showToast("Problem reported successfully! Thank you.", "success");
+            showToast(data.message, "success");
             resetFlow();
+            setTimeout(() => window.location.reload(), 2500);
           } catch (error) {
             console.error("Error submitting report:", error);
-            showToast("Failed to submit report. Please try again.", "error");
-          } finally {
-            nextBtn.disabled = false;
-            nextBtn.textContent = "Submit";
+            showToast(
+              error.message && error.message !== "Failed to fetch"
+                ? error.message
+                : "Cannot reach the server. Please try again.",
+              "error",
+            );
+            } finally {
+              nextBtn.disabled = false;
+              nextBtn.textContent = "Submit";
+            }
           }
-        }
 
-        nextBtn.addEventListener("click", async () => {
-          if (currentStep === 3) {
-            const description = document.getElementById("problemDescription");
-            if (!description.value.trim()) {
-              description.focus();
+          nextBtn.addEventListener("click", async () => {
+            if (currentStep === 3) {
+              const description = document.getElementById("problemDescription");
+              if (!description.value.trim()) {
+                description.focus();
+                return;
+              }
+              populateReview();
+              showStep(4, "Submit Report");
               return;
             }
-            populateReview();
-            showStep(4, "Submit Report");
-            return;
-          }
-          if (currentStep === 4) {
-            await submitReport();
-          }
-        });
-
-        document
-          .getElementById("reportProblemBtn")
-          .addEventListener("click", () => {
-            resetFlow();
-            modal.classList.add("open");
-            document.body.classList.add("modal-open");
+            if (currentStep === 4) {
+              await submitReport();
+            }
           });
-      })();
 
-      // Contact support form
-      document
-        .getElementById("contactSupportForm")
-        .addEventListener("submit", async (e) => {
-          e.preventDefault();
+          document
+            .getElementById("reportProblemBtn")
+            .addEventListener("click", () => {
+              resetFlow();
+              modal.classList.add("open");
+              document.body.classList.add("modal-open");
+            });
+        })();
+
+        // Contact support form
+        document
+          .getElementById("contactSupportForm")
+          .addEventListener("submit", async (e) => {
+            e.preventDefault();
 
           const formData = {
-            name: document.getElementById("supportName").value,
-            email: document.getElementById("supportEmail").value,
-            subject: document.getElementById("supportSubject").value,
-            message: document.getElementById("supportMessage").value,
-            userEmail: "{{ account.email }}",
-            userId: "{{ account.id }}",
-            timestamp: new Date().toISOString(),
+            name: document.getElementById("supportName").value.trim(),
+            email: document.getElementById("supportEmail").value.trim(),
+            subject: document.getElementById("supportSubject").value.trim(),
+            message: document.getElementById("supportMessage").value.trim(),
           };
 
-          const submitBtn = document.getElementById("submitContactBtn");
-          submitBtn.disabled = true;
-          submitBtn.innerHTML = '<i data-lucide="loader"></i> Sending...';
-          lucide.createIcons();
+            const submitBtn = document.getElementById("submitContactBtn");
+            submitBtn.disabled = true;
+            submitBtn.innerHTML = '<i data-lucide="loader"></i> Sending...';
+            lucide.createIcons();
 
-          try {
-            await window.addDoc(
-              window.collection(window.db, "support_messages"),
-              {
-                ...formData,
-                createdAt: window.serverTimestamp(),
-              },
-            );
-
-            document.getElementById("contactSupportForm").reset();
+            try {
+            const res = await fetch("{{ url_for('submit_contact_support') }}", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify(formData),
+            });
+            const data = await res.json();
+            if (!data.success) throw new Error(data.message || "Could not send your message.");
+            document.getElementById("supportSubject").value = "";
+            document.getElementById("supportMessage").value = "";
             closeModal("contactSupportModal");
-            showToast(
-              "Message sent! We'll respond within 24 hours.",
-              "success",
-            );
+            showToast(data.message, "success");
+            setTimeout(() => window.location.reload(), 2500);
           } catch (error) {
             console.error("Error sending message:", error);
-            showToast("Failed to send message. Please try again.", "error");
-          } finally {
-            submitBtn.disabled = false;
-            submitBtn.innerHTML = '<i data-lucide="send"></i> Send';
-            lucide.createIcons();
+            showToast(
+              error.message && error.message !== "Failed to fetch"
+                ? error.message
+                : "Cannot reach the server. Please try again.",
+              "error",
+            );
+            } finally {
+              submitBtn.disabled = false;
+              submitBtn.innerHTML = '<i data-lucide="send"></i> Send';
+              lucide.createIcons();
+            }
+          });
+
+        // Toast notifications
+        function showToast(message, type = "success") {
+          const toast = document.createElement("div");
+          toast.className = `toast ${type}`;
+          toast.innerHTML = `
+        <i data-lucide="${type === "success" ? "check-circle" : "alert-circle"}"></i>
+        <span>${message}</span>
+      `;
+          document.body.appendChild(toast);
+          lucide.createIcons();
+
+          setTimeout(() => {
+            toast.remove();
+          }, 4000);
+        }
+
+        // Existing FAQ accordion
+        const faqItems = document.querySelectorAll("#faqList .faq-item");
+        faqItems.forEach((item) => {
+          const question = item.querySelector(".faq-question");
+          question.addEventListener("click", () => {
+            const isOpen = item.classList.contains("open");
+            faqItems.forEach((i) => i.classList.remove("open"));
+            if (!isOpen) item.classList.add("open");
+          });
+        });
+
+        // Profile dropdown + logout
+        (function () {
+          const pill = document.getElementById("profilePill");
+          const menu = document.getElementById("profileMenu");
+          const overlay = document.getElementById("logoutConfirm");
+          const logoutBtn = document.getElementById("profileLogoutBtn");
+          const cancelBtn = document.getElementById("logoutCancel");
+          const confirmBtn = document.getElementById("logoutConfirmBtn");
+
+          if (!pill || !menu) return;
+
+          function openMenu() {
+            menu.classList.add("open");
+            pill.setAttribute("aria-expanded", "true");
           }
-        });
 
-      // Toast notifications
-      function showToast(message, type = "success") {
-        const toast = document.createElement("div");
-        toast.className = `toast ${type}`;
-        toast.innerHTML = `
-      <i data-lucide="${type === "success" ? "check-circle" : "alert-circle"}"></i>
-      <span>${message}</span>
-    `;
-        document.body.appendChild(toast);
-        lucide.createIcons();
+          function closeMenu() {
+            menu.classList.remove("open");
+            pill.setAttribute("aria-expanded", "false");
+          }
 
-        setTimeout(() => {
-          toast.remove();
-        }, 4000);
-      }
+          pill.addEventListener("click", (e) => {
+            e.stopPropagation();
+            menu.classList.contains("open") ? closeMenu() : openMenu();
+          });
 
-      // Existing FAQ accordion
-      const faqItems = document.querySelectorAll("#faqList .faq-item");
-      faqItems.forEach((item) => {
-        const question = item.querySelector(".faq-question");
-        question.addEventListener("click", () => {
-          const isOpen = item.classList.contains("open");
-          faqItems.forEach((i) => i.classList.remove("open"));
-          if (!isOpen) item.classList.add("open");
-        });
-      });
+          document.addEventListener("click", (e) => {
+            if (!menu.contains(e.target) && !pill.contains(e.target)) closeMenu();
+          });
 
-      // Profile dropdown + logout
-      (function () {
-        const pill = document.getElementById("profilePill");
-        const menu = document.getElementById("profileMenu");
-        const overlay = document.getElementById("logoutConfirm");
-        const logoutBtn = document.getElementById("profileLogoutBtn");
-        const cancelBtn = document.getElementById("logoutCancel");
-        const confirmBtn = document.getElementById("logoutConfirmBtn");
+          logoutBtn.addEventListener("click", () => {
+            closeMenu();
+            overlay.classList.add("open");
+            overlay.setAttribute("aria-hidden", "false");
+            document.body.classList.add("modal-open");
+            setTimeout(() => confirmBtn.focus(), 60);
+          });
 
-        if (!pill || !menu) return;
-
-        function openMenu() {
-          menu.classList.add("open");
-          pill.setAttribute("aria-expanded", "true");
-        }
-
-        function closeMenu() {
-          menu.classList.remove("open");
-          pill.setAttribute("aria-expanded", "false");
-        }
-
-        pill.addEventListener("click", (e) => {
-          e.stopPropagation();
-          menu.classList.contains("open") ? closeMenu() : openMenu();
-        });
-
-        document.addEventListener("click", (e) => {
-          if (!menu.contains(e.target) && !pill.contains(e.target)) closeMenu();
-        });
-
-        logoutBtn.addEventListener("click", () => {
-          closeMenu();
-          overlay.classList.add("open");
-          overlay.setAttribute("aria-hidden", "false");
-          document.body.classList.add("modal-open");
-          setTimeout(() => confirmBtn.focus(), 60);
-        });
-
-        cancelBtn.addEventListener("click", () => {
-          overlay.classList.remove("open");
-          overlay.setAttribute("aria-hidden", "true");
-          document.body.classList.remove("modal-open");
-        });
-
-        overlay.addEventListener("click", (e) => {
-          if (e.target === overlay) {
+          cancelBtn.addEventListener("click", () => {
             overlay.classList.remove("open");
             overlay.setAttribute("aria-hidden", "true");
             document.body.classList.remove("modal-open");
-          }
-        });
+          });
 
-        confirmBtn.addEventListener("click", () => {
-          confirmBtn.disabled = true;
-          confirmBtn.textContent = "Logging out...";
-          window.location.href = "{{ url_for('logout') }}";
-        });
+          overlay.addEventListener("click", (e) => {
+            if (e.target === overlay) {
+              overlay.classList.remove("open");
+              overlay.setAttribute("aria-hidden", "true");
+              document.body.classList.remove("modal-open");
+            }
+          });
 
-        document.addEventListener("keydown", (e) => {
-          if (e.key !== "Escape") return;
-          if (overlay.classList.contains("open")) {
-            overlay.classList.remove("open");
-            document.body.classList.remove("modal-open");
-          } else if (menu.classList.contains("open")) {
-            closeMenu();
-          }
-        });
-      })();
+          confirmBtn.addEventListener("click", () => {
+            confirmBtn.disabled = true;
+            confirmBtn.textContent = "Logging out...";
+            window.location.href = "{{ url_for('logout') }}";
+          });
 
-      // Menu toggle (mobile)
-      const menuToggle = document.querySelector(".menu-toggle");
-      const sidebar = document.querySelector(".sidebar");
-      if (menuToggle) {
-        menuToggle.addEventListener("click", () => {
-          sidebar.classList.toggle("open");
-        });
-      }
+          document.addEventListener("keydown", (e) => {
+            if (e.key !== "Escape") return;
+            if (overlay.classList.contains("open")) {
+              overlay.classList.remove("open");
+              document.body.classList.remove("modal-open");
+            } else if (menu.classList.contains("open")) {
+              closeMenu();
+            }
+          });
+        })();
+
+        // Menu toggle (mobile)
+        const menuToggle = document.querySelector(".menu-toggle");
+        const sidebar = document.querySelector(".sidebar");
+        if (menuToggle) {
+          menuToggle.addEventListener("click", () => {
+            sidebar.classList.toggle("open");
+          });
+        }
     </script>
   </body>
 </html>

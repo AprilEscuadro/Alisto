@@ -324,7 +324,7 @@
               aria-haspopup="true"
               aria-expanded="false"
             >
-                           <span class="avatar">
+              <span class="avatar">
                 {% if account.photo_base64 %}
                 <img
                   src="data:image/jpeg;base64,{{ account.photo_base64 }}"
@@ -341,12 +341,11 @@
 
             <!-- ---- PROFILE DROPDOWN ---- -->
             <div class="profile-menu" id="profileMenu" role="menu">
-                            <div class="profile-menu-head">
+              <div class="profile-menu-head">
                 <strong>{{ account.full_name }}</strong>
                 <small>{{ account.role|capitalize }}</small>
               </div>
               <a
-                              
                 class="profile-menu-item"
                 role="menuitem"
                 href="{{ url_for('my_profile') }}"
@@ -428,7 +427,7 @@
               <div class="summary-content">
                 <span class="summary-label">Total Alerts</span>
                 <span class="summary-value">{{ alerts|length }}</span>
-                <span class="summary-sub">This Month</span>
+                <span class="summary-sub">All Time</span>
               </div>
             </div>
           </section>
@@ -458,8 +457,10 @@
           <section class="alerts-list" id="alertsList">
             {% for alert in alerts %}
             <div
-              class="alert-card {{ 'emergency' if alert.type == 'emergency' else 'false-alarm' }}"
+              class="alert-card {{ 'emergency' if alert.type == 'emergency' else 'false-alarm' }}{{ ' is-open' if alert.is_open }}"
               data-status="{{ 'emergency' if alert.type == 'emergency' else 'false-alarm' }}"
+              data-created="{{ alert.created_iso }}"
+              data-search="{{ (alert.elder_name ~ ' ' ~ alert.short_id ~ ' ' ~ alert.id)|lower }}"
             >
               <span
                 class="alert-type-badge {{ 'emergency' if alert.type == 'emergency' else 'false-alarm' }}"
@@ -489,8 +490,8 @@
                     >
                   </div>
                   <div class="alert-trigger">
-                    <i data-lucide="mic"></i>
-                    <span>VOICE TRIGGER</span>
+                    <i data-lucide="{{ alert.trigger_icon }}"></i>
+                    <span>{{ alert.trigger_label }}</span>
                     {% if alert.trigger_phrase %}
                     <em>"{{ alert.trigger_phrase }}"</em>
                     {% endif %}
@@ -527,7 +528,7 @@
                     <i data-lucide="info"></i>
                     <span>
                       {% if alert.type == 'emergency' %} Status:
-                      <strong class="status-alert-sent"
+                      <strong class="{{ alert.status_class }}"
                         >{{ alert.status }}</strong
                       >
                       {% else %} Reason: {{ alert.reason }} {% endif %}
@@ -536,12 +537,33 @@
                 </div>
               </div>
 
-              <a
-                href="{{ url_for('alert_details', alert_id=alert.id) }}"
-                class="alert-btn"
-              >
-                View Details <i data-lucide="chevron-right"></i>
-              </a>
+              <div class="alert-actions">
+                {% if alert.is_open %}
+                <button
+                  type="button"
+                  class="alert-btn alert-btn-danger"
+                  data-alert-action="acknowledge"
+                  data-alert-id="{{ alert.id }}"
+                >
+                  <i data-lucide="hand-heart"></i> I'm Responding
+                </button>
+                <button
+                  type="button"
+                  class="alert-btn alert-btn-success"
+                  data-alert-action="resolve"
+                  data-alert-id="{{ alert.id }}"
+                >
+                  <i data-lucide="check"></i> Resolve
+                </button>
+                {% endif %}
+                <button
+                  type="button"
+                  class="alert-btn"
+                  data-alert-details="{{ alert.id }}"
+                >
+                  View Details <i data-lucide="chevron-right"></i>
+                </button>
+              </div>
             </div>
             {% else %}
             <div class="empty-state">
@@ -578,14 +600,29 @@
           <button type="button" class="btn-ghost" id="logoutCancel">
             Cancel
           </button>
-          <button
-            type="button"
-            class="btn-danger-action"
-            id="logoutConfirmBtn"
-          >
+          <button type="button" class="btn-danger-action" id="logoutConfirmBtn">
             Log out
           </button>
         </div>
+      </div>
+    </div>
+
+    <!-- ============ ALERT DETAILS MODAL ============ -->
+    <div class="confirm-overlay" id="alertDetailsModal" aria-hidden="true">
+      <div
+        class="confirm-dialog alert-details-dialog"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="alertDetailsTitle"
+      >
+        <div class="alert-details-head">
+          <h2 class="confirm-title" id="alertDetailsTitle">Alert details</h2>
+          <button type="button" class="btn-ghost" id="alertDetailsClose">
+            Close
+          </button>
+        </div>
+        <div class="alert-details-body" id="alertDetailsBody">Loading...</div>
+        <div class="confirm-actions" id="alertDetailsActions"></div>
       </div>
     </div>
 
@@ -606,25 +643,209 @@
         "#alertsFilters .filter-tab",
       );
       const alertCards = document.querySelectorAll("#alertsList .alert-card");
+      const searchInput = document.getElementById("alertsSearch");
+      let activeFilter = "all";
+
+      function matchesFilter(card) {
+        if (activeFilter === "all") return true;
+        if (activeFilter === "emergency" || activeFilter === "false-alarm") {
+          return card.dataset.status === activeFilter;
+        }
+        if (!card.dataset.created) return false;
+        const created = new Date(card.dataset.created);
+        const now = new Date();
+        const startOfToday = new Date(
+          now.getFullYear(),
+          now.getMonth(),
+          now.getDate(),
+        );
+        if (activeFilter === "today") return created >= startOfToday;
+        if (activeFilter === "week") {
+          const weekAgo = new Date(startOfToday);
+          weekAgo.setDate(weekAgo.getDate() - 6);
+          return created >= weekAgo;
+        }
+        return true;
+      }
+
+      function applyAlertFilters() {
+        const query = searchInput ? searchInput.value.trim().toLowerCase() : "";
+        alertCards.forEach((card) => {
+          const ok = matchesFilter(card) && card.dataset.search.includes(query);
+          card.style.display = ok ? "" : "none";
+        });
+      }
 
       filterButtons.forEach((btn) => {
         btn.addEventListener("click", () => {
           filterButtons.forEach((b) => b.classList.remove("active"));
           btn.classList.add("active");
-
-          const filter = btn.dataset.filter;
-          alertCards.forEach((card) => {
-            if (filter === "all") {
-              card.style.display = "";
-            } else if (filter === "emergency" || filter === "false-alarm") {
-              card.style.display = card.dataset.status === filter ? "" : "none";
-            } else {
-              // "today" / "week" placeholders — wire up to real date filtering later
-              card.style.display = "";
-            }
-          });
+          activeFilter = btn.dataset.filter;
+          applyAlertFilters();
         });
       });
+      if (searchInput) searchInput.addEventListener("input", applyAlertFilters);
+
+      // Export
+      const exportBtn = document.getElementById("exportReportBtn");
+      if (exportBtn) {
+        exportBtn.addEventListener("click", () => {
+          window.location.href = "{{ url_for('export_alerts') }}";
+        });
+      }
+
+      // Respond / resolve
+      async function updateAlert(alertId, action, button) {
+        const question =
+          action === "resolve"
+            ? "Mark this alert as resolved? Everyone linked will see it as closed."
+            : "Let the family know you are responding to this alert?";
+        if (!confirm(question)) return;
+        if (button) button.disabled = true;
+        try {
+          const res = await fetch(`/alerts/${alertId}/respond`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ action }),
+          });
+          const data = await res.json();
+          if (data.success) {
+            window.location.reload();
+            return;
+          }
+          alert(data.message || "Could not update the alert.");
+        } catch (err) {
+          alert(
+            "Cannot reach the server. Check your connection and try again.",
+          );
+        }
+        if (button) button.disabled = false;
+      }
+
+      document.querySelectorAll("[data-alert-action]").forEach((btn) => {
+        btn.addEventListener("click", () =>
+          updateAlert(btn.dataset.alertId, btn.dataset.alertAction, btn),
+        );
+      });
+
+      // Details modal
+      (function () {
+        const modal = document.getElementById("alertDetailsModal");
+        const body = document.getElementById("alertDetailsBody");
+        const actions = document.getElementById("alertDetailsActions");
+        const closeBtn = document.getElementById("alertDetailsClose");
+
+        function row(label, value) {
+          const div = document.createElement("div");
+          div.className = "alert-details-row";
+          const l = document.createElement("span");
+          l.textContent = label;
+          const v = document.createElement("strong");
+          v.textContent = value ?? "—";
+          div.append(l, v);
+          return div;
+        }
+
+        function close() {
+          modal.classList.remove("open");
+          modal.setAttribute("aria-hidden", "true");
+          document.body.classList.remove("modal-open");
+        }
+
+        async function open(alertId) {
+          body.textContent = "Loading...";
+          actions.innerHTML = "";
+          modal.classList.add("open");
+          modal.setAttribute("aria-hidden", "false");
+          document.body.classList.add("modal-open");
+          try {
+            const res = await fetch(`/alerts/${alertId}/details`);
+            const data = await res.json();
+            if (!data.success) {
+              body.textContent = data.message || "Could not load this alert.";
+              return;
+            }
+            const a = data.alert;
+            body.innerHTML = "";
+            body.append(
+              row("Alert ID", a.short_id),
+              row("Loved one", `${a.elder_name} (${a.relationship})`),
+              row("Type", a.type === "emergency" ? "Emergency" : "False alarm"),
+              row("Status", a.status),
+              row(
+                "Trigger",
+                a.trigger_phrase
+                  ? `${a.trigger_label} — "${a.trigger_phrase}"`
+                  : a.trigger_label,
+              ),
+              row("Time", a.timestamp),
+              row("Location", a.location),
+              row("Device", a.device_id),
+              row("SMS sent", String(a.sms_sent_count)),
+            );
+            if (a.type !== "emergency") body.append(row("Reason", a.reason));
+
+            if (a.gps_verified) {
+              const link = document.createElement("a");
+              link.href = `https://www.google.com/maps?q=${a.latitude},${a.longitude}`;
+              link.target = "_blank";
+              link.rel = "noopener";
+              link.className = "alert-map-link";
+              link.textContent = "Open location in Google Maps";
+              body.append(link);
+            }
+
+            const title = document.createElement("p");
+            title.className = "alert-details-subtitle";
+            title.textContent = "Status timeline";
+            body.append(title);
+            if (a.history.length) {
+              const list = document.createElement("ul");
+              list.className = "alert-timeline";
+              a.history.forEach((h) => {
+                const li = document.createElement("li");
+                li.textContent = `${h.when} — ${h.status} by ${h.by}${h.notes ? ` (${h.notes})` : ""}`;
+                list.append(li);
+              });
+              body.append(list);
+            } else {
+              body.append(row("", "No status changes recorded yet."));
+            }
+
+            if (a.is_open) {
+              [
+                ["acknowledge", "I'm Responding", "alert-btn-danger"],
+                ["resolve", "Resolve", "alert-btn-success"],
+              ].forEach(([action, label, cls]) => {
+                const b = document.createElement("button");
+                b.type = "button";
+                b.className = `alert-btn ${cls}`;
+                b.textContent = label;
+                b.addEventListener("click", () => updateAlert(a.id, action, b));
+                actions.append(b);
+              });
+            }
+          } catch (err) {
+            body.textContent =
+              "Cannot reach the server. Check your connection and try again.";
+          }
+        }
+
+        document.querySelectorAll("[data-alert-details]").forEach((btn) => {
+          btn.addEventListener("click", () => open(btn.dataset.alertDetails));
+        });
+        closeBtn.addEventListener("click", close);
+        modal.addEventListener("click", (e) => {
+          if (e.target === modal) close();
+        });
+        document.addEventListener("keydown", (e) => {
+          if (e.key === "Escape" && modal.classList.contains("open")) close();
+        });
+
+        // /alerts?open=<id> (old "View Details" links) opens the modal directly.
+        const openId = new URLSearchParams(window.location.search).get("open");
+        if (openId) open(openId);
+      })();
 
       // Search by name
       const searchInput = document.getElementById("alertsSearch");

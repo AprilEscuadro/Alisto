@@ -1,0 +1,235 @@
+{% extends 'admin/base.html' %}
+{% block title %}Support{% endblock %}
+
+{% block content %}
+<div class="admin-page-header">
+  <div>
+    <h1>Support</h1>
+    <p>Problem reports and support messages sent from the Help &amp; Support page.</p>
+  </div>
+</div>
+
+<!-- STAT CARDS -->
+<section class="admin-stats admin-stats-4">
+  <div class="stat-card">
+    <span class="stat-icon tint-red"><i data-lucide="inbox"></i></span>
+    <div class="stat-body">
+      <span class="stat-label">Open</span>
+      <strong class="stat-value text-red">{{ stats.open }}</strong>
+    </div>
+  </div>
+  <div class="stat-card">
+    <span class="stat-icon tint-orange"><i data-lucide="loader"></i></span>
+    <div class="stat-body">
+      <span class="stat-label">In Progress</span>
+      <strong class="stat-value text-orange">{{ stats.in_progress }}</strong>
+    </div>
+  </div>
+  <div class="stat-card">
+    <span class="stat-icon tint-green"><i data-lucide="circle-check"></i></span>
+    <div class="stat-body">
+      <span class="stat-label">Resolved / Closed</span>
+      <strong class="stat-value text-green">{{ stats.resolved }}</strong>
+    </div>
+  </div>
+  <div class="stat-card">
+    <span class="stat-icon tint-blue"><i data-lucide="life-buoy"></i></span>
+    <div class="stat-body">
+      <span class="stat-label">Total Tickets</span>
+      <strong class="stat-value text-blue">{{ stats.total }}</strong>
+    </div>
+  </div>
+</section>
+
+<!-- FILTERS (server-side) -->
+<form class="admin-toolbar" method="GET" action="{{ url_for('admin.support_tickets') }}">
+  <div class="toolbar-filters">
+    <select name="status" aria-label="Status" onchange="this.form.submit()">
+      <option value="active" {{ 'selected' if status_filter == 'active' }}>Needs action</option>
+      {% for key, label in statuses.items() %}
+      <option value="{{ key }}" {{ 'selected' if status_filter == key }}>{{ label }}</option>
+      {% endfor %}
+      <option value="all" {{ 'selected' if status_filter == 'all' }}>All tickets</option>
+    </select>
+    <select name="type" aria-label="Type" onchange="this.form.submit()">
+      <option value="">All types</option>
+      <option value="problem_report" {{ 'selected' if type_filter == 'problem_report' }}>Problem Reports</option>
+      <option value="contact_support" {{ 'selected' if type_filter == 'contact_support' }}>Contact Support</option>
+    </select>
+  </div>
+</form>
+
+<!-- TABLE -->
+<section class="admin-card admin-table-card">
+  <div class="table-scroll">
+    <table class="admin-table">
+      <thead>
+        <tr>
+          <th>Ticket</th>
+          <th>From</th>
+          <th>Subject</th>
+          <th>Status</th>
+          <th>Sent</th>
+          <th class="col-actions">Action</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for row in rows %}
+        <tr>
+          <td>
+            <strong class="cell-strong">{{ row.ticket_no }}</strong><br />
+            <small class="text-muted">{{ row.type_label }}</small>
+          </td>
+          <td>
+            <div class="user-cell">
+              <div>
+                <strong>{{ row.user_name }}</strong>
+                <small>{{ row.user_role }}{% if row.reply_email %} · {{ row.reply_email }}{% endif %}</small>
+              </div>
+            </div>
+          </td>
+          <td>{{ row.subject }}</td>
+          <td><span class="badge {{ row.badge }}">{{ row.status_label }}</span></td>
+          <td class="nowrap">{{ row.created }}</td>
+          <td class="col-actions">
+            <button type="button" class="btn btn-outline js-open-ticket" data-ticket='{{ row|tojson }}'>
+              <i data-lucide="eye"></i> Open
+            </button>
+          </td>
+        </tr>
+        {% else %}
+        <tr>
+          <td colspan="6">
+            <div class="empty-state">
+              <span class="empty-icon"><i data-lucide="inbox"></i></span>
+              <strong>No tickets here</strong>
+              <p>New problem reports and support messages will show up here.</p>
+            </div>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<!-- TICKET MODAL -->
+<div class="admin-modal" id="ticketModal" hidden>
+  <div class="admin-modal-backdrop" data-close-ticket></div>
+  <div class="admin-modal-card ticket-modal-card" role="dialog" aria-modal="true" aria-labelledby="ticketTitle">
+    <div class="admin-modal-header">
+      <div>
+        <strong id="ticketTitle">Ticket</strong>
+        <small class="text-muted" id="ticketSubtitle"></small>
+      </div>
+      <button type="button" class="admin-modal-close" data-close-ticket aria-label="Close">
+        <i data-lucide="x"></i>
+      </button>
+    </div>
+
+    <dl class="details-list" id="ticketDetails"></dl>
+
+    <form method="POST" id="ticketForm">
+      <input type="hidden" name="return_status" value="{{ status_filter }}" />
+      <label class="field">
+        <span>Status</span>
+        <select name="status" id="ticketStatus" class="ticket-select">
+          {% for key, label in statuses.items() %}
+          <option value="{{ key }}">{{ label }}</option>
+          {% endfor %}
+        </select>
+      </label>
+      <label class="field">
+        <span>Reply to user <span class="optional-tag">(the user sees this on their Help &amp; Support page)</span></span>
+        <textarea name="admin_reply" id="ticketReply" rows="4" class="ticket-textarea"></textarea>
+      </label>
+      <label class="field">
+        <span>Internal notes <span class="optional-tag">(admins only)</span></span>
+        <textarea name="admin_notes" id="ticketNotes" rows="3" class="ticket-textarea"></textarea>
+      </label>
+      <div class="admin-modal-footer">
+        <button type="button" class="btn btn-outline" data-close-ticket>Cancel</button>
+        <button type="submit" class="btn btn-primary">Save</button>
+      </div>
+    </form>
+  </div>
+</div>
+{% endblock %}
+
+{% block head %}
+<style>
+  .ticket-modal-card { max-width: 620px; }
+  .ticket-select {
+    width: 100%;
+    padding: 10px 12px;
+    border: 1px solid var(--admin-border);
+    border-radius: 8px;
+    font: inherit;
+  }
+  .admin-modal .field textarea.ticket-textarea { font-family: inherit; }
+  .ticket-message { white-space: pre-wrap; font-weight: 400; }
+</style>
+{% endblock %}
+
+{% block scripts %}
+<script>
+  (function () {
+    const modal = document.getElementById("ticketModal");
+    const form = document.getElementById("ticketForm");
+    const details = document.getElementById("ticketDetails");
+    const updateUrl = "{{ url_for('admin.update_support_ticket', ticket_id='__ID__') }}";
+
+    function addDetail(label, value, extraClass) {
+      if (!value) return;
+      const wrap = document.createElement("div");
+      const dt = document.createElement("dt");
+      const dd = document.createElement("dd");
+      dt.textContent = label;
+      dd.textContent = value;
+      if (extraClass) dd.className = extraClass;
+      wrap.append(dt, dd);
+      details.append(wrap);
+    }
+
+    function open(t) {
+      document.getElementById("ticketTitle").textContent = `${t.ticket_no} · ${t.status_label}`;
+      document.getElementById("ticketSubtitle").textContent = t.type_label;
+      details.innerHTML = "";
+      addDetail("From", `${t.user_name}${t.user_role ? " (" + t.user_role + ")" : ""}`);
+      addDetail("Account email", t.user_email);
+      addDetail("Reply to", t.reply_email);
+      addDetail("Phone", t.phone);
+      addDetail("Category", t.category);
+      addDetail("Problem type", t.subcategory);
+      addDetail("Subject", t.subject);
+      addDetail("Message", t.message, "ticket-message");
+      addDetail("Sent", t.created);
+      addDetail("Last update", t.updated !== t.created ? t.updated : "");
+      addDetail("Handled by", t.handled_by);
+
+      form.action = updateUrl.replace("__ID__", encodeURIComponent(t.id));
+      document.getElementById("ticketStatus").value =
+        t.status === "open" ? "in_progress" : t.status;
+      document.getElementById("ticketReply").value = t.admin_reply;
+      document.getElementById("ticketNotes").value = t.admin_notes;
+
+      modal.hidden = false;
+      if (window.lucide) lucide.createIcons();
+    }
+
+    function close() {
+      modal.hidden = true;
+    }
+
+    document.querySelectorAll(".js-open-ticket").forEach((btn) => {
+      btn.addEventListener("click", () => open(JSON.parse(btn.dataset.ticket)));
+    });
+    modal.querySelectorAll("[data-close-ticket]").forEach((el) =>
+      el.addEventListener("click", close),
+    );
+    document.addEventListener("keydown", (e) => {
+      if (e.key === "Escape" && !modal.hidden) close();
+    });
+  })();
+</script>
+{% endblock %}

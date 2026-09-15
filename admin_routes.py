@@ -11,6 +11,7 @@ and the page behavior (menus, filters, pagination) in static/js/admin.js.
 """
 import os
 import re
+from datetime import timedelta, timezone
 from functools import wraps
 
 from flask import (Blueprint, render_template, session, redirect, url_for,
@@ -82,6 +83,7 @@ def _admin_layout_context():
         'admin_name': session.get('full_name', 'Administrator'),
         'admin_initial': _initials(session.get('full_name', 'Administrator'))[:1],
         'pending_count': _pending_bhw_count(),
+        'open_ticket_count': _open_ticket_count(),
     }
 
 
@@ -127,12 +129,14 @@ def users():
     for doc in db.collection('device').stream():
         elder_id = (doc.to_dict() or {}).get('elder_id')
         if elder_id:
-            devices_per_elder[elder_id] = devices_per_elder.get(elder_id, 0) + 1
+            devices_per_elder[elder_id] = devices_per_elder.get(
+                elder_id, 0) + 1
 
     elders_per_family = {}
     for doc in db.collection('family_elder_link').stream():
         link = doc.to_dict() or {}
-        elders_per_family.setdefault(link.get('family_user_id'), []).append(link.get('elder_id'))
+        elders_per_family.setdefault(
+            link.get('family_user_id'), []).append(link.get('elder_id'))
 
     bhw_profiles = {}
     for doc in db.collection('bhw_profile').stream():
@@ -176,15 +180,18 @@ def users():
 
         if role == 'family':
             row['display_id'] = _short_id('FAM', user_id)
-            row['devices'] = sum(devices_per_elder.get(e, 0) for e in elders_per_family.get(user_id, []))
+            row['devices'] = sum(devices_per_elder.get(e, 0)
+                                 for e in elders_per_family.get(user_id, []))
             row['status'] = 'archived' if user.get('is_archived') else 'active'
-            row['details'].append(['Linked Loved Ones', len(elders_per_family.get(user_id, []))])
+            row['details'].append(
+                ['Linked Loved Ones', len(elders_per_family.get(user_id, []))])
         else:
             approval = user.get('approval_status', 'pending')
             profile = bhw_profiles.get(user_id, {})
             row['display_id'] = _short_id('BHW', user_id)
             row['devices'] = 0
-            row['status'] = {'approved': 'active', 'rejected': 'rejected'}.get(approval, 'pending')
+            row['status'] = {'approved': 'active',
+                             'rejected': 'rejected'}.get(approval, 'pending')
             row['details'] += [
                 ['Date of Birth', profile.get('date_of_birth') or '—'],
                 ['Barangay', profile.get('barangay_assigned') or '—'],
@@ -193,8 +200,10 @@ def users():
                 ['BHW ID Number', profile.get('bhw_id_number') or '—'],
             ]
             if profile.get('valid_id_stored_as'):
-                row['valid_id_url'] = url_for('admin.bhw_valid_id', user_id=user_id)
-                row['valid_id_name'] = profile.get('valid_id_filename') or 'View file'
+                row['valid_id_url'] = url_for(
+                    'admin.bhw_valid_id', user_id=user_id)
+                row['valid_id_name'] = profile.get(
+                    'valid_id_filename') or 'View file'
 
         rows.append(row)
 
@@ -246,8 +255,10 @@ def update_bhw_approval(user_id):
 @admin_required
 def bhw_valid_id(user_id):
     """Serve a BHW's uploaded ID to admins only (the file is not in /static)."""
-    matches = list(db.collection('bhw_profile').where('user_id', '==', user_id).limit(1).stream())
-    stored = (matches[0].to_dict() or {}).get('valid_id_stored_as') if matches else None
+    matches = list(db.collection('bhw_profile').where(
+        'user_id', '==', user_id).limit(1).stream())
+    stored = (matches[0].to_dict() or {}).get(
+        'valid_id_stored_as') if matches else None
     if not stored:
         abort(404)
     folder = os.path.join(current_app.root_path, 'uploads', 'bhw_ids')
@@ -297,7 +308,8 @@ def devices():
             'sort': _sort_key(device.get('created_at')),
         })
 
-    rows.sort(key=lambda r: (r['status'] != 'available', -r['sort'], r['serial']))
+    rows.sort(key=lambda r: (r['status'] !=
+              'available', -r['sort'], r['serial']))
 
     stats = {
         'total': len(rows),
@@ -312,7 +324,8 @@ def devices():
 @admin_required
 def add_devices():
     """Pre-register one or many serial numbers. One serial per line."""
-    raw_lines = (request.form.get('serial_numbers') or '').replace(',', '\n').splitlines()
+    raw_lines = (request.form.get('serial_numbers')
+                 or '').replace(',', '\n').splitlines()
     batch = (request.form.get('batch') or '').strip()
 
     typed = [line for line in (l.strip() for l in raw_lines) if line]
@@ -320,7 +333,8 @@ def add_devices():
         flash('Please enter at least one serial number.', 'error')
         return redirect(url_for('admin.devices'))
     if len(typed) > MAX_SERIALS_PER_SUBMIT:
-        flash(f'Please add at most {MAX_SERIALS_PER_SUBMIT} serial numbers at a time.', 'error')
+        flash(
+            f'Please add at most {MAX_SERIALS_PER_SUBMIT} serial numbers at a time.', 'error')
         return redirect(url_for('admin.devices'))
 
     invalid, seen, to_add = [], set(), []
@@ -349,11 +363,14 @@ def add_devices():
         added.append(serial)
 
     if added:
-        flash(f"Pre-registered {len(added)} serial number{'s' if len(added) != 1 else ''}.", 'success')
+        flash(
+            f"Pre-registered {len(added)} serial number{'s' if len(added) != 1 else ''}.", 'success')
     if existing:
-        flash(f"Already in the system, skipped: {_join_sample(existing)}", 'info')
+        flash(
+            f"Already in the system, skipped: {_join_sample(existing)}", 'info')
     if invalid:
-        flash(f"Not a valid serial number, skipped: {_join_sample(invalid)}", 'error')
+        flash(
+            f"Not a valid serial number, skipped: {_join_sample(invalid)}", 'error')
     return redirect(url_for('admin.devices'))
 
 
@@ -377,8 +394,10 @@ def unregister_device(serial):
         return redirect(url_for('admin.devices'))
 
     elder_id = device.get('elder_id')
-    elder_doc = db.collection('elder_profile').document(elder_id).get() if elder_id else None
-    elder_name = (elder_doc.to_dict() or {}).get('full_name') if elder_doc and elder_doc.exists else None
+    elder_doc = db.collection('elder_profile').document(
+        elder_id).get() if elder_id else None
+    elder_name = (elder_doc.to_dict() or {}).get(
+        'full_name') if elder_doc and elder_doc.exists else None
 
     ref.update({
         'is_registered': False,
@@ -407,7 +426,8 @@ def delete_device(serial):
     if not doc.exists:
         flash('That serial number is not in the system.', 'error')
     elif (doc.to_dict() or {}).get('is_registered'):
-        flash('That device is already linked to an elder, so it cannot be removed.', 'error')
+        flash(
+            'That device is already linked to an elder, so it cannot be removed.', 'error')
     else:
         ref.delete()
         flash(f'Removed serial number {serial}.', 'success')
@@ -418,8 +438,141 @@ def _join_sample(items, limit=5):
     head = ', '.join(items[:limit])
     return head if len(items) <= limit else f'{head} and {len(items) - limit} more'
 
+# ---------- SUPPORT TICKETS (Report a Problem + Contact Support) ----------
+
+
+TICKET_STATUSES = {
+    'open': 'Open',
+    'in_progress': 'In Progress',
+    'resolved': 'Resolved',
+    'closed': 'Closed',
+}
+TICKET_BADGES = {
+    'open': 'badge-rejected',
+    'in_progress': 'badge-pending',
+    'resolved': 'badge-active',
+    'closed': 'badge-archived',
+}
+PH_TIME = timezone(timedelta(hours=8))
+
+
+def _ph_datetime(value):
+    if not hasattr(value, 'strftime'):
+        return '—'
+    if getattr(value, 'tzinfo', None):
+        value = value.astimezone(PH_TIME)
+    return value.strftime('%b %d, %Y %I:%M %p')
+
+
+def _open_ticket_count():
+    try:
+        return sum(1 for d in db.collection('support_ticket').stream()
+                   if (d.to_dict() or {}).get('status', 'open') in ('open', 'in_progress'))
+    except Exception:
+        return 0
+
+
+@admin_bp.route('/support')
+@admin_required
+def support_tickets():
+    status_filter = request.args.get('status', 'active')
+    type_filter = request.args.get('type', '')
+
+    all_rows = []
+    for doc in db.collection('support_ticket').stream():
+        t = doc.to_dict() or {}
+        status = t.get('status') or 'open'
+        all_rows.append({
+            'id': doc.id,
+            'ticket_no': t.get('ticket_no') or _short_id('TCK', doc.id),
+            'type': t.get('type') or '',
+            'type_label': 'Problem Report' if t.get('type') == 'problem_report' else 'Contact Support',
+            'category': t.get('category_label') or '',
+            'subcategory': t.get('subcategory_label') or '',
+            'subject': t.get('subject') or '—',
+            'message': t.get('message') or '',
+            'user_name': t.get('contact_name') or t.get('user_name') or 'Unknown',
+            'user_role': (t.get('user_role') or '').upper() if t.get('user_role') == 'bhw'
+            else (t.get('user_role') or '').capitalize(),
+            'user_email': t.get('user_email') or '',
+            'reply_email': t.get('reply_email') or '',
+            'phone': t.get('user_contact_number') or '',
+            'status': status,
+            'status_label': TICKET_STATUSES.get(status, status.title()),
+            'badge': TICKET_BADGES.get(status, 'badge-pending'),
+            'admin_reply': t.get('admin_reply') or '',
+            'admin_notes': t.get('admin_notes') or '',
+            'handled_by': t.get('handled_by_name') or '',
+            'created': _ph_datetime(t.get('created_at')),
+            'updated': _ph_datetime(t.get('updated_at')),
+            'sort': _sort_key(t.get('created_at')),
+        })
+
+    stats = {
+        'open': sum(r['status'] == 'open' for r in all_rows),
+        'in_progress': sum(r['status'] == 'in_progress' for r in all_rows),
+        'resolved': sum(r['status'] in ('resolved', 'closed') for r in all_rows),
+        'total': len(all_rows),
+    }
+
+    rows = all_rows
+    if status_filter == 'active':
+        rows = [r for r in rows if r['status'] in ('open', 'in_progress')]
+    elif status_filter in TICKET_STATUSES:
+        rows = [r for r in rows if r['status'] == status_filter]
+    else:
+        status_filter = 'all'
+    if type_filter in ('problem_report', 'contact_support'):
+        rows = [r for r in rows if r['type'] == type_filter]
+    else:
+        type_filter = ''
+    # Open first, then newest.
+    order = {'open': 0, 'in_progress': 1, 'resolved': 2, 'closed': 3}
+    rows.sort(key=lambda r: (order.get(r['status'], 9), -r['sort']))
+
+    return render_template(
+        'admin/support.html', active_page='support',
+        rows=rows, stats=stats, statuses=TICKET_STATUSES,
+        status_filter=status_filter, type_filter=type_filter,
+    )
+
+
+@admin_bp.route('/support/<ticket_id>/update', methods=['POST'])
+@admin_required
+def update_support_ticket(ticket_id):
+    ref = db.collection('support_ticket').document(ticket_id)
+    doc = ref.get()
+    if not doc.exists:
+        flash('That ticket no longer exists.', 'error')
+        return redirect(url_for('admin.support_tickets'))
+
+    status = request.form.get('status', '')
+    if status not in TICKET_STATUSES:
+        flash('Please choose a valid status.', 'error')
+        return redirect(url_for('admin.support_tickets'))
+
+    ticket = doc.to_dict() or {}
+    updates = {
+        'status': status,
+        'admin_reply': (request.form.get('admin_reply') or '').strip()[:2000],
+        'admin_notes': (request.form.get('admin_notes') or '').strip()[:2000],
+        'handled_by': session['user_id'],
+        'handled_by_name': session.get('full_name', 'Administrator'),
+        'updated_at': firestore.SERVER_TIMESTAMP,
+    }
+    if status in ('resolved', 'closed') and ticket.get('status') not in ('resolved', 'closed'):
+        updates['resolved_at'] = firestore.SERVER_TIMESTAMP
+    elif status in ('open', 'in_progress'):
+        updates['resolved_at'] = None
+    ref.update(updates)
+
+    flash(
+        f"{ticket.get('ticket_no') or 'Ticket'} updated to {TICKET_STATUSES[status]}.", 'success')
+    return redirect(url_for('admin.support_tickets',
+                            status=request.form.get('return_status', 'active')))
 
 # ---------- PAGES NOT BUILT YET ----------
+
 
 _COMING_SOON = {
     'map_view': ('Map View', 'Monitor device and emergency status across the community.'),

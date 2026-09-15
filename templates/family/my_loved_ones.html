@@ -760,7 +760,7 @@
                 <span class="summary-value">{{ loved_ones|length }}</span>
                 <span class="summary-sub">Registered</span>
               </div>
-              <a href="#" class="summary-link">
+              <a href="#" class="summary-link" data-filter-link="all">
                 View All <i data-lucide="chevron-right"></i>
               </a>
             </div>
@@ -774,7 +774,7 @@
                 <span class="summary-value">{{ online_count }}</span>
                 <span class="summary-sub">Active</span>
               </div>
-              <a href="#" class="summary-link">
+              <a href="#" class="summary-link" data-filter-link="online">
                 View Online <i data-lucide="chevron-right"></i>
               </a>
             </div>
@@ -788,7 +788,7 @@
                 <span class="summary-value">{{ attention_count }}</span>
                 <span class="summary-sub">Alert</span>
               </div>
-              <a href="#" class="summary-link">
+              <a href="#" class="summary-link" data-filter-link="attention">
                 Review Now <i data-lucide="chevron-right"></i>
               </a>
             </div>
@@ -814,7 +814,11 @@
           <!-- ---- LOVED ONES GRID ---- -->
           <section class="loved-ones-grid" id="lovedOnesGrid">
             {% for elder in loved_ones %}
-            <div class="loved-one-card" data-status="{{ elder.status_class }}">
+            <div
+              class="loved-one-card"
+              data-status="{{ elder.status_class }}"
+              data-badge="{{ elder.badge_class }}"
+            >
               <div class="card-top">
                 <div class="card-left">
                   <div class="card-left-top">
@@ -828,15 +832,9 @@
                     <div class="card-name-group">
                       <h3 class="card-name">{{ elder.name }}</h3>
                       <p class="card-relationship">{{ elder.relationship }}</p>
-                      <span
-                        class="card-status {% if elder.status_class == 'online' %}online{% elif elder.status_class == 'offline' %}offline{% else %}attention{% endif %}"
-                      >
-                        {% if elder.status_class == 'online' %}
-                        <i data-lucide="check-circle-2"></i> Online {% elif
-                        elder.status_class == 'offline' %}
-                        <i data-lucide="circle"></i> Offline {% else %}
-                        <i data-lucide="triangle-alert"></i> Needs Attention {%
-                        endif %}
+                      <span class="card-status {{ elder.badge_class }}">
+                        <i data-lucide="{{ elder.status_icon }}"></i>
+                        {{ elder.status_label }}
                       </span>
                     </div>
                   </div>
@@ -1197,9 +1195,33 @@
               <span>Device ID</span>
               <strong id="viewLovedOneDeviceId">—</strong>
             </div>
+            <div
+              class="view-lo-field span-2 link-device-row"
+              id="linkDeviceRow"
+              style="display: none"
+            >
+              <span>Link an ALISTO device</span>
+              <div class="link-device-controls">
+                <input
+                  type="text"
+                  class="link-device-input"
+                  id="linkDeviceInput"
+                  placeholder="Serial number on the device or QR code"
+                  autocomplete="off"
+                />
+                <button
+                  type="button"
+                  class="btn-primary-pill"
+                  id="linkDeviceBtn"
+                >
+                  <span>Link device</span>
+                </button>
+              </div>
+            </div>
             <div class="view-lo-field">
               <span>Device status</span>
               <strong id="viewLovedOneDeviceStatus">—</strong>
+              <small class="view-lo-note" id="viewLovedOneDeviceNote"></small>
             </div>
             <div class="view-lo-field">
               <span>Last check-in</span>
@@ -1288,9 +1310,10 @@
           Delete this loved one?
         </h2>
         <p class="confirm-text">
-          This will permanently remove
-          <strong id="deleteLovedOneName">this person</strong> from your account
-          and unlink their ALISTO device. This cannot be undone.
+          <strong id="deleteLovedOneName">this person</strong> will be removed
+          from your account. If other family members are linked, they keep
+          access. If you are the last one, the profile is deleted and the ALISTO
+          device is unlinked.
         </p>
         <div class="confirm-actions">
           <button type="button" class="btn-ghost" id="deleteLovedOneCancel">
@@ -1324,32 +1347,56 @@
         "#lovedOnesFilters .filter-tab",
       );
       const cards = document.querySelectorAll("#lovedOnesGrid .loved-one-card");
+      const searchInput = document.getElementById("lovedOnesSearch");
+      let activeFilter = "all";
+
+      // Filter tab and search box work together.
+      function applyCardFilters() {
+        const query = searchInput ? searchInput.value.trim().toLowerCase() : "";
+        cards.forEach((card) => {
+          const name = card
+            .querySelector(".card-name")
+            .textContent.toLowerCase();
+          const statusOk =
+            activeFilter === "all" || card.dataset.status === activeFilter;
+          card.style.display = statusOk && name.includes(query) ? "" : "none";
+        });
+      }
+
+      function setFilter(filter) {
+        activeFilter = filter;
+        filterButtons.forEach((b) =>
+          b.classList.toggle("active", b.dataset.filter === filter),
+        );
+        applyCardFilters();
+      }
 
       filterButtons.forEach((btn) => {
-        btn.addEventListener("click", () => {
-          filterButtons.forEach((b) => b.classList.remove("active"));
-          btn.classList.add("active");
+        btn.addEventListener("click", () => setFilter(btn.dataset.filter));
+      });
 
-          const filter = btn.dataset.filter;
-          cards.forEach((card) => {
-            card.style.display =
-              filter === "all" || card.dataset.status === filter ? "" : "none";
-          });
+      // Summary card links ("View Online", "Review Now") use the same filters.
+      document.querySelectorAll("[data-filter-link]").forEach((link) => {
+        link.addEventListener("click", (e) => {
+          e.preventDefault();
+          setFilter(link.dataset.filterLink);
+          document
+            .getElementById("lovedOnesFilters")
+            .scrollIntoView({ behavior: "smooth", block: "start" });
         });
       });
 
-      // Search by name
-      const searchInput = document.getElementById("lovedOnesSearch");
-      if (searchInput) {
-        searchInput.addEventListener("input", () => {
-          const query = searchInput.value.trim().toLowerCase();
-          cards.forEach((card) => {
-            const name = card
-              .querySelector(".card-name")
-              .textContent.toLowerCase();
-            card.style.display = name.includes(query) ? "" : "none";
-          });
-        });
+      if (searchInput) searchInput.addEventListener("input", applyCardFilters);
+
+      // Message carried over a reload (e.g. after deleting a loved one).
+      const carriedMessage = sessionStorage.getItem("lovedOnesFlash");
+      if (carriedMessage) {
+        sessionStorage.removeItem("lovedOnesFlash");
+        const note = document.createElement("div");
+        note.className = "page-flash";
+        note.textContent = carriedMessage;
+        document.querySelector(".page-header").after(note);
+        setTimeout(() => note.remove(), 5000);
       }
 
       // ---- Add Loved One modal ----
@@ -1532,6 +1579,27 @@
         );
 
         let currentElderId = null;
+        let currentElder = null;
+        let dataChanged = false; // reload the cards when the modal closes
+        const deviceNoteEl = document.getElementById("viewLovedOneDeviceNote");
+        const linkDeviceRow = document.getElementById("linkDeviceRow");
+        const linkDeviceInput = document.getElementById("linkDeviceInput");
+        const linkDeviceBtn = document.getElementById("linkDeviceBtn");
+        const editSection = document.getElementById(
+          "viewLovedOneEditableSection",
+        );
+        const foot = document.getElementById("viewLovedOneFoot");
+        const editSaveBtn = document.getElementById("viewLovedOneEditSaveBtn");
+        const editSaveLabel = editSaveBtn.querySelector("span");
+        const editCancelBtn = document.getElementById("viewLovedOneCancelBtn");
+        const nameInput = document.getElementById("viewLovedOneNameInput");
+        const relationshipInput = document.getElementById(
+          "viewLovedOneRelationshipInput",
+        );
+        const dobInput = document.getElementById("viewLovedOneDobInput");
+        const addressInput = document.getElementById(
+          "viewLovedOneAddressInput",
+        );
 
         function showAlert(message, type) {
           alertBox.textContent = message;
@@ -1543,16 +1611,12 @@
           alertBox.className = "form-alert";
         }
 
-        function setStatus(statusClass) {
-          statusEl.className = "card-status " + statusClass;
-          if (statusClass === "online") {
-            statusEl.innerHTML = '<i data-lucide="check-circle-2"></i> Online';
-          } else if (statusClass === "offline") {
-            statusEl.innerHTML = '<i data-lucide="circle"></i> Offline';
-          } else {
-            statusEl.innerHTML =
-              '<i data-lucide="triangle-alert"></i> Needs Attention';
-          }
+        function setStatus(elder) {
+          statusEl.className = "card-status " + (elder.badge_class || "");
+          statusEl.innerHTML = "";
+          const icon = document.createElement("i");
+          icon.setAttribute("data-lucide", elder.status_icon || "circle");
+          statusEl.append(icon, " " + (elder.status_label || ""));
           lucide.createIcons();
         }
 
@@ -1563,14 +1627,134 @@
         }
 
         function closeModal() {
+          setEditing(false);
           modal.classList.remove("open");
           modal.setAttribute("aria-hidden", "true");
           document.body.classList.remove("modal-open");
           currentElderId = null;
+          currentElder = null;
+          if (dataChanged) window.location.reload();
         }
+
+        // ---- Edit / Save ----
+        function setEditing(on) {
+          editSection.classList.toggle("is-editing", on);
+          foot.classList.toggle("is-editing", on);
+          editCancelBtn.style.display = on ? "" : "none";
+          editSaveBtn.dataset.mode = on ? "save" : "edit";
+          editSaveLabel.textContent = on ? "Save" : "Edit";
+          editSaveBtn.disabled = false;
+        }
+
+        function fillEditInputs() {
+          if (!currentElder) return;
+          nameInput.value = currentElder.name || "";
+          const rel = currentElder.relationship || "";
+          // Custom relationships (e.g. "Neighbor") are added as an option.
+          if (
+            rel &&
+            ![...relationshipInput.options].some((o) => o.value === rel)
+          ) {
+            relationshipInput.add(new Option(rel, rel), 0);
+          }
+          relationshipInput.value = rel || "Son/Daughter";
+          dobInput.value = currentElder.date_of_birth || "";
+          dobInput.max = new Date().toISOString().slice(0, 10);
+          addressInput.value = currentElder.address || "";
+        }
+
+        editCancelBtn.addEventListener("click", () => {
+          clearAlert();
+          setEditing(false);
+        });
+
+        editSaveBtn.addEventListener("click", async () => {
+          if (!currentElderId || !currentElder) return;
+          if (editSaveBtn.dataset.mode === "edit") {
+            clearAlert();
+            fillEditInputs();
+            setEditing(true);
+            setTimeout(() => nameInput.focus(), 30);
+            return;
+          }
+
+          const payload = {
+            full_name: nameInput.value.trim(),
+            relationship: relationshipInput.value,
+            date_of_birth: dobInput.value,
+            address: addressInput.value.trim(),
+          };
+          if (!payload.full_name) {
+            showAlert("Full name cannot be empty.", "error");
+            return;
+          }
+
+          editSaveBtn.disabled = true;
+          editSaveLabel.textContent = "Saving...";
+          try {
+            const res = await fetch(`/loved-ones/${currentElderId}/update`, {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify(payload),
+            });
+            const data = await res.json();
+            if (!data.success) {
+              showAlert(data.message || "Could not save changes.", "error");
+              editSaveBtn.disabled = false;
+              editSaveLabel.textContent = "Save";
+              return;
+            }
+            dataChanged = true;
+            await loadElder(currentElderId);
+            showAlert(data.message || "Changes saved.", "success");
+          } catch (err) {
+            showAlert(
+              "Cannot reach the server. Check your connection and try again.",
+              "error",
+            );
+            editSaveBtn.disabled = false;
+            editSaveLabel.textContent = "Save";
+          }
+        });
+
+        // ---- Link a device later ----
+        linkDeviceBtn.addEventListener("click", async () => {
+          if (!currentElderId) return;
+          const deviceId = linkDeviceInput.value.trim();
+          if (!deviceId) {
+            showAlert("Enter the Device ID.", "error");
+            return;
+          }
+          linkDeviceBtn.disabled = true;
+          try {
+            const res = await fetch(
+              `/loved-ones/${currentElderId}/link-device`,
+              {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ device_id: deviceId }),
+              },
+            );
+            const data = await res.json();
+            if (data.success) {
+              dataChanged = true;
+              await loadElder(currentElderId);
+              showAlert(data.message || "Device linked.", "success");
+            } else {
+              showAlert(data.message || "Could not link the device.", "error");
+            }
+          } catch (err) {
+            showAlert(
+              "Cannot reach the server. Check your connection and try again.",
+              "error",
+            );
+          }
+          linkDeviceBtn.disabled = false;
+        });
 
         async function loadElder(elderId) {
           clearAlert();
+          setEditing(false);
           currentElderId = elderId;
           nameEl.textContent = "Loading...";
           relationshipEl.textContent = "";
@@ -1586,9 +1770,10 @@
             }
 
             const elder = data.elder;
+            currentElder = elder;
             nameEl.textContent = elder.name;
             relationshipEl.textContent = elder.relationship;
-            setStatus(elder.status_class);
+            setStatus(elder);
 
             initialsEl.textContent = elder.initials || "?";
             if (elder.photo_url) {
@@ -1603,7 +1788,10 @@
             dobEl.textContent = elder.date_of_birth || "Not set";
             addressEl.textContent = elder.address || "Not set";
             deviceIdEl.textContent = elder.device_id || "Not linked yet";
-            deviceStatusEl.textContent = elder.device_status || "Offline";
+            deviceStatusEl.textContent = elder.device_status || "—";
+            deviceNoteEl.textContent = elder.device_note || "";
+            linkDeviceRow.style.display = elder.device_id ? "none" : "";
+            linkDeviceInput.value = "";
             checkinEl.textContent = elder.last_checkin;
             medicineEl.textContent = elder.next_medicine;
             locationEl.textContent = elder.location;
@@ -1632,18 +1820,59 @@
             closeModal();
         });
 
+        // Resize to at most `maxSide` px and re-encode as JPEG so the photo
+        // fits comfortably in a Firestore document.
+        function shrinkImage(file, maxSide, quality) {
+          return new Promise((resolve, reject) => {
+            const reader = new FileReader();
+            reader.onerror = reject;
+            reader.onload = () => {
+              const img = new Image();
+              img.onerror = reject;
+              img.onload = () => {
+                const scale = Math.min(
+                  1,
+                  maxSide / Math.max(img.width, img.height),
+                );
+                const canvas = document.createElement("canvas");
+                canvas.width = Math.round(img.width * scale);
+                canvas.height = Math.round(img.height * scale);
+                const ctx = canvas.getContext("2d");
+                ctx.fillStyle = "#fff"; // transparent PNGs get a white background
+                ctx.fillRect(0, 0, canvas.width, canvas.height);
+                ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+                resolve(canvas.toDataURL("image/jpeg", quality));
+              };
+              img.src = reader.result;
+            };
+            reader.readAsDataURL(file);
+          });
+        }
+
         // ---- Change photo ----
         photoBtn.addEventListener("click", () => photoInput.click());
 
         photoInput.addEventListener("change", async () => {
           if (!currentElderId || !photoInput.files[0]) return;
 
-          const formData = new FormData();
-          formData.append("photo", photoInput.files[0]);
-
+          const file = photoInput.files[0];
+          if (!file.type.startsWith("image/")) {
+            showAlert("Please choose an image file.", "error");
+            photoInput.value = "";
+            return;
+          }
           clearAlert();
           showAlert("Uploading photo...", "success");
-
+          let dataUrl;
+          try {
+            dataUrl = await shrinkImage(file, 400, 0.82);
+          } catch (err) {
+            showAlert("That photo could not be read.", "error");
+            photoInput.value = "";
+            return;
+          }
+          const formData = new FormData();
+          formData.append("photo_data_url", dataUrl);
           try {
             const res = await fetch(`/loved-ones/${currentElderId}/photo`, {
               method: "POST",
@@ -1652,6 +1881,7 @@
             const data = await res.json();
 
             if (data.success) {
+              dataChanged = true;
               imgEl.src = data.photo_url;
               imgEl.style.display = "";
               initialsEl.style.display = "none";
@@ -1701,10 +1931,12 @@
             const data = await res.json();
 
             if (data.success) {
+              if (data.message)
+                sessionStorage.setItem("lovedOnesFlash", data.message);
+              dataChanged = false;
               window.location.reload();
               return;
             }
-
             closeDeleteConfirm();
             showAlert(data.message || "Could not delete.", "error");
           } catch (err) {

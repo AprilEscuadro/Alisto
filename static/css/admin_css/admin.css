@@ -967,3 +967,16 @@ h1, h2 { font-family: 'Nunito', sans-serif; margin: 0; }
 @media (max-width: 1100px) {
   .admin-stats-3 { grid-template-columns: 1fr; }
 }
+
+/* Sidebar count badge (open support tickets) */
+.admin-nav-count {
+  margin-left: auto;
+  min-width: 20px;
+  padding: 1px 7px;
+  border-radius: 999px;
+  background: #ef4444;
+  color: #fff;
+  font-size: 11px;
+  font-weight: 700;
+  text-align: center;
+}

@@ -16,16 +16,15 @@
     {% block head %}{% endblock %}
   </head>
   <body class="admin-body">
-    {% set nav_items = [
-      ('dashboard', 'admin.dashboard', 'layout-grid', 'Dashboard'),
-      ('users', 'admin.users', 'user', 'Users'),
-      ('devices', 'admin.devices', 'tablet-smartphone', 'Devices'),
-      ('map_view', 'admin.map_view', 'map-pin', 'Map View'),
-      ('emergency_logs', 'admin.emergency_logs', 'bell', 'Emergency Logs'),
-      ('reports', 'admin.reports', 'chart-column', 'Reports'),
-      ('subscriptions', 'admin.subscriptions', 'receipt-text', 'Subscriptions'),
-      ('settings', 'admin.settings', 'settings', 'Settings'),
-    ] %}
+    {% set nav_items = [ ('dashboard', 'admin.dashboard', 'layout-grid',
+    'Dashboard'), ('users', 'admin.users', 'user', 'Users'), ('devices',
+    'admin.devices', 'tablet-smartphone', 'Devices'), ('map_view',
+    'admin.map_view', 'map-pin', 'Map View'), ('emergency_logs',
+    'admin.emergency_logs', 'bell', 'Emergency Logs'), ('reports',
+    'admin.reports', 'chart-column', 'Reports'), ('support',
+    'admin.support_tickets', 'life-buoy', 'Support'), ('subscriptions',
+    'admin.subscriptions', 'receipt-text', 'Subscriptions'), ('settings',
+    'admin.settings', 'settings', 'Settings'), ] %}
 
     <!-- SIDEBAR -->
     <aside class="admin-sidebar" id="adminSidebar">
@@ -42,10 +41,20 @@
         <a
           href="{{ url_for(endpoint) }}"
           class="admin-nav-link {% if active_page == key %}active{% endif %}"
-          {% if active_page == key %}aria-current="page"{% endif %}
+          {%
+          if
+          active_page=""
+          ="key"
+          %}aria-current="page"
+          {%
+          endif
+          %}
         >
           <i data-lucide="{{ icon }}"></i>
           <span>{{ label }}</span>
+          {% if key == 'support' and open_ticket_count %}
+          <span class="admin-nav-count">{{ open_ticket_count }}</span>
+          {% endif %}
         </a>
         {% endfor %}
       </nav>
@@ -109,13 +118,10 @@
       </header>
 
       <main class="admin-content">
-        {% with messages = get_flashed_messages(with_categories=true) %}
-        {% for category, message in messages %}
+        {% with messages = get_flashed_messages(with_categories=true) %} {% for
+        category, message in messages %}
         <div class="admin-alert admin-alert-{{ category }}">{{ message }}</div>
-        {% endfor %}
-        {% endwith %}
-
-        {% block content %}{% endblock %}
+        {% endfor %} {% endwith %} {% block content %}{% endblock %}
       </main>
     </div>
 

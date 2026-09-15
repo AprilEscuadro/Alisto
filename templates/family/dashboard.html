@@ -193,9 +193,11 @@
                 <div class="loved-one-details">
                   <strong>{{ loved_one.name }}</strong>
                   <span class="loved-one-sub">ALISTO Device</span>
-                  <span class="pill-status online">
-                    <i data-lucide="circle"></i> Online
+                  {% if loved_one.pill_label %}
+                  <span class="pill-status {{ loved_one.pill_class }}">
+                    <i data-lucide="circle"></i> {{ loved_one.pill_label }}
                   </span>
+                  {% endif %}
                 </div>
               </div>
             </div>
@@ -210,12 +212,10 @@
                   />
                 </div>
                 <div class="device-status-details">
-                  <span class="device-online-label">
+                  <span class="device-online-label {{ device.status_class }}">
                     <i data-lucide="circle"></i> {{ device.status }}
                   </span>
-                  <p class="device-status-note">
-                    Device is connected<br />and working properly.
-                  </p>
+                  <p class="device-status-note">{{ device.note }}</p>
                 </div>
               </div>
             </div>
@@ -253,6 +253,19 @@
                     <small>{{ alert.subtext }}</small>
                   </span>
                   <span class="alert-time">{{ alert.timestamp }}</span>
+                </li>
+                {% else %}
+                <li class="alert-empty">
+                  <span class="alert-icon ok"
+                    ><i data-lucide="check-circle-2"></i
+                  ></span>
+                  <span class="alert-text">
+                    <strong>No alerts yet</strong>
+                    <small
+                      >Emergency alerts from the device will show up
+                      here.</small
+                    >
+                  </span>
                 </li>
                 {% endfor %}
               </ul>

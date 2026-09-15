@@ -559,3 +559,56 @@
   width: 15px;
   height: 15px;
 }
+/* ---- states driven by Firestore data ---- */
+.card-status.emergency { background: var(--red-bg); color: #dc2626; }
+.card-status.none { background: var(--amber-bg); color: var(--amber); }
+.loved-one-card[data-badge="emergency"] {
+  border-color: #dc2626;
+  box-shadow: 0 0 0 3px var(--red-bg);
+}
+
+.page-flash {
+  margin: 0 0 16px;
+  padding: 10px 14px;
+  border-radius: 10px;
+  background: var(--green-bg);
+  color: var(--green);
+  font-size: 13.5px;
+  font-weight: 600;
+}
+
+/* view modal: device note + link device */
+.view-lo-note {
+  display: block;
+  margin-top: 2px;
+  font-size: 12px;
+  color: var(--muted);
+}
+.link-device-controls {
+  display: flex;
+  gap: 8px;
+  margin-top: 4px;
+}
+.link-device-input {
+  flex: 1;
+  min-width: 0;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 9px 11px;
+  font-size: 13.5px;
+  font-family: inherit;
+  color: var(--ink);
+  background: var(--white);
+  outline: none;
+}
+.link-device-input:focus {
+  border-color: var(--blue);
+  box-shadow: 0 0 0 3px var(--blue-light);
+}
+.link-device-controls .btn-primary-pill span {
+  display: inline;
+  margin: 0;
+  font-size: inherit;
+  font-weight: inherit;
+  color: inherit;
+}
