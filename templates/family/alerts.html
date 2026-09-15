@@ -379,25 +379,6 @@
                 Monitor emergency incidents and response status.
               </p>
             </div>
-
-            <div class="page-actions">
-              <div class="search-box">
-                <i data-lucide="search"></i>
-                <input
-                  type="text"
-                  id="alertsSearch"
-                  placeholder="Search by name or alert ID..."
-                  autocomplete="off"
-                />
-              </div>
-              <button
-                type="button"
-                class="btn-primary-action"
-                id="exportReportBtn"
-              >
-                <i data-lucide="download"></i> Export Report
-              </button>
-            </div>
           </div>
 
           <!-- ---- SUMMARY CARDS ---- -->
@@ -464,7 +445,6 @@
               class="alert-card {{ 'emergency' if alert.type == 'emergency' else 'false-alarm' }}{{ ' is-open' if alert.is_open }}"
               data-status="{{ 'emergency' if alert.type == 'emergency' else 'false-alarm' }}"
               data-created="{{ alert.created_iso }}"
-              data-search="{{ (alert.elder_name ~ ' ' ~ alert.short_id ~ ' ' ~ alert.id)|lower }}"
             >
               <span
                 class="alert-type-badge {{ 'emergency' if alert.type == 'emergency' else 'false-alarm' }}"
@@ -647,7 +627,6 @@
         "#alertsFilters .filter-tab",
       );
       const alertCards = document.querySelectorAll("#alertsList .alert-card");
-      const searchInput = document.getElementById("alertsSearch");
       let activeFilter = "all";
 
       function matchesFilter(card) {
@@ -673,10 +652,8 @@
       }
 
       function applyAlertFilters() {
-        const query = searchInput ? searchInput.value.trim().toLowerCase() : "";
         alertCards.forEach((card) => {
-          const ok = matchesFilter(card) && card.dataset.search.includes(query);
-          card.style.display = ok ? "" : "none";
+          card.style.display = matchesFilter(card) ? "" : "none";
         });
       }
 
@@ -688,15 +665,6 @@
           applyAlertFilters();
         });
       });
-      if (searchInput) searchInput.addEventListener("input", applyAlertFilters);
-
-      // Export
-      const exportBtn = document.getElementById("exportReportBtn");
-      if (exportBtn) {
-        exportBtn.addEventListener("click", () => {
-          window.location.href = "{{ url_for('export_alerts') }}";
-        });
-      }
 
       // Respond / resolve
       async function updateAlert(alertId, action, button) {
@@ -850,20 +818,6 @@
         const openId = new URLSearchParams(window.location.search).get("open");
         if (openId) open(openId);
       })();
-
-      // Search by name
-      const searchInput = document.getElementById("alertsSearch");
-      if (searchInput) {
-        searchInput.addEventListener("input", () => {
-          const query = searchInput.value.trim().toLowerCase();
-          alertCards.forEach((card) => {
-            const name = card
-              .querySelector(".alert-heading strong")
-              .textContent.toLowerCase();
-            card.style.display = name.includes(query) ? "" : "none";
-          });
-        });
-      }
 
       // ---- Profile dropdown + logout confirmation ----
       (function () {

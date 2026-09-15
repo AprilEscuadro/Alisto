@@ -746,13 +746,480 @@ def save_plan_qr_codes():
     flash(f'GCash details for the {months}-month plan were saved.', 'success')
     return redirect(url_for('admin.subscriptions'))
 
+# ---------- EMERGENCY LOGS ----------
+#
+# Reads and manages the same Firestore data the family and BHW sides use:
+#   alert/{id}                    written by the device API, the family Alerts page,
+#                                 and "Log Incident" here
+#   emergency_status_history/{id} one row per status change (device, family, BHW, admin)
+#   sms_delivery_log/{id}         texts the device sent for an alert
+#   activity_log/{id}             shows up in the family History page
+# Extra fields this page adds to an alert:
+#   alert_no ('AL-2026-0001'), severity ('high'|'medium'|'low'),
+#   alert_type, description, admin_notes, source ('device'|'admin'),
+#   deleted_at / deleted_by (soft delete)
+
+
+ALERT_STATUS_GROUPS = {
+    'PENDING': 'active', 'SENT': 'active',
+    'ACKNOWLEDGED': 'acknowledged', 'RESPONDED': 'acknowledged',
+    'RESOLVED': 'resolved',
+    'CANCELLED': 'cancelled',
+}
+ALERT_STATUS_LABELS = {
+    'active': 'Active', 'acknowledged': 'Acknowledged',
+    'resolved': 'Resolved', 'cancelled': 'Cancelled',
+}
+ALERT_STATUS_BADGES = {
+    'active': 'badge-rejected', 'acknowledged': 'badge-acknowledged',
+    'resolved': 'badge-resolved', 'cancelled': 'badge-archived',
+}
+# What the admin can set -> what gets stored.
+ALERT_STATUS_VALUES = {
+    'active': 'SENT', 'acknowledged': 'ACKNOWLEDGED',
+    'resolved': 'RESOLVED', 'cancelled': 'CANCELLED',
+}
+SEVERITY_LABELS = {'high': 'High', 'medium': 'Medium', 'low': 'Low'}
+SEVERITY_BADGES = {'high': 'badge-rejected',
+                   'medium': 'badge-pending', 'low': 'badge-low'}
+ALERT_TYPES = {
+    'voice': 'Voice Emergency',
+    'help_button': 'Help Button Pressed',
+    'medical': 'Medical Emergency',
+    'fall': 'Fall Detected',
+    'no_movement': 'No Movement',
+    'other': 'Other Emergency',
+}
+ROLE_LABELS = {'family': 'Family', 'bhw': 'BHW', 'admin': 'Admin'}
+
+
+def _alert_type_key(alert):
+    if alert.get('alert_type') in ALERT_TYPES:
+        return alert['alert_type']
+    return 'help_button' if str(alert.get('trigger_type')).upper() == 'BUTTON' else 'voice'
+
+
+def _alert_type_sub(alert, type_key):
+    if alert.get('description'):
+        return alert['description']
+    if type_key == 'voice' and alert.get('phrase_used'):
+        return f'Said "{alert["phrase_used"]}"'
+    if type_key == 'help_button':
+        return 'Manual alert'
+    return 'Device triggered' if alert.get('device_id') else '—'
+
+
+def _age(dob):
+    try:
+        born = datetime.strptime(dob, '%Y-%m-%d').date()
+    except (TypeError, ValueError):
+        return None
+    today = cps.now_ph().date()
+    return today.year - born.year - ((today.month, today.day) < (born.month, born.day))
+
+
+def _split_location(text):
+    """'Purok 1, Sitio Apas, Lahug, Cebu City' -> ('Lahug, Cebu City', 'Purok 1, Sitio Apas')"""
+    parts = [p.strip() for p in (text or '').split(',') if p.strip()]
+    if not parts:
+        return 'Location not recorded', ''
+    if len(parts) <= 2:
+        return ', '.join(parts), ''
+    return ', '.join(parts[-2:]), ', '.join(parts[:-2])
+
+
+def _duration(seconds):
+    if seconds is None:
+        return '—'
+    seconds = int(round(seconds))
+    if seconds < 60:
+        return f'{seconds}s'
+    minutes, secs = divmod(seconds, 60)
+    if minutes < 60:
+        return f'{minutes}m {secs:02d}s'
+    hours, minutes = divmod(minutes, 60)
+    return f'{hours}h {minutes:02d}m'
+
+
+def _assign_alert_numbers(alerts):
+    """Gives every alert a permanent 'AL-YYYY-NNNN' number, in the order they happened."""
+    highest = {}
+    for _, a in alerts:
+        m = re.match(r'^AL-(\d{4})-(\d+)$', a.get('alert_no') or '')
+        if m:
+            highest[m.group(1)] = max(
+                highest.get(m.group(1), 0), int(m.group(2)))
+
+    missing = sorted((pair for pair in alerts if not pair[1].get('alert_no')),
+                     key=lambda pair: _sort_key(pair[1].get('created_at')))
+    for doc_id, a in missing:
+        created = cps.to_ph(a.get('created_at')) or cps.now_ph()
+        year = str(created.year)
+        highest[year] = highest.get(year, 0) + 1
+        a['alert_no'] = f'AL-{year}-{highest[year]:04d}'
+        try:
+            db.collection('alert').document(
+                doc_id).update({'alert_no': a['alert_no']})
+        except Exception as e:
+            print(f'[emergency logs] could not save alert number: {e}')
+
+
+def _log_admin_activity(elder_id, title, detail='', badge='', badge_class='',
+                        location='', device_id=None, ref_id=None):
+    """Same shape as app.py's _log_activity, so it shows in the family History page."""
+    if not elder_id:
+        return
+    try:
+        db.collection('activity_log').add({
+            'elder_id': elder_id, 'type': 'alert',
+            'title': title, 'detail': detail or '',
+            'badge': badge, 'badge_class': badge_class,
+            'location_address': location or '', 'device_id': device_id,
+            'actor_user_id': session.get('user_id'), 'ref_id': ref_id,
+            'created_at': firestore.SERVER_TIMESTAMP,
+        })
+    except Exception as e:
+        print(f'[emergency logs] could not write history: {e}')
+
+
+def _add_status_history(alert_id, status, notes=''):
+    db.collection('emergency_status_history').add({
+        'alert_id': alert_id,
+        'status': status,
+        'changed_by_user_id': session.get('user_id'),
+        'notes': notes,
+        'changed_at': firestore.SERVER_TIMESTAMP,
+    })
+
+
+@admin_bp.route('/emergency-logs')
+@admin_required
+def emergency_logs():
+    now = cps.now_ph()
+    month_start = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+
+    # --- load everything once ---
+    all_alerts = [(d.id, d.to_dict() or {})
+                  for d in db.collection('alert').stream()]
+    _assign_alert_numbers(all_alerts)
+    alerts = [(i, a) for i, a in all_alerts if not a.get('deleted_at')]
+
+    elders = {i: e for i, e in ((d.id, d.to_dict() or {})
+                                for d in db.collection('elder_profile').stream())}
+    devices = {d.id: d.to_dict() or {}
+               for d in db.collection('device').stream()}
+    users = {d.id: d.to_dict() or {}
+             for d in db.collection('user_account').stream()}
+
+    family_by_elder = {}
+    for d in db.collection('family_elder_link').stream():
+        link = d.to_dict() or {}
+        user = users.get(link.get('family_user_id'))
+        if user and not user.get('deleted_at'):
+            family_by_elder.setdefault(link.get('elder_id'), []).append(
+                f"{user.get('full_name') or 'Unnamed'} ({link.get('relationship') or 'Family'})")
+
+    bhws = []
+    for d in db.collection('bhw_profile').stream():
+        p = d.to_dict() or {}
+        user = users.get(p.get('user_id'))
+        if user and user.get('approval_status') == 'approved' and p.get('barangay_assigned'):
+            bhws.append((p['barangay_assigned'].strip().casefold(),
+                        user.get('full_name') or 'Unnamed'))
+
+    history_by_alert = {}
+    for d in db.collection('emergency_status_history').stream():
+        h = d.to_dict() or {}
+        history_by_alert.setdefault(h.get('alert_id'), []).append(h)
+
+    sms_by_alert = {}
+    for d in db.collection('sms_delivery_log').stream():
+        s = d.to_dict() or {}
+        sms_by_alert.setdefault(s.get('alert_id'), []).append(s)
+
+    def person(user_id):
+        if not user_id:
+            return 'ALISTO device'
+        u = users.get(user_id) or {}
+        role = ROLE_LABELS.get(u.get('role'), 'User')
+        return f"{u.get('full_name') or 'Unknown'} ({role})"
+
+    rows = []
+    response_times = []
+    for alert_id, a in alerts:
+        elder = elders.get(a.get('elder_id')) or {}
+        device = devices.get(a.get('device_id')) or {}
+        group = ALERT_STATUS_GROUPS.get(
+            str(a.get('status') or 'PENDING').upper(), 'active')
+        severity = a.get('severity') if a.get(
+            'severity') in SEVERITY_LABELS else 'high'
+        type_key = _alert_type_key(a)
+        created = cps.to_ph(a.get('created_at'))
+        location_text = a.get('location_address') or elder.get('address') or ''
+        loc_main, loc_sub = _split_location(location_text)
+        age = _age(elder.get('date_of_birth'))
+
+        # Response time = first response (acknowledged, else resolved) minus when it started.
+        responded = cps.to_ph(a.get('acknowledged_at')
+                              ) or cps.to_ph(a.get('resolved_at'))
+        response_seconds = None
+        if created and responded and responded >= created:
+            response_seconds = (responded - created).total_seconds()
+            if created >= month_start:
+                response_times.append(response_seconds)
+
+        barangay_parts = [p.strip().casefold()
+                          for p in (elder.get('address') or '').split(',')]
+        assigned_bhws = [name for brgy, name in bhws if brgy in barangay_parts]
+
+        timeline = []
+        for h in sorted(history_by_alert.get(alert_id, []), key=lambda h: _sort_key(h.get('changed_at'))):
+            g = ALERT_STATUS_GROUPS.get(
+                str(h.get('status') or '').upper(), 'active')
+            timeline.append({
+                'when': cps.fmt_datetime(h.get('changed_at')),
+                'status': ALERT_STATUS_LABELS[g],
+                'by': person(h.get('changed_by_user_id')),
+                'notes': h.get('notes') or '',
+            })
+
+        sms = sms_by_alert.get(alert_id, [])
+        lat = a.get('latitude')
+        lng = a.get('longitude')
+
+        rows.append({
+            'id': alert_id,
+            'alert_no': a.get('alert_no'),
+            'status': group,
+            'status_label': ALERT_STATUS_LABELS[group],
+            'status_badge': ALERT_STATUS_BADGES[group],
+            'severity': severity,
+            'severity_label': SEVERITY_LABELS[severity],
+            'severity_badge': SEVERITY_BADGES[severity],
+            'device_id': a.get('device_id') or '—',
+            'device_place': device.get('placement') or device.get('batch') or '',
+            'elder_id': a.get('elder_id') or '',
+            'elder_name': elder.get('full_name') or 'Unknown elder',
+            'age': age,
+            'loc_main': loc_main,
+            'loc_sub': loc_sub,
+            'type_key': type_key,
+            'type_label': ALERT_TYPES[type_key],
+            'type_sub': _alert_type_sub(a, type_key),
+            'date': created.strftime('%Y-%m-%d') if created else '',
+            'date_label': created.strftime('%b %d, %Y') if created else '—',
+            'time_label': created.strftime('%I:%M %p').lstrip('0') if created else '',
+            'sort': created.timestamp() if created else 0,
+            'details': {
+                'id': alert_id,
+                'alert_no': a.get('alert_no'),
+                'status': group,
+                'severity': severity,
+                'admin_notes': a.get('admin_notes') or '',
+                'rows': [
+                    ['Elder', f"{elder.get('full_name') or 'Unknown'}" +
+                     (f', {age} yrs old' if age is not None else '')],
+                    ['Address', elder.get('address') or '—'],
+                    ['Device', a.get('device_id') or '—'],
+                    ['Type', ALERT_TYPES[type_key]],
+                    ['Details', _alert_type_sub(a, type_key)],
+                    ['Severity', SEVERITY_LABELS[severity]],
+                    ['Status', ALERT_STATUS_LABELS[group]],
+                    ['Location', location_text or 'Not recorded'],
+                    ['Started', cps.fmt_datetime(a.get('created_at'))],
+                    ['Response time', _duration(response_seconds)],
+                    ['Responded by', person(a.get('acknowledged_by')) if a.get(
+                        'acknowledged_by') else '—'],
+                    ['Resolved by', person(a.get('resolved_by')) if a.get(
+                        'resolved_by') else '—'],
+                    ['Family', ', '.join(family_by_elder.get(
+                        a.get('elder_id'), [])) or 'None linked'],
+                    ['Barangay BHW', ', '.join(
+                        assigned_bhws) or 'None assigned'],
+                    ['SMS sent',
+                        f"{sum(1 for s in sms if s.get('delivery_status') == 'SENT')} of {len(sms)}" if sms else 'None reported'],
+                    ['Source', 'Logged by admin' if a.get(
+                        'source') == 'admin' else 'ALISTO device'],
+                ],
+                'map_url': (f'https://www.google.com/maps?q={lat},{lng}'
+                            if isinstance(lat, (int, float)) and isinstance(lng, (int, float)) else ''),
+                'timeline': timeline,
+            },
+        })
+
+    rows.sort(key=lambda r: -r['sort'])
+
+    stats = {
+        'total': len(rows),
+        'active': sum(r['status'] == 'active' for r in rows),
+        'resolved': sum(r['status'] == 'resolved' for r in rows),
+        'avg_response': _duration(sum(response_times) / len(response_times)) if response_times else '—',
+        'this_month': sum(r['sort'] >= month_start.timestamp() for r in rows),
+        'month_label': now.strftime('%B %Y'),
+    }
+
+    elder_options = sorted(
+        ({'id': i, 'name': e.get('full_name') or 'Unnamed', 'address': e.get('address') or ''}
+         for i, e in elders.items() if not e.get('deleted_at')),
+        key=lambda e: e['name'].casefold())
+
+    return render_template(
+        'admin/emergency_logs.html', active_page='emergency_logs',
+        rows=rows, stats=stats, elder_options=elder_options,
+        statuses=ALERT_STATUS_LABELS, severities=SEVERITY_LABELS, alert_types=ALERT_TYPES,
+    )
+
+
+@admin_bp.route('/emergency-logs/new', methods=['POST'])
+@admin_required
+def create_emergency_log():
+    """An incident reported another way (phone call, walk-in) that the device did not send."""
+    elder_id = request.form.get('elder_id', '')
+    alert_type = request.form.get('alert_type', '')
+    severity = request.form.get('severity', '')
+    status = request.form.get('status', 'active')
+    description = (request.form.get('description') or '').strip()[:300]
+    location = (request.form.get('location_address') or '').strip()[:200]
+
+    elder_doc = db.collection('elder_profile').document(
+        elder_id).get() if elder_id else None
+    elder = (elder_doc.to_dict() or {}
+             ) if elder_doc and elder_doc.exists else None
+    if not elder or elder.get('deleted_at'):
+        flash('Please choose the elder this incident is for.', 'error')
+        return redirect(url_for('admin.emergency_logs'))
+    if alert_type not in ALERT_TYPES or severity not in SEVERITY_LABELS or status not in ALERT_STATUS_VALUES:
+        flash('Please fill in the type, severity, and status.', 'error')
+        return redirect(url_for('admin.emergency_logs'))
+
+    stored_status = ALERT_STATUS_VALUES[status]
+    device_id = cps.device_for_elder(elder_id)
+    location = location or elder.get('address') or ''
+
+    data = {
+        'elder_id': elder_id,
+        'device_id': device_id,
+        'trigger_type': 'MANUAL',
+        'alert_type': alert_type,
+        'description': description,
+        'severity': severity,
+        'phrase_used': None,
+        'latitude': None,
+        'longitude': None,
+        'location_address': location,
+        'status': stored_status,
+        'title': ALERT_TYPES[alert_type],
+        'source': 'admin',
+        'created_by': session['user_id'],
+        'created_at': firestore.SERVER_TIMESTAMP,
+        'deleted_at': None,
+    }
+    if status in ('acknowledged', 'resolved'):
+        data.update(acknowledged_at=firestore.SERVER_TIMESTAMP,
+                    acknowledged_by=session['user_id'])
+    if status == 'resolved':
+        data.update(resolved_at=firestore.SERVER_TIMESTAMP,
+                    resolved_by=session['user_id'])
+
+    ref = db.collection('alert').document()
+    ref.set(data)
+    _add_status_history(ref.id, stored_status, 'Logged by admin')
+    _log_admin_activity(elder_id, f'{ALERT_TYPES[alert_type]} logged by admin',
+                        detail=description, badge=ALERT_STATUS_LABELS[status],
+                        badge_class='danger' if status == 'active' else 'success',
+                        location=location, device_id=device_id, ref_id=ref.id)
+
+    flash(
+        f"Incident logged for {elder.get('full_name') or 'the elder'}.", 'success')
+    return redirect(url_for('admin.emergency_logs'))
+
+
+@admin_bp.route('/emergency-logs/<alert_id>/update', methods=['POST'])
+@admin_required
+def update_emergency_log(alert_id):
+    ref = db.collection('alert').document(alert_id)
+    doc = ref.get()
+    alert = (doc.to_dict() or {}) if doc.exists else None
+    if not alert or alert.get('deleted_at'):
+        flash('That alert no longer exists.', 'error')
+        return redirect(url_for('admin.emergency_logs'))
+
+    status = request.form.get('status', '')
+    severity = request.form.get('severity') or alert.get('severity') or 'high'
+    notes = (request.form.get('admin_notes') or '').strip()[:1000]
+    if status not in ALERT_STATUS_VALUES or severity not in SEVERITY_LABELS:
+        flash('Please choose a valid status and severity.', 'error')
+        return redirect(url_for('admin.emergency_logs'))
+
+    old_group = ALERT_STATUS_GROUPS.get(
+        str(alert.get('status') or 'PENDING').upper(), 'active')
+    updates = {
+        'severity': severity,
+        'admin_notes': notes,
+        'updated_at': firestore.SERVER_TIMESTAMP,
+        'updated_by': session['user_id'],
+    }
+
+    if status != old_group:
+        updates['status'] = ALERT_STATUS_VALUES[status]
+        if status in ('acknowledged', 'resolved') and not alert.get('acknowledged_at'):
+            updates.update(acknowledged_at=firestore.SERVER_TIMESTAMP,
+                           acknowledged_by=session['user_id'])
+        if status == 'resolved':
+            updates.update(resolved_at=firestore.SERVER_TIMESTAMP,
+                           resolved_by=session['user_id'])
+        if status == 'cancelled':
+            updates.update(cancelled_at=firestore.SERVER_TIMESTAMP,
+                           cancel_reason=notes or 'Marked as false alarm by admin')
+        if status == 'active':  # reopened
+            updates.update(resolved_at=None, resolved_by=None)
+
+    ref.update(updates)
+
+    if status != old_group:
+        _add_status_history(
+            alert_id, ALERT_STATUS_VALUES[status], notes or 'Updated by admin')
+        _log_admin_activity(
+            alert.get(
+                'elder_id'), f'Emergency alert marked {ALERT_STATUS_LABELS[status].lower()} by admin',
+            detail=notes, badge=ALERT_STATUS_LABELS[status],
+            badge_class={'active': 'danger', 'acknowledged': 'warning',
+                         'resolved': 'success', 'cancelled': 'warning'}[status],
+            location=alert.get('location_address') or '',
+            device_id=alert.get('device_id'), ref_id=alert_id)
+        flash(
+            f"{alert.get('alert_no') or 'Alert'} is now {ALERT_STATUS_LABELS[status]}.", 'success')
+    else:
+        flash(f"{alert.get('alert_no') or 'Alert'} was updated.", 'success')
+    return redirect(url_for('admin.emergency_logs'))
+
+
+@admin_bp.route('/emergency-logs/<alert_id>/delete', methods=['POST'])
+@admin_required
+def delete_emergency_log(alert_id):
+    """Soft delete (for tests and duplicates). The record stays in Firestore."""
+    ref = db.collection('alert').document(alert_id)
+    doc = ref.get()
+    alert = (doc.to_dict() or {}) if doc.exists else None
+    if not alert or alert.get('deleted_at'):
+        flash('That alert no longer exists.', 'error')
+        return redirect(url_for('admin.emergency_logs'))
+
+    ref.update({'deleted_at': firestore.SERVER_TIMESTAMP,
+               'deleted_by': session['user_id']})
+    db.collection('emergency_status_history').add({
+        'alert_id': alert_id, 'status': 'DELETED',
+        'changed_by_user_id': session['user_id'],
+        'notes': 'Removed from the logs by admin',
+        'changed_at': firestore.SERVER_TIMESTAMP,
+    })
+    flash(f"{alert.get('alert_no') or 'Alert'} was removed from the logs.", 'success')
+    return redirect(url_for('admin.emergency_logs'))
+
 
 # ---------- PAGES NOT BUILT YET ----------
-
-
 _COMING_SOON = {
     'map_view': ('Map View', 'Monitor device and emergency status across the community.'),
-    'emergency_logs': ('Emergency Logs', 'View and manage all emergency alerts and incidents.'),
     'reports': ('Reports', 'Analyze devices, alerts, and community activity.'),
     'settings': ('Settings', 'Manage admin account and basic system preferences.'),
 }
@@ -767,12 +1234,6 @@ def _coming_soon(page):
 @admin_required
 def map_view():
     return _coming_soon('map_view')
-
-
-@admin_bp.route('/emergency-logs')
-@admin_required
-def emergency_logs():
-    return _coming_soon('emergency_logs')
 
 
 @admin_bp.route('/reports')

@@ -477,7 +477,6 @@
   .summary-cards.four-up {
     grid-template-columns: 1fr;
   }
-  .search-box input { width: 200px; }
 }
 /* ---- statuses, actions, details modal ---- */
 .status-pending { color: var(--warning); }

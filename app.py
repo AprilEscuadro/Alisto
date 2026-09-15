@@ -1,4 +1,4 @@
-from flask import Flask, render_template, request, redirect, url_for, session, flash, jsonify, Response
+from flask import Flask, render_template, request, redirect, url_for, session, flash, jsonify
 from werkzeug.security import generate_password_hash, check_password_hash
 from werkzeug.utils import secure_filename
 from database import db
@@ -12,8 +12,6 @@ import os
 import uuid
 import re
 import base64
-import csv
-import io
 
 app = Flask(__name__)
 app.secret_key = 'alisto-secret-key-change-this-later'
@@ -1109,8 +1107,12 @@ def _alert_card(row, elder):
         'elder_name': elder['name'],
         'elder_photo_url': elder.get('photo_url'),
         'relationship': elder.get('relationship') or 'Family',
-        'trigger_label': 'BUTTON PRESS' if trigger == 'BUTTON' else 'VOICE TRIGGER',
-        'trigger_icon': 'circle-dot' if trigger == 'BUTTON' else 'mic',
+        'trigger_label': ('BUTTON PRESS' if trigger == 'BUTTON'
+                          else 'LOGGED BY ADMIN' if trigger == 'MANUAL'
+                          else 'VOICE TRIGGER'),
+        'trigger_icon': ('circle-dot' if trigger == 'BUTTON'
+                         else 'clipboard-list' if trigger == 'MANUAL'
+                         else 'mic'),
         'trigger_phrase': alert.get('phrase_used') or alert.get('phrase'),
         'timestamp': _friendly_time(alert.get('created_at')),
         'created_iso': created.isoformat() if created else '',
@@ -1139,6 +1141,8 @@ def _get_linked_alert(alert_id):
     if not doc.exists:
         return None, None
     alert = doc.to_dict() or {}
+    if alert.get('deleted_at'):  # removed by the admin
+        return None, None
     elder_doc, _ = _get_elder_if_linked(alert.get('elder_id'))
     if not elder_doc:
         return None, None
@@ -1266,31 +1270,6 @@ def alert_respond(alert_id):
         return jsonify(success=False, message=f'Error: {str(e)}'), 500
 
     return jsonify(success=True, message='Alert updated.')
-
-
-@app.route('/alerts/export')
-def export_alerts():
-    if 'user_id' not in session:
-        flash('Please log in first.', 'error')
-        return redirect(url_for('login'))
-
-    buffer = io.StringIO()
-    writer = csv.writer(buffer)
-    writer.writerow(['Alert ID', 'Date/Time', 'Type', 'Loved One', 'Relationship',
-                     'Trigger', 'Phrase', 'Status', 'Location', 'Latitude',
-                     'Longitude', 'SMS Sent'])
-    for c in _family_alert_cards():
-        writer.writerow([
-            c['short_id'], c['timestamp'],
-            'Emergency' if c['type'] == 'emergency' else 'False Alarm',
-            c['elder_name'], c['relationship'], c['trigger_label'],
-            c['trigger_phrase'] or '', c['status'], c['location'],
-            c['latitude'] or '', c['longitude'] or '', c['sms_sent_count'],
-        ])
-
-    filename = f"alisto-alerts-{datetime.now().strftime('%Y%m%d')}.csv"
-    return Response(buffer.getvalue(), mimetype='text/csv',
-                    headers={'Content-Disposition': f'attachment; filename={filename}'})
 
 
 # ---------- DEVICE API (Raspberry Pi -> Flask) ----------
@@ -2990,6 +2969,8 @@ def _alerts_for_elders(elders):
             )
             for doc in docs:
                 alert = doc.to_dict() or {}
+                if alert.get('deleted_at'):  # removed by the admin
+                    continue
                 created = _to_ph(alert.get('created_at'))
                 rows.append({
                     'id': doc.id,

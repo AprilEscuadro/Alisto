@@ -198,7 +198,13 @@
     {
       table: '#devicesTable', search: '#deviceSearch', noun: 'serial numbers',
       filters: { status: '#deviceStatusFilter' }, exportButton: '#exportDevices',
-      columns: ['serial', 'batch', 'assignedTo', 'status', 'added'],
+            columns: ['serial', 'batch', 'assignedTo', 'status', 'added'],
+    },
+    {
+      table: '#alertsTable', search: '#alertSearch', noun: 'logs',
+      filters: { status: '#alertStatusFilter', severity: '#alertSeverityFilter' },
+      dateFrom: '#alertDateFrom', dateTo: '#alertDateTo',
+      exportButton: '#exportAlerts', clearButton: '#alertClearFilters',
     },
   ];
 
@@ -216,6 +222,9 @@
     const filters = Object.entries(config.filters)
       .map(([key, sel]) => [key, $(sel)])
       .filter(([, el]) => el);
+    // Optional date range: rows carry data-date="YYYY-MM-DD".
+    const dateFrom = config.dateFrom ? $(config.dateFrom) : null;
+    const dateTo = config.dateTo ? $(config.dateTo) : null;
     let page = 1;
     let matches = rows;
 
@@ -227,9 +236,13 @@
 
     function applyFilters() {
       const q = search ? search.value.trim().toLowerCase() : '';
+      const from = dateFrom ? dateFrom.value : '';
+      const to = dateTo ? dateTo.value : '';
       matches = rows.filter((row) =>
         (!q || row.textContent.toLowerCase().includes(q)) &&
-        filters.every(([key, el]) => !el.value || row.dataset[key] === el.value)
+        filters.every(([key, el]) => !el.value || row.dataset[key] === el.value) &&
+        (!from || (row.dataset.date && row.dataset.date >= from)) &&
+        (!to || (row.dataset.date && row.dataset.date <= to))
       );
       page = 1;
       render();
@@ -318,11 +331,13 @@
 
     if (search) search.addEventListener('input', applyFilters);
     filters.forEach(([, el]) => el.addEventListener('change', applyFilters));
+    [dateFrom, dateTo].forEach((el) => { if (el) el.addEventListener('change', applyFilters); });
     if (config.exportButton && $(config.exportButton)) $(config.exportButton).addEventListener('click', exportCsv);
     if (config.clearButton && $(config.clearButton)) {
       $(config.clearButton).addEventListener('click', () => {
         if (search) search.value = '';
         filters.forEach(([, el]) => { el.value = ''; });
+        [dateFrom, dateTo].forEach((el) => { if (el) el.value = ''; });
         applyFilters();
       });
     }

@@ -41,14 +41,7 @@
         <a
           href="{{ url_for(endpoint) }}"
           class="admin-nav-link {% if active_page == key %}active{% endif %}"
-          {%
-          if
-          active_page=""
-          ="key"
-          %}aria-current="page"
-          {%
-          endif
-          %}
+          {% if active_page == key %}aria-current="page"{% endif %}
         >
           <i data-lucide="{{ icon }}"></i>
           <span>{{ label }}</span>
