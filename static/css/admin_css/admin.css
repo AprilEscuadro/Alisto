@@ -988,6 +988,7 @@ h1, h2 { font-family: 'Nunito', sans-serif; margin: 0; }
 
 .filter-card {
   display: flex;
+  flex-direction: row;
   align-items: flex-end;
   flex-wrap: wrap;
   gap: 14px;

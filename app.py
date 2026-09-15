@@ -12,16 +12,19 @@ import os
 import uuid
 import re
 import base64
+from dotenv import load_dotenv
+
+load_dotenv()
 
 app = Flask(__name__)
-app.secret_key = 'alisto-secret-key-change-this-later'
+app.secret_key = os.environ['SECRET_KEY']
 app.register_blueprint(admin_bp)  # admin panel at /admin
 app.register_blueprint(bhw_bp)    # BHW portal at /bhw
 
 db = firestore.client()
 
 MAX_FAMILY_PER_DEVICE = 5
-FIREBASE_WEB_API_KEY = "AIzaSyBFkRaWyU_j6qcspXuOsJUXteRDIw8thqE"
+FIREBASE_WEB_API_KEY = os.environ['FIREBASE_WEB_API_KEY']
 
 # ---------- BHW REGISTRATION SETTINGS ----------
 HEALTH_CENTERS = ['Sudlon II Health Center']

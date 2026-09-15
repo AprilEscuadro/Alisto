@@ -1,3 +1,4 @@
 serviceAccountKey.json
 uploads/
 __pycache__/
+.env
