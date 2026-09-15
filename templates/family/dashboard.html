@@ -85,7 +85,11 @@
           <div class="care-plan-price">
             ₱{{ care_plan.price }} <span>/ month</span>
           </div>
-          <button type="button" class="care-plan-btn">
+          <button
+            type="button"
+            class="care-plan-btn"
+            onclick="openCarePlanModal()"
+          >
             <i data-lucide="credit-card"></i> Pay / Renew Now
           </button>
         </div>
@@ -531,5 +535,6 @@
 
     <!-- Handles the live map modal above. Must load after the markup. -->
     <script src="{{ url_for('static', filename='js/map_view.js') }}"></script>
+    {% include 'family/_care_plan_modal.html' %}
   </body>
 </html>

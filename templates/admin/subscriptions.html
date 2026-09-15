@@ -1,0 +1,371 @@
+{% extends "admin/base.html" %} {% block content %}
+<style>
+  .sub-page {
+    padding: 24px;
+    font-family: "Inter", sans-serif;
+  }
+  .sub-header {
+    margin-bottom: 20px;
+  }
+  .sub-header h1 {
+    margin: 0 0 4px;
+    font-size: 22px;
+    font-weight: 800;
+  }
+  .sub-header p {
+    margin: 0;
+    color: #64748b;
+    font-size: 13.5px;
+  }
+
+  .sub-stats {
+    display: flex;
+    gap: 12px;
+    margin-bottom: 20px;
+    flex-wrap: wrap;
+  }
+  .sub-stat {
+    background: #fff;
+    border: 1px solid #e6e9ef;
+    border-radius: 12px;
+    padding: 14px 18px;
+    min-width: 140px;
+  }
+  .sub-stat .label {
+    font-size: 12px;
+    color: #64748b;
+  }
+  .sub-stat .value {
+    font-size: 24px;
+    font-weight: 800;
+    margin-top: 2px;
+  }
+
+  .sub-tabs {
+    display: flex;
+    gap: 8px;
+    margin-bottom: 16px;
+  }
+  .sub-tab {
+    padding: 8px 16px;
+    border-radius: 999px;
+    border: 1px solid #e6e9ef;
+    background: #fff;
+    color: #64748b;
+    font-size: 13px;
+    font-weight: 600;
+    text-decoration: none;
+  }
+  .sub-tab.active {
+    background: #2f6feb;
+    border-color: #2f6feb;
+    color: #fff;
+  }
+
+  .sub-table-wrap {
+    background: #fff;
+    border: 1px solid #e6e9ef;
+    border-radius: 14px;
+    overflow-x: auto;
+    margin-bottom: 24px;
+  }
+  table.sub-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 13px;
+  }
+  .sub-table th {
+    text-align: left;
+    padding: 12px 14px;
+    background: #fafbfc;
+    border-bottom: 1px solid #e6e9ef;
+    font-size: 11px;
+    text-transform: uppercase;
+    color: #64748b;
+    letter-spacing: 0.04em;
+  }
+  .sub-table td {
+    padding: 12px 14px;
+    border-bottom: 1px solid #e6e9ef;
+    vertical-align: middle;
+  }
+  .sub-table tr:last-child td {
+    border-bottom: none;
+  }
+
+  .badge {
+    display: inline-block;
+    padding: 3px 10px;
+    border-radius: 999px;
+    font-size: 11px;
+    font-weight: 700;
+  }
+  .badge-pending {
+    background: #fef3dd;
+    color: #b45309;
+  }
+  .badge-active {
+    background: #e3f8ea;
+    color: #16a34a;
+  }
+  .badge-rejected {
+    background: #fdecea;
+    color: #dc2626;
+  }
+
+  .row-actions button {
+    padding: 6px 12px;
+    border-radius: 8px;
+    border: none;
+    font-size: 12px;
+    font-weight: 700;
+    cursor: pointer;
+    margin-right: 6px;
+  }
+  .btn-approve {
+    background: #16a34a;
+    color: #fff;
+  }
+  .btn-reject {
+    background: #dc2626;
+    color: #fff;
+  }
+
+  .qr-section {
+    background: #fff;
+    border: 1px solid #e6e9ef;
+    border-radius: 14px;
+    padding: 20px;
+  }
+  .qr-section h2 {
+    font-size: 16px;
+    margin: 0 0 14px;
+  }
+  .qr-form-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 16px;
+  }
+  .qr-form-card {
+    border: 1px solid #e6e9ef;
+    border-radius: 12px;
+    padding: 14px;
+  }
+  .qr-form-card h3 {
+    margin: 0 0 10px;
+    font-size: 14px;
+  }
+  .qr-form-card label {
+    display: block;
+    font-size: 12px;
+    font-weight: 600;
+    margin: 8px 0 4px;
+  }
+  .qr-form-card input {
+    width: 100%;
+    padding: 8px 10px;
+    border: 1px solid #dfe3ea;
+    border-radius: 8px;
+    font-size: 13px;
+    box-sizing: border-box;
+  }
+  .qr-form-card img {
+    max-width: 100%;
+    margin-top: 8px;
+    border-radius: 8px;
+  }
+  .qr-save-btn {
+    margin-top: 10px;
+    width: 100%;
+    padding: 8px;
+    border: none;
+    border-radius: 8px;
+    background: #2f6feb;
+    color: #fff;
+    font-weight: 700;
+    cursor: pointer;
+  }
+</style>
+
+<div class="sub-page">
+  <div class="sub-header">
+    <h1>Care Plan Payments</h1>
+    <p>Review GCash payment submissions and manage per-plan QR codes.</p>
+  </div>
+
+  <div class="sub-stats">
+    <div class="sub-stat">
+      <div class="label">Pending</div>
+      <div class="value">{{ stats.pending }}</div>
+    </div>
+    <div class="sub-stat">
+      <div class="label">Approved</div>
+      <div class="value">{{ stats.approved }}</div>
+    </div>
+    <div class="sub-stat">
+      <div class="label">Rejected</div>
+      <div class="value">{{ stats.rejected }}</div>
+    </div>
+    <div class="sub-stat">
+      <div class="label">Total</div>
+      <div class="value">{{ stats.total }}</div>
+    </div>
+  </div>
+
+  <div class="sub-tabs">
+    <a
+      href="{{ url_for('admin.subscriptions', status='pending') }}"
+      class="sub-tab {{ 'active' if status_filter == 'pending' }}"
+      >Pending</a
+    >
+    <a
+      href="{{ url_for('admin.subscriptions', status='approved') }}"
+      class="sub-tab {{ 'active' if status_filter == 'approved' }}"
+      >Approved</a
+    >
+    <a
+      href="{{ url_for('admin.subscriptions', status='rejected') }}"
+      class="sub-tab {{ 'active' if status_filter == 'rejected' }}"
+      >Rejected</a
+    >
+    <a
+      href="{{ url_for('admin.subscriptions', status='all') }}"
+      class="sub-tab {{ 'active' if status_filter == 'all' }}"
+      >All</a
+    >
+  </div>
+
+  <div class="sub-table-wrap">
+    <table class="sub-table">
+      <thead>
+        <tr>
+          <th>Payment #</th>
+          <th>Elder</th>
+          <th>Device</th>
+          <th>Plan</th>
+          <th>Amount</th>
+          <th>Reference #</th>
+          <th>Payer</th>
+          <th>Status</th>
+          <th>Submitted</th>
+          <th>Action</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for p in rows %}
+        <tr id="row-{{ p.id }}">
+          <td>{{ p.payment_no }}</td>
+          <td>{{ p.elder_name }}</td>
+          <td>{{ p.device_id }}</td>
+          <td>{{ p.months }} month{{ 's' if p.months != 1 else '' }}</td>
+          <td>₱{{ p.amount }}</td>
+          <td>{{ p.reference_no }}</td>
+          <td>{{ p.payer_name }}</td>
+          <td><span class="badge {{ p.badge }}">{{ p.status_label }}</span></td>
+          <td>{{ p.created }}</td>
+          <td class="row-actions">
+            {% if p.status == 'pending' %}
+            <button
+              class="btn-approve"
+              onclick="reviewPayment('{{ p.id }}', 'approve')"
+            >
+              Approve
+            </button>
+            <button
+              class="btn-reject"
+              onclick="reviewPayment('{{ p.id }}', 'reject')"
+            >
+              Reject
+            </button>
+            {% else %}
+            <span style="color: #94a3b8; font-size: 12px">
+              {{ p.admin_note or '—' }}{% if p.reviewed_by_name %} · {{
+              p.reviewed_by_name }}{% endif %}
+            </span>
+            {% endif %}
+          </td>
+        </tr>
+        {% else %}
+        <tr>
+          <td
+            colspan="10"
+            style="text-align: center; padding: 32px; color: #94a3b8"
+          >
+            No payments found.
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+
+  <div class="qr-section">
+    <h2>GCash QR per Plan Length</h2>
+    <div class="qr-form-grid">
+      {% for months in month_options %}
+      <div class="qr-form-card">
+        <h3>{{ months }} Month{{ 's' if months != 1 else '' }}</h3>
+        <form method="POST" action="{{ url_for('admin.save_plan_qr_codes') }}">
+          <input type="hidden" name="months" value="{{ months }}" />
+          <label>GCash Name</label>
+          <input
+            type="text"
+            name="gcash_name"
+            value="{{ plan_qr_codes[months].gcash_name }}"
+            placeholder="e.g. ALISTO CHUCHU"
+          />
+          <label>GCash Number</label>
+          <input
+            type="text"
+            name="gcash_number"
+            value="{{ plan_qr_codes[months].gcash_number }}"
+            placeholder="09XX-XXX-XXXX"
+          />
+          <label>QR Image URL</label>
+          <input
+            type="text"
+            name="qr_image_url"
+            value="{{ plan_qr_codes[months].qr_image_url }}"
+            placeholder="/static/images/alisto_qr.jpg"
+          />
+          {% if plan_qr_codes[months].qr_image_url %}
+          <img
+            src="{{ plan_qr_codes[months].qr_image_url }}"
+            alt="QR preview"
+          />
+          {% endif %}
+          <button type="submit" class="qr-save-btn">Save</button>
+        </form>
+      </div>
+      {% endfor %}
+    </div>
+  </div>
+</div>
+
+<script>
+  async function reviewPayment(id, action) {
+    let note = "";
+    if (action === "reject") {
+      note = prompt("Reason for rejecting this payment:");
+      if (!note) return;
+    } else {
+      note = prompt("Optional note (leave blank if none):") || "";
+    }
+
+    const form = new FormData();
+    form.append("admin_note", note);
+
+    try {
+      const res = await fetch(`/admin/subscriptions/${id}/${action}`, {
+        method: "POST",
+        body: form,
+      });
+      const data = await res.json();
+      alert(data.message);
+      if (data.success) location.reload();
+    } catch (err) {
+      alert("Network error. Please try again.");
+    }
+  }
+</script>
+{% endblock %}

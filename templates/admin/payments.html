@@ -1,0 +1,88 @@
+{% extends "admin/base.html" %} {% block content %}
+<div style="padding: 24px">
+  <h1>Care Plan Payments</h1>
+  <p>Pending: {{ pending_count }}</p>
+
+  <div style="margin-bottom: 16px">
+    <a href="{{ url_for('admin.payments', status='pending') }}">Pending</a> |
+    <a href="{{ url_for('admin.payments', status='approved') }}">Approved</a> |
+    <a href="{{ url_for('admin.payments', status='rejected') }}">Rejected</a> |
+    <a href="{{ url_for('admin.payments', status='all') }}">All</a>
+  </div>
+
+  <table
+    border="1"
+    cellpadding="8"
+    style="border-collapse: collapse; width: 100%"
+  >
+    <thead>
+      <tr>
+        <th>Payment #</th>
+        <th>Elder</th>
+        <th>Device</th>
+        <th>Months</th>
+        <th>Amount</th>
+        <th>Method</th>
+        <th>Reference #</th>
+        <th>Payer</th>
+        <th>Status</th>
+        <th>Submitted</th>
+        <th>Action</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for p in payments %}
+      <tr>
+        <td>{{ p.payment_no }}</td>
+        <td>{{ p.elder_name }}</td>
+        <td>{{ p.device_id }}</td>
+        <td>{{ p.months }}</td>
+        <td>₱{{ p.amount }}</td>
+        <td>{{ p.method }}</td>
+        <td>{{ p.reference_no }}</td>
+        <td>{{ p.payer_name }}</td>
+        <td>{{ p.status }}</td>
+        <td>{{ p.created }}</td>
+        <td>
+          {% if p.status == 'pending' %}
+          <button onclick="reviewPayment('{{ p.id }}', 'approve')">
+            Approve
+          </button>
+          <button onclick="reviewPayment('{{ p.id }}', 'reject')">
+            Reject
+          </button>
+          {% endif %}
+        </td>
+      </tr>
+      {% else %}
+      <tr>
+        <td colspan="11">No payments found.</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+
+<script>
+  async function reviewPayment(id, action) {
+    let note = "";
+    if (action === "reject") {
+      note = prompt("Reason for rejecting this payment:");
+      if (!note) return;
+    } else {
+      note = prompt("Optional note (leave blank if none):") || "";
+    }
+
+    const form = new FormData();
+    form.append("admin_note", note);
+
+    const res = await fetch(`/admin/payments/${id}/${action}`, {
+      method: "POST",
+      body: form,
+    });
+    const data = await res.json();
+    alert(data.message);
+    if (data.success) location.reload();
+  }
+</script>
+{% endblock %}

@@ -1,0 +1,296 @@
+<style>
+  .cp-modal-overlay {
+    display: none;
+    position: fixed;
+    inset: 0;
+    background: rgba(15, 23, 42, 0.55);
+    z-index: 1000;
+    align-items: center;
+    justify-content: center;
+    padding: 16px;
+  }
+  .cp-modal-overlay.open {
+    display: flex;
+  }
+
+  .cp-modal {
+    background: #fff;
+    border-radius: 16px;
+    width: 100%;
+    max-width: 420px;
+    max-height: 90vh;
+    overflow-y: auto;
+    padding: 24px;
+    font-family: "Inter", sans-serif;
+  }
+  .cp-modal-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 4px;
+  }
+  .cp-modal-header h3 {
+    margin: 0;
+    font-size: 18px;
+    font-weight: 800;
+  }
+  .cp-modal-close {
+    background: none;
+    border: none;
+    cursor: pointer;
+    color: #64748b;
+    padding: 4px;
+  }
+  .cp-modal-sub {
+    color: #64748b;
+    font-size: 13px;
+    margin: 0 0 18px;
+  }
+
+  .cp-gcash-box {
+    background: #eff4ff;
+    border: 1px solid #c7d9ff;
+    border-radius: 12px;
+    padding: 14px 16px;
+    margin-bottom: 18px;
+  }
+  .cp-gcash-box .cp-label {
+    font-size: 12px;
+    font-weight: 700;
+    color: #2554c7;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+  }
+  .cp-gcash-box .cp-name {
+    font-weight: 700;
+    margin-top: 4px;
+  }
+  .cp-gcash-box .cp-number {
+    font-size: 20px;
+    font-weight: 800;
+    letter-spacing: 0.03em;
+    margin-top: 2px;
+  }
+
+  .cp-field {
+    margin-bottom: 14px;
+  }
+  .cp-field label {
+    display: block;
+    font-size: 13px;
+    font-weight: 600;
+    margin-bottom: 6px;
+  }
+  .cp-field select,
+  .cp-field input {
+    width: 100%;
+    padding: 10px 12px;
+    border: 1px solid #dfe3ea;
+    border-radius: 10px;
+    font-size: 14px;
+    box-sizing: border-box;
+  }
+
+  .cp-total {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    background: #f8fafc;
+    border-radius: 10px;
+    padding: 12px 14px;
+    margin: 4px 0 18px;
+  }
+  .cp-total span:first-child {
+    font-size: 13px;
+    color: #64748b;
+  }
+  .cp-total span:last-child {
+    font-size: 20px;
+    font-weight: 800;
+  }
+
+  .cp-submit-btn {
+    width: 100%;
+    background: #2f6fed;
+    color: #fff;
+    border: none;
+    border-radius: 10px;
+    padding: 12px;
+    font-weight: 700;
+    font-size: 14px;
+    cursor: pointer;
+  }
+  .cp-submit-btn:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+  }
+
+  .cp-msg {
+    font-size: 13px;
+    margin-top: 10px;
+    text-align: center;
+  }
+  .cp-msg.success {
+    color: #16a34a;
+  }
+  .cp-msg.error {
+    color: #dc2626;
+  }
+</style>
+
+<div class="cp-modal-overlay" id="carePlanModalOverlay">
+  <div class="cp-modal">
+    <div class="cp-modal-header">
+      <h3>Pay / Renew Care Plan</h3>
+      <button
+        type="button"
+        class="cp-modal-close"
+        onclick="closeCarePlanModal()"
+        aria-label="Close"
+      >
+        <i data-lucide="x"></i>
+      </button>
+    </div>
+    <p class="cp-modal-sub">
+      Send payment via GCash, then enter your reference number below.
+    </p>
+
+    <div class="cp-gcash-box">
+      <div class="cp-label">GCash</div>
+      <div class="cp-name" id="cpGcashName">—</div>
+      <div class="cp-number" id="cpGcashNumber">—</div>
+      <img
+        id="cpQrImage"
+        src=""
+        alt="GCash QR"
+        style="
+          max-width: 180px;
+          margin-top: 10px;
+          display: none;
+          border-radius: 8px;
+        "
+      />
+    </div>
+
+    <form id="carePlanForm">
+      {% if care_plan_elders and care_plan_elders|length > 1 %}
+      <div class="cp-field">
+        <label for="cpElder">Loved One</label>
+        <select id="cpElder" name="elder_id" required>
+          {% for eid, e in care_plan_elders.items() %}
+          <option value="{{ eid }}">{{ e.name }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      {% else %} {% for eid, e in care_plan_elders.items() %}
+      <input type="hidden" name="elder_id" value="{{ eid }}" />
+      {% endfor %} {% endif %}
+
+      <div class="cp-field">
+        <label for="cpMonths">Renew for</label>
+        <select id="cpMonths" name="months" onchange="cpUpdateTotal()">
+          {% for m in (care_plan_month_options or [1, 3, 6, 12]) %}
+          <option value="{{ m }}">
+            {{ m }} month{{ 's' if m != 1 else '' }}
+          </option>
+          {% endfor %}
+        </select>
+      </div>
+
+      <div class="cp-total">
+        <span>Total Amount</span>
+        <span>₱<span id="cpTotalAmount">{{ care_plan.price }}</span></span>
+      </div>
+
+      <div class="cp-field">
+        <label for="cpPayerName">Payer Name</label>
+        <input
+          type="text"
+          id="cpPayerName"
+          name="payer_name"
+          placeholder="Name on the GCash account"
+          required
+        />
+      </div>
+
+      <div class="cp-field">
+        <label for="cpReference">GCash Reference Number</label>
+        <input
+          type="text"
+          id="cpReference"
+          name="reference_no"
+          placeholder="e.g. 1234567890123"
+          required
+        />
+      </div>
+
+      <button type="submit" class="cp-submit-btn" id="cpSubmitBtn">
+        Submit Payment
+      </button>
+      <div class="cp-msg" id="cpMsg"></div>
+    </form>
+  </div>
+</div>
+
+<script>
+  const CP_UNIT_PRICE = {{ care_plan.price | default(0) }};
+  const CP_QR_CODES = {{ care_plan_qr_codes | tojson }};
+
+  function openCarePlanModal() {
+    document.getElementById('carePlanModalOverlay').classList.add('open');
+    document.body.classList.add('modal-open');
+    cpUpdateTotal();
+  }
+  function closeCarePlanModal() {
+    document.getElementById('carePlanModalOverlay').classList.remove('open');
+    document.body.classList.remove('modal-open');
+  }
+  function cpUpdateTotal() {
+    const months = parseInt(document.getElementById('cpMonths').value, 10) || 1;
+    document.getElementById('cpTotalAmount').textContent = (CP_UNIT_PRICE * months).toLocaleString();
+
+    const info = CP_QR_CODES[months] || {};
+    document.getElementById('cpGcashName').textContent = info.gcash_name || 'Not set yet';
+    document.getElementById('cpGcashNumber').textContent = info.gcash_number || '—';
+
+    const qrImg = document.getElementById('cpQrImage');
+    if (info.qr_image_url) {
+      qrImg.src = info.qr_image_url;
+      qrImg.style.display = 'block';
+    } else {
+      qrImg.style.display = 'none';
+    }
+  }
+
+  document.getElementById('carePlanModalOverlay').addEventListener('click', (e) => {
+    if (e.target.id === 'carePlanModalOverlay') closeCarePlanModal();
+  });
+
+  document.getElementById('carePlanForm').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const btn = document.getElementById('cpSubmitBtn');
+    const msg = document.getElementById('cpMsg');
+    btn.disabled = true;
+    msg.textContent = '';
+    msg.className = 'cp-msg';
+
+    try {
+      const res = await fetch("{{ url_for('pay_care_plan') }}", {
+        method: 'POST',
+        body: new FormData(e.target),
+      });
+      const data = await res.json();
+      msg.textContent = data.message;
+      msg.classList.add(data.success ? 'success' : 'error');
+      if (data.success) {
+        setTimeout(() => location.reload(), 1200);
+      } else {
+        btn.disabled = false;
+      }
+    } catch (err) {
+      msg.textContent = 'Network error. Please try again.';
+      msg.classList.add('error');
+      btn.disabled = false;
+    }
+  });
+</script>

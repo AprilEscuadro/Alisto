@@ -326,7 +326,11 @@
           <div class="care-plan-price">
             ₱{{ care_plan.price }} <span>/ month</span>
           </div>
-          <button type="button" class="care-plan-btn">
+          <button
+            type="button"
+            class="care-plan-btn"
+            onclick="openCarePlanModal()"
+          >
             <i data-lucide="credit-card"></i> Pay / Renew Now
           </button>
         </div>
@@ -664,5 +668,6 @@
         });
       })();
     </script>
+    {% include 'family/_care_plan_modal.html' %}
   </body>
 </html>

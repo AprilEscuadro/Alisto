@@ -11,14 +11,16 @@ and the page behavior (menus, filters, pagination) in static/js/admin.js.
 """
 import os
 import re
-from datetime import timedelta, timezone
+from datetime import timedelta, timezone, datetime
 from functools import wraps
 
 from flask import (Blueprint, render_template, session, redirect, url_for,
-                   flash, request, send_from_directory, current_app, abort)
+                   flash, request, send_from_directory, current_app, abort,
+                   jsonify)
 from firebase_admin import firestore
 
 from database import db
+import care_plan_service as cps
 
 admin_bp = Blueprint('admin', __name__, url_prefix='/admin')
 
@@ -36,6 +38,11 @@ def admin_required(view):
             return redirect(url_for('dashboard'))
         return view(*args, **kwargs)
     return wrapped
+
+
+def _admin_required():
+    """Guard for JSON endpoints, which return a status code instead of redirecting."""
+    return session.get('role') == 'admin'
 
 
 # ---------- HELPERS ----------
@@ -74,6 +81,14 @@ def _pending_bhw_count():
     )
 
 
+def _pending_payment_count():
+    try:
+        return sum(1 for d in db.collection('payment').stream()
+                   if (d.to_dict() or {}).get('status') == 'pending')
+    except Exception:
+        return 0
+
+
 @admin_bp.context_processor
 def _admin_layout_context():
     """Values every admin page needs for the sidebar and top bar."""
@@ -84,6 +99,7 @@ def _admin_layout_context():
         'admin_initial': _initials(session.get('full_name', 'Administrator'))[:1],
         'pending_count': _pending_bhw_count(),
         'open_ticket_count': _open_ticket_count(),
+        'pending_payment_count': _pending_payment_count(),
     }
 
 
@@ -153,7 +169,6 @@ def users():
             'devices': devices_per_elder.get(elder_id, 0),
             'status': 'archived' if elder.get('is_archived') else 'active',
             'joined': _fmt_date(elder.get('created_at')), 'sort': _sort_key(elder.get('created_at')),
-            # A list (not a dict) so the details keep this order in the modal.
             'details': [
                 ['Full Name', elder.get('full_name') or '—'],
                 ['Date of Birth', elder.get('date_of_birth') or '—'],
@@ -438,6 +453,7 @@ def _join_sample(items, limit=5):
     head = ', '.join(items[:limit])
     return head if len(items) <= limit else f'{head} and {len(items) - limit} more'
 
+
 # ---------- SUPPORT TICKETS (Report a Problem + Contact Support) ----------
 
 
@@ -571,6 +587,166 @@ def update_support_ticket(ticket_id):
     return redirect(url_for('admin.support_tickets',
                             status=request.form.get('return_status', 'active')))
 
+
+# ---------- SUBSCRIPTIONS / CARE PLAN PAYMENTS ----------
+#
+# payment/{id}       -- one per GCash submission from a family (see care_plan_service.py)
+# subscription/{elder_id} -- current plan state per elder, extended on approval
+# app_settings/plan_qr_codes -- per-duration GCash name/number/QR the admin manages here
+
+
+PAYMENT_BADGES = {
+    'pending': 'badge-pending',
+    'approved': 'badge-active',
+    'rejected': 'badge-rejected',
+}
+
+
+@admin_bp.route('/subscriptions')
+@admin_required
+def subscriptions():
+    status_filter = request.args.get('status', 'pending')
+
+    all_rows = []
+    for doc in db.collection('payment').stream():
+        p = doc.to_dict() or {}
+        status = p.get('status') or 'pending'
+        all_rows.append({
+            'id': doc.id,
+            'payment_no': p.get('payment_no') or _short_id('PAY', doc.id),
+            'elder_name': p.get('elder_name') or 'Unknown',
+            'device_id': p.get('device_id') or '—',
+            'months': p.get('months') or 1,
+            'amount': cps.format_money(p.get('amount')),
+            'method': cps.PAYMENT_METHODS.get(p.get('method'), p.get('method') or '—'),
+            'reference_no': p.get('reference_no') or '—',
+            'payer_name': p.get('payer_name') or '—',
+            'status': status,
+            'status_label': status.capitalize(),
+            'badge': PAYMENT_BADGES.get(status, 'badge-pending'),
+            'admin_note': p.get('admin_note') or '',
+            'reviewed_by_name': p.get('reviewed_by_name') or '',
+            'created': cps.fmt_datetime(p.get('created_at')),
+            'sort': _sort_key(p.get('created_at')),
+        })
+
+    stats = {
+        'pending': sum(r['status'] == 'pending' for r in all_rows),
+        'approved': sum(r['status'] == 'approved' for r in all_rows),
+        'rejected': sum(r['status'] == 'rejected' for r in all_rows),
+        'total': len(all_rows),
+    }
+
+    rows = all_rows
+    if status_filter in ('pending', 'approved', 'rejected'):
+        rows = [r for r in rows if r['status'] == status_filter]
+    else:
+        status_filter = 'all'
+    rows.sort(key=lambda r: -r['sort'])
+
+    plan = cps.get_plan()
+    payment_methods = cps.get_payment_methods()
+    plan_qr_codes = cps.get_plan_qr_codes()
+
+    return render_template(
+        'admin/subscriptions.html', active_page='subscriptions',
+        rows=rows, stats=stats, status_filter=status_filter,
+        plan=plan, payment_methods=payment_methods,
+        plan_qr_codes=plan_qr_codes, month_options=cps.PLAN_MONTH_OPTIONS,
+    )
+
+
+@admin_bp.route('/subscriptions/<payment_id>/approve', methods=['POST'])
+@admin_required
+def approve_payment(payment_id):
+    if not _admin_required():
+        return jsonify(success=False, message='Please log in as an administrator.'), 401
+
+    ref = db.collection('payment').document(payment_id)
+    doc = ref.get()
+    if not doc.exists:
+        return jsonify(success=False, message='Payment not found.'), 404
+    payment = doc.to_dict() or {}
+    if payment.get('status') != 'pending':
+        return jsonify(success=False, message='This payment was already reviewed.'), 409
+
+    note = (request.form.get('admin_note') or '').strip()
+    try:
+        start, end = cps.apply_approved_payment(
+            ref, payment,
+            reviewer_id=session['user_id'],
+            reviewer_name=session.get('full_name'),
+            admin_note=note,
+        )
+    except Exception as e:
+        return jsonify(success=False, message=f'Error: {str(e)}'), 500
+
+    return jsonify(success=True,
+                   message=f'Payment approved. Plan now runs until {cps.fmt_date(end)}.')
+
+
+@admin_bp.route('/subscriptions/<payment_id>/reject', methods=['POST'])
+@admin_required
+def reject_payment(payment_id):
+    if not _admin_required():
+        return jsonify(success=False, message='Please log in as an administrator.'), 401
+
+    ref = db.collection('payment').document(payment_id)
+    doc = ref.get()
+    if not doc.exists:
+        return jsonify(success=False, message='Payment not found.'), 404
+    payment = doc.to_dict() or {}
+    if payment.get('status') != 'pending':
+        return jsonify(success=False, message='This payment was already reviewed.'), 409
+
+    reason = (request.form.get('admin_note') or '').strip()
+    if not reason:
+        return jsonify(success=False, message='Please give a reason for rejecting.'), 400
+
+    try:
+        ref.update({
+            'status': 'rejected',
+            'admin_note': reason,
+            'reviewed_by': session['user_id'],
+            'reviewed_by_name': session.get('full_name'),
+            'reviewed_at': firestore.SERVER_TIMESTAMP,
+        })
+    except Exception as e:
+        return jsonify(success=False, message=f'Error: {str(e)}'), 500
+
+    return jsonify(success=True, message='Payment rejected.')
+
+
+@admin_bp.route('/subscriptions/qr-codes/save', methods=['POST'])
+@admin_required
+def save_plan_qr_codes():
+    """Admin sets the GCash name/number/QR image URL for one plan length at a time."""
+    try:
+        months = int(request.form.get('months', 0))
+    except ValueError:
+        months = 0
+    if months not in cps.PLAN_MONTH_OPTIONS:
+        flash('Please choose a valid plan length.', 'error')
+        return redirect(url_for('admin.subscriptions'))
+
+    gcash_name = (request.form.get('gcash_name') or '').strip()
+    gcash_number = (request.form.get('gcash_number') or '').strip()
+    qr_image_url = (request.form.get('qr_image_url') or '').strip()
+
+    if not gcash_number:
+        flash('Please enter the GCash number for this plan.', 'error')
+        return redirect(url_for('admin.subscriptions'))
+
+    try:
+        cps.save_plan_qr_code(months, gcash_name, gcash_number, qr_image_url)
+    except Exception as e:
+        flash(f'Could not save: {e}', 'error')
+        return redirect(url_for('admin.subscriptions'))
+
+    flash(f'GCash details for the {months}-month plan were saved.', 'success')
+    return redirect(url_for('admin.subscriptions'))
+
+
 # ---------- PAGES NOT BUILT YET ----------
 
 
@@ -578,7 +754,6 @@ _COMING_SOON = {
     'map_view': ('Map View', 'Monitor device and emergency status across the community.'),
     'emergency_logs': ('Emergency Logs', 'View and manage all emergency alerts and incidents.'),
     'reports': ('Reports', 'Analyze devices, alerts, and community activity.'),
-    'subscriptions': ('Subscriptions', 'Manage all subscription plans and user subscriptions.'),
     'settings': ('Settings', 'Manage admin account and basic system preferences.'),
 }
 
@@ -604,12 +779,6 @@ def emergency_logs():
 @admin_required
 def reports():
     return _coming_soon('reports')
-
-
-@admin_bp.route('/subscriptions')
-@admin_required
-def subscriptions():
-    return _coming_soon('subscriptions')
 
 
 @admin_bp.route('/settings')

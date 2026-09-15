@@ -276,3 +276,49 @@ def apply_approved_payment(payment_ref, payment, reviewer_id, reviewer_name, adm
 
 def new_payment_no(doc_id):
     return f'PAY-{doc_id[:6].upper()}'
+
+# ---------- per-plan QR codes ----------
+# app_settings/plan_qr_codes: { "1": {gcash_name, gcash_number, qr_image_url},
+#                                "3": {...}, "12": {...} }
+# The admin uploads a QR image per duration; families see the QR that
+# matches the plan length they picked, not one QR for everything.
+
+
+def get_plan_qr_codes():
+    """{months: {gcash_name, gcash_number, qr_image_url}} for each option."""
+    out = {}
+    try:
+        doc = db.collection('app_settings').document('plan_qr_codes').get()
+        data = (doc.to_dict() or {}) if doc.exists else {}
+    except Exception as e:
+        print(f'[care plan] could not read plan QR codes: {e}')
+        data = {}
+
+    # Falls back to this until the admin sets a different QR per plan length
+    # in /admin/subscriptions.
+    default_gcash_name = 'ALISTO CHUCHU'
+    default_qr_image = '/static/images/alisto_qr.jpg'
+
+    for months in PLAN_MONTH_OPTIONS:
+        entry = data.get(str(months)) or {}
+        out[months] = {
+            'gcash_name': entry.get('gcash_name') or default_gcash_name,
+            'gcash_number': entry.get('gcash_number') or '',
+            'qr_image_url': entry.get('qr_image_url') or default_qr_image,
+        }
+    return out
+
+
+def save_plan_qr_code(months, gcash_name, gcash_number, qr_image_url):
+    """Admin sets/updates the QR + GCash details for one plan length."""
+    if months not in PLAN_MONTH_OPTIONS:
+        raise ValueError('Invalid plan length.')
+    ref = db.collection('app_settings').document('plan_qr_codes')
+    ref.set({
+        str(months): {
+            'gcash_name': gcash_name.strip(),
+            'gcash_number': gcash_number.strip(),
+            'qr_image_url': qr_image_url,
+            'updated_at': firestore.SERVER_TIMESTAMP,
+        }
+    }, merge=True)

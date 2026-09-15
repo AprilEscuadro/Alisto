@@ -6,6 +6,7 @@ from admin_routes import admin_bp
 from bhw_routes import bhw_bp
 from firebase_admin import firestore, auth as firebase_auth
 from datetime import datetime, timedelta, timezone
+import care_plan_service as cps
 import requests
 import os
 import uuid
@@ -69,9 +70,34 @@ def inject_account():
     }
 
 
-def _get_care_plan():
-    return {'status': 'Active', 'days_left': 12,
-            'renew_date': 'July 20, 2026', 'price': 55}
+# AFTER (tinuod na, Firestore + auto-picks the family's elder):
+def _get_care_plan(elder_id=None):
+    if elder_id is None and 'user_id' in session:
+        elders = _linked_elders_for_dashboard()
+        elder_id = next(iter(elders), None)
+    plan = cps.get_plan()
+    sub = {}
+    if elder_id:
+        doc = db.collection('subscription').document(elder_id).get()
+        sub = doc.to_dict() or {} if doc.exists else {}
+    state = cps.subscription_state(sub)
+    return {
+        'status': state['label'], 'days_left': state['days_left'],
+        'renew_date': state['paid_until'], 'price': plan['price'],
+        'currency': plan.get('currency', 'PHP'),
+    }
+
+
+@app.context_processor
+def inject_care_plan_extras():
+    if 'user_id' not in session or session.get('role') != 'family':
+        return {}
+    return {
+        'care_plan_elders': _linked_elders_for_dashboard(),
+        'care_plan_gcash': cps.get_payment_methods(),
+        'care_plan_month_options': cps.PLAN_MONTH_OPTIONS,
+        'care_plan_qr_codes': cps.get_plan_qr_codes(),   # NEW
+    }
 
 
 def _first_name(full_name: str) -> str:
@@ -2291,15 +2317,57 @@ def save_settings():
     return jsonify(success=True, message=message, settings=updated)
 
 
-@app.route('/settings/change-password')
-def change_password():
+@app.route('/care-plan/pay', methods=['POST'])
+def pay_care_plan():
+    """Family submits a GCash reference number; goes into 'payment' as
+    pending until an admin approves it (see care_plan_service.apply_approved_payment)."""
     if 'user_id' not in session:
-        flash('Please log in first.', 'error')
-        return redirect(url_for('login'))
-    return redirect(url_for('my_profile'))
+        return jsonify(success=False, message='Please log in first.'), 401
+
+    elder_id = (request.form.get('elder_id') or '').strip()
+    reference_no = (request.form.get('reference_no') or '').strip()
+    payer_name = (request.form.get('payer_name') or '').strip()
+    try:
+        months = int(request.form.get('months', 1))
+    except ValueError:
+        months = 0
+
+    if not elder_id or not reference_no or months not in cps.PLAN_MONTH_OPTIONS:
+        return jsonify(success=False, message='Please fill in all fields correctly.'), 400
+
+    elder_doc = db.collection('elder_profile').document(elder_id).get()
+    if not elder_doc.exists:
+        return jsonify(success=False, message='Loved one not found.'), 404
+
+    plan = cps.get_plan()
+    unit_price = plan['price']
+
+    payment_ref = db.collection('payment').document()
+    payment_ref.set({
+        'payment_no': cps.new_payment_no(payment_ref.id),
+        'elder_id': elder_id,
+        'elder_name': (elder_doc.to_dict() or {}).get('full_name', ''),
+        'device_id': cps.device_for_elder(elder_id),
+        'months': months,
+        'unit_price': unit_price,
+        'amount': unit_price * months,
+        'currency': plan.get('currency', 'PHP'),
+        'method': 'gcash',
+        'reference_no': reference_no,
+        'payer_name': payer_name or session.get('full_name'),
+        'note': '',
+        'paid_by_user_id': session['user_id'],
+        'paid_by_name': session.get('full_name'),
+        'status': 'pending',
+        'created_at': firestore.SERVER_TIMESTAMP,
+    })
+
+    return jsonify(success=True,
+                   message=f'Payment submitted ({payment_ref.id[:6].upper()}). '
+                   'Waiting for admin approval.')
+
 
 # ---------- MY PROFILE ----------
-
 
 MAX_PHOTO_BASE64_BYTES = 700 * 1024
 

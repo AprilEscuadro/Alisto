@@ -1,11 +1,10 @@
-{% extends 'admin/base.html' %}
-{% block title %}Dashboard{% endblock %}
-
-{% block head %}
-<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
-{% endblock %}
-
-{% block content %}
+{% extends 'admin/base.html' %} {% block title %}Dashboard{% endblock %} {%
+block head %}
+<link
+  rel="stylesheet"
+  href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
+/>
+{% endblock %} {% block content %}
 <div class="admin-page-header">
   <div>
     <h1>Dashboard</h1>
@@ -20,7 +19,9 @@
     <div class="stat-body">
       <span class="stat-label">Active Alerts</span>
       <strong class="stat-value text-red">{{ stats.active_alerts }}</strong>
-      <a href="{{ url_for('admin.emergency_logs') }}" class="stat-link">View Details <i data-lucide="arrow-right"></i></a>
+      <a href="{{ url_for('admin.emergency_logs') }}" class="stat-link"
+        >View Details <i data-lucide="arrow-right"></i
+      ></a>
     </div>
   </div>
   <div class="stat-card">
@@ -28,7 +29,9 @@
     <div class="stat-body">
       <span class="stat-label">Total Elderly</span>
       <strong class="stat-value text-blue">{{ stats.total_elderly }}</strong>
-      <a href="{{ url_for('admin.users', type='elderly') }}" class="stat-link">View Details <i data-lucide="arrow-right"></i></a>
+      <a href="{{ url_for('admin.users', type='elderly') }}" class="stat-link"
+        >View Details <i data-lucide="arrow-right"></i
+      ></a>
     </div>
   </div>
   <div class="stat-card">
@@ -36,7 +39,9 @@
     <div class="stat-body">
       <span class="stat-label">Total BHWs</span>
       <strong class="stat-value text-green">{{ stats.total_bhws }}</strong>
-      <a href="{{ url_for('admin.users', type='bhw') }}" class="stat-link">View Details <i data-lucide="arrow-right"></i></a>
+      <a href="{{ url_for('admin.users', type='bhw') }}" class="stat-link"
+        >View Details <i data-lucide="arrow-right"></i
+      ></a>
     </div>
   </div>
   <div class="stat-card">
@@ -44,7 +49,9 @@
     <div class="stat-body">
       <span class="stat-label">Total Devices</span>
       <strong class="stat-value text-purple">{{ stats.total_devices }}</strong>
-      <a href="{{ url_for('admin.devices') }}" class="stat-link">View Details <i data-lucide="arrow-right"></i></a>
+      <a href="{{ url_for('admin.devices') }}" class="stat-link"
+        >View Details <i data-lucide="arrow-right"></i
+      ></a>
     </div>
   </div>
 </section>
@@ -54,7 +61,9 @@
   <div class="admin-card">
     <div class="admin-card-header">
       <h2>Map View</h2>
-      <a href="{{ url_for('admin.map_view') }}" class="card-link">View Full Map <i data-lucide="arrow-right"></i></a>
+      <a href="{{ url_for('admin.map_view') }}" class="card-link"
+        >View Full Map <i data-lucide="arrow-right"></i
+      ></a>
     </div>
     <div class="dashboard-map-wrap">
       <div id="dashboardMap" class="dashboard-map"></div>
@@ -70,7 +79,9 @@
   <div class="admin-card">
     <div class="admin-card-header">
       <h2>Recent Alerts</h2>
-      <a href="{{ url_for('admin.emergency_logs') }}" class="card-link">View All <i data-lucide="arrow-right"></i></a>
+      <a href="{{ url_for('admin.emergency_logs') }}" class="card-link"
+        >View All <i data-lucide="arrow-right"></i
+      ></a>
     </div>
 
     {% if recent_alerts %}
@@ -83,7 +94,9 @@
           <span>{{ alert.location }}</span>
           <small>{{ alert.time }} · {{ alert.type }}</small>
         </div>
-        <span class="badge badge-{{ alert.status }}">{{ alert.status|capitalize }}</span>
+        <span class="badge badge-{{ alert.status }}"
+          >{{ alert.status|capitalize }}</span
+        >
       </div>
       {% endfor %}
     </div>
@@ -95,7 +108,9 @@
     </div>
     {% endif %}
 
-    <a href="{{ url_for('admin.emergency_logs') }}" class="card-footer-link">View All Alerts <i data-lucide="arrow-right"></i></a>
+    <a href="{{ url_for('admin.emergency_logs') }}" class="card-footer-link"
+      >View All Alerts <i data-lucide="arrow-right"></i
+    ></a>
   </div>
 </section>
 
@@ -130,10 +145,9 @@
     <div class="admin-card-header">
       <h2>Alert Summary (This Month)</h2>
     </div>
-    {% set s = alert_summary %}
-    {% set total = s.total if s.total else 1 %}
-    {% set a = (s.active / total * 100) %}
-    {% set k = (s.acknowledged / total * 100) %}
+    {% set s = alert_summary %} {% set total = s.total if s.total else 1 %} {%
+    set a = (s.active / total * 100) %} {% set k = (s.acknowledged / total *
+    100) %}
     <div class="alert-summary">
       <div
         class="donut {% if not s.total %}donut-empty{% endif %}"
@@ -142,27 +156,36 @@
         aria-label="{{ s.active }} active, {{ s.acknowledged }} acknowledged, {{ s.resolved }} resolved"
       ></div>
       <ul class="summary-list">
-        <li><i class="dot dot-red"></i> Active <strong>{{ s.active }}</strong></li>
-        <li><i class="dot dot-orange"></i> Acknowledged <strong>{{ s.acknowledged }}</strong></li>
-        <li><i class="dot dot-green"></i> Resolved <strong>{{ s.resolved }}</strong></li>
+        <li>
+          <i class="dot dot-red"></i> Active <strong>{{ s.active }}</strong>
+        </li>
+        <li>
+          <i class="dot dot-orange"></i> Acknowledged
+          <strong>{{ s.acknowledged }}</strong>
+        </li>
+        <li>
+          <i class="dot dot-green"></i> Resolved
+          <strong>{{ s.resolved }}</strong>
+        </li>
         <li class="summary-total">Total <strong>{{ s.total }}</strong></li>
       </ul>
     </div>
   </div>
 </section>
-{% endblock %}
-
-{% block scripts %}
+{% endblock %} {% block scripts %}
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script>
   // Map centered on Sudlon II, Cebu City. Adjust the coordinates if needed.
   // Markers will be added once device locations and alerts are stored.
-  document.addEventListener('DOMContentLoaded', function () {
+  document.addEventListener("DOMContentLoaded", function () {
     if (!window.L) return;
-    const map = L.map('dashboardMap', { scrollWheelZoom: false }).setView([10.398, 123.86], 13);
-    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+    const map = L.map("dashboardMap", { scrollWheelZoom: false }).setView(
+      [10.398, 123.86],
+      13,
+    );
+    L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
       maxZoom: 19,
-      attribution: '&copy; OpenStreetMap contributors',
+      attribution: "&copy; OpenStreetMap contributors",
     }).addTo(map);
   });
 </script>

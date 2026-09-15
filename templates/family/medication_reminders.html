@@ -530,7 +530,11 @@
           <div class="care-plan-price">
             ₱{{ care_plan.price }} <span>/ month</span>
           </div>
-          <button type="button" class="care-plan-btn">
+          <button
+            type="button"
+            class="care-plan-btn"
+            onclick="openCarePlanModal()"
+          >
             <i data-lucide="credit-card"></i> Pay / Renew Now
           </button>
         </div>
@@ -911,7 +915,12 @@
             <div class="form-grid">
               <div class="form-field">
                 <label for="med_time">Time</label>
-                <input type="time" id="med_time" name="reminder_time" required />
+                <input
+                  type="time"
+                  id="med_time"
+                  name="reminder_time"
+                  required
+                />
               </div>
 
               <div class="form-field">
@@ -925,13 +934,55 @@
               <div class="form-field span-2">
                 <label>Days</label>
                 <div class="day-picker" id="medDayPicker">
-                  <label><input type="checkbox" name="schedule_days" value="Mon" /><span>Mon</span></label>
-                  <label><input type="checkbox" name="schedule_days" value="Tue" /><span>Tue</span></label>
-                  <label><input type="checkbox" name="schedule_days" value="Wed" /><span>Wed</span></label>
-                  <label><input type="checkbox" name="schedule_days" value="Thu" /><span>Thu</span></label>
-                  <label><input type="checkbox" name="schedule_days" value="Fri" /><span>Fri</span></label>
-                  <label><input type="checkbox" name="schedule_days" value="Sat" /><span>Sat</span></label>
-                  <label><input type="checkbox" name="schedule_days" value="Sun" /><span>Sun</span></label>
+                  <label
+                    ><input
+                      type="checkbox"
+                      name="schedule_days"
+                      value="Mon"
+                    /><span>Mon</span></label
+                  >
+                  <label
+                    ><input
+                      type="checkbox"
+                      name="schedule_days"
+                      value="Tue"
+                    /><span>Tue</span></label
+                  >
+                  <label
+                    ><input
+                      type="checkbox"
+                      name="schedule_days"
+                      value="Wed"
+                    /><span>Wed</span></label
+                  >
+                  <label
+                    ><input
+                      type="checkbox"
+                      name="schedule_days"
+                      value="Thu"
+                    /><span>Thu</span></label
+                  >
+                  <label
+                    ><input
+                      type="checkbox"
+                      name="schedule_days"
+                      value="Fri"
+                    /><span>Fri</span></label
+                  >
+                  <label
+                    ><input
+                      type="checkbox"
+                      name="schedule_days"
+                      value="Sat"
+                    /><span>Sat</span></label
+                  >
+                  <label
+                    ><input
+                      type="checkbox"
+                      name="schedule_days"
+                      value="Sun"
+                    /><span>Sun</span></label
+                  >
                 </div>
                 <span class="form-hint">
                   Leave every day unticked to repeat daily.
@@ -981,7 +1032,11 @@
           <button type="button" class="btn-ghost" id="medDeleteCancel">
             Cancel
           </button>
-          <button type="button" class="btn-danger-action" id="medDeleteConfirmBtn">
+          <button
+            type="button"
+            class="btn-danger-action"
+            id="medDeleteConfirmBtn"
+          >
             Delete
           </button>
         </div>
@@ -1008,11 +1063,7 @@
           <button type="button" class="btn-ghost" id="logoutCancel">
             Cancel
           </button>
-          <button
-            type="button"
-            class="btn-danger-action"
-            id="logoutConfirmBtn"
-          >
+          <button type="button" class="btn-danger-action" id="logoutConfirmBtn">
             Log out
           </button>
         </div>
@@ -1208,7 +1259,9 @@
           document.getElementById("emptyAddReminderBtn"),
         ]
           .filter(Boolean)
-          .forEach((btn) => btn.addEventListener("click", () => openModal(null)));
+          .forEach((btn) =>
+            btn.addEventListener("click", () => openModal(null)),
+          );
 
         [
           document.getElementById("medModalClose"),
@@ -1243,7 +1296,8 @@
             }
 
             deletingId = btn.dataset.medId;
-            deleteNameEl.textContent = card.dataset.medicineName || "This reminder";
+            deleteNameEl.textContent =
+              card.dataset.medicineName || "This reminder";
             deleteConfirm.classList.add("open");
             deleteConfirm.setAttribute("aria-hidden", "false");
             document.body.classList.add("modal-open");
@@ -1324,13 +1378,18 @@
               setTimeout(() => window.location.reload(), 600);
               return;
             }
-            showAlert(data.message || "Could not save. Please try again.", "error");
+            showAlert(
+              data.message || "Could not save. Please try again.",
+              "error",
+            );
           } catch (err) {
             showAlert("Cannot reach the server. Please try again.", "error");
           }
 
           submitBtn.disabled = false;
-          submitLabel.textContent = editingId ? "Save changes" : "Save reminder";
+          submitLabel.textContent = editingId
+            ? "Save changes"
+            : "Save reminder";
         });
 
         document.addEventListener("keydown", (e) => {
@@ -1340,5 +1399,6 @@
         });
       })();
     </script>
+    {% include 'family/_care_plan_modal.html' %}
   </body>
 </html>

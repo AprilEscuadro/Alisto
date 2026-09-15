@@ -289,7 +289,11 @@
           <div class="care-plan-price">
             ₱{{ care_plan.price }} <span>/ month</span>
           </div>
-          <button type="button" class="care-plan-btn">
+          <button
+            type="button"
+            class="care-plan-btn"
+            onclick="openCarePlanModal()"
+          >
             <i data-lucide="credit-card"></i> Pay / Renew Now
           </button>
         </div>
@@ -378,11 +382,10 @@
 
           <!-- Only profile_* categories render here, so the "Welcome back"
                flash from login never leaks onto this page. -->
-          {% with messages = get_flashed_messages(with_categories=true) %}
-          {% set profile_messages = messages
-             | selectattr('0', 'in', ['profile_success', 'profile_error'])
-             | list %}
-          {% if profile_messages %}
+          {% with messages = get_flashed_messages(with_categories=true) %} {%
+          set profile_messages = messages | selectattr('0', 'in',
+          ['profile_success', 'profile_error']) | list %} {% if profile_messages
+          %}
           <div class="flash-stack">
             {% for category, message in profile_messages %}
             <div
@@ -395,8 +398,7 @@
             </div>
             {% endfor %}
           </div>
-          {% endif %}
-          {% endwith %}
+          {% endif %} {% endwith %}
 
           <div class="profile-layout">
             <!-- ---- IDENTITY + PHOTO ---- -->
@@ -643,7 +645,6 @@
           </div>
         </div>
       </main>
-
     </div>
 
     <!-- ============ LOGOUT CONFIRMATION ============ -->
@@ -666,11 +667,7 @@
           <button type="button" class="btn-ghost" id="logoutCancel">
             Cancel
           </button>
-          <button
-            type="button"
-            class="btn-danger-action"
-            id="logoutConfirmBtn"
-          >
+          <button type="button" class="btn-danger-action" id="logoutConfirmBtn">
             Log out
           </button>
         </div>
@@ -687,10 +684,9 @@
           if (!input) return;
           const showing = input.type === "text";
           input.type = showing ? "password" : "text";
-          btn.querySelector("i, svg").setAttribute(
-            "data-lucide",
-            showing ? "eye" : "eye-off",
-          );
+          btn
+            .querySelector("i, svg")
+            .setAttribute("data-lucide", showing ? "eye" : "eye-off");
           lucide.createIcons();
         });
       });
@@ -726,9 +722,7 @@
           if (matchLi) {
             matchLi.classList.remove("ok", "bad");
             if (confirm.value.length > 0) {
-              matchLi.classList.add(
-                pw.value === confirm.value ? "ok" : "bad",
-              );
+              matchLi.classList.add(pw.value === confirm.value ? "ok" : "bad");
             }
           }
         }
@@ -891,5 +885,6 @@
         });
       })();
     </script>
+    {% include 'family/_care_plan_modal.html' %}
   </body>
 </html>
