@@ -1,4 +1,4 @@
-from flask import Flask, render_template, request, redirect, url_for, session, flash, jsonify
+from flask import Flask, render_template, request, redirect, url_for, session, flash, jsonify, Response
 from werkzeug.security import generate_password_hash, check_password_hash
 from werkzeug.utils import secure_filename
 from database import db
@@ -11,6 +11,8 @@ import os
 import uuid
 import re
 import base64
+import csv
+import io
 
 app = Flask(__name__)
 app.secret_key = 'alisto-secret-key-change-this-later'
@@ -23,19 +25,16 @@ MAX_FAMILY_PER_DEVICE = 5
 FIREBASE_WEB_API_KEY = "AIzaSyBFkRaWyU_j6qcspXuOsJUXteRDIw8thqE"
 
 # ---------- BHW REGISTRATION SETTINGS ----------
-# Edit these lists to change the dropdown options on the register page.
 HEALTH_CENTERS = ['Sudlon II Health Center']
 YEARS_OF_SERVICE_OPTIONS = [
     'Less than 1 year', '1-3 years', '4-6 years', '7-10 years', 'More than 10 years'
 ]
 VALID_ID_EXTENSIONS = {'jpg', 'jpeg', 'png', 'pdf'}
-VALID_ID_MAX_BYTES = 2 * 1024 * 1024  # 2MB
-# Saved OUTSIDE /static so uploaded IDs are not publicly viewable.
+VALID_ID_MAX_BYTES = 2 * 1024 * 1024
 VALID_ID_UPLOAD_FOLDER = os.path.join(app.root_path, 'uploads', 'bhw_ids')
 
 
 def _verify_firebase_password(email, password):
-    """Returns the Firebase user record if email/password match, else None."""
     url = f"https://identitytoolkit.googleapis.com/v1/accounts:signInWithPassword?key={FIREBASE_WEB_API_KEY}"
     resp = requests.post(url, json={
         "email": email, "password": password, "returnSecureToken": True
@@ -50,10 +49,9 @@ TEMP_LOCATION = {
     'last_updated': 'Sample data (waiting for device)',
 }
 
+
 @app.context_processor
 def inject_account():
-    """Keeps the top-right profile pill in sync with Firestore on every page,
-    instead of showing whatever the session held at sign-in time."""
     if 'user_id' not in session:
         return {}
 
@@ -69,6 +67,7 @@ def inject_account():
             'photo_base64': user.get('photoBase64') or None,
         }
     }
+
 
 def _get_care_plan():
     return {'status': 'Active', 'days_left': 12,
@@ -93,8 +92,7 @@ def _family_link_count(elder_id: str) -> int:
                 count += 1
     return count
 
-# ---------- FAMILY PASSWORD RULES ----------
-# Mirrors PASSWORD_RULES in static/js/auth.js — keep the two in sync.
+
 FAMILY_PASSWORD_RULES = [
     (lambda p: len(p) >= 6,                   'be at least 6 characters'),
     (lambda p: re.search(r'[A-Z]', p),        'include an uppercase letter'),
@@ -105,9 +103,10 @@ FAMILY_PASSWORD_RULES = [
 
 
 def _check_family_password(password):
-    """Returns an error message, or None if the password is fine."""
-    missing = [label for rule, label in FAMILY_PASSWORD_RULES if not rule(password)]
+    missing = [label for rule,
+               label in FAMILY_PASSWORD_RULES if not rule(password)]
     return 'Password must ' + ', '.join(missing) + '.' if missing else None
+
 
 @app.route('/check_device', methods=['POST'])
 def check_device():
@@ -136,7 +135,6 @@ def check_device():
         requesting_role = (data.get('role') or 'family').strip()
         family_count = _family_link_count(elder_id)
 
-        # No free family slots left on this device.
         if requesting_role == 'family' and family_count >= MAX_FAMILY_PER_DEVICE:
             return jsonify(
                 valid=True, already_registered=True, can_join=False,
@@ -146,8 +144,6 @@ def check_device():
                 message=f"This device already has the maximum of {MAX_FAMILY_PER_DEVICE} linked family members."
             )
 
-        # There is room — this family member joins the existing elder.
-        # elder_full_name and elder_dob pre-fill step 3 on the register page.
         return jsonify(
             valid=True, already_registered=True, can_join=True,
             elder_id=elder_id,
@@ -158,7 +154,6 @@ def check_device():
             message='This device is already linked to an ALISTO user.'
         )
 
-    # Device exists but has never been claimed — this is the first family member.
     return jsonify(valid=True, already_registered=False, message='Device ID verified!')
 
 
@@ -202,19 +197,12 @@ def register():
             return jsonify(success=False, message='Please fill up all required account fields.'), 400
         if password != confirm_password:
             return jsonify(success=False, message='Password and confirm password do not match.'), 400
-        # Admins are created with create_admin.py, never through the public form.
         if role not in ('family', 'bhw'):
             return jsonify(success=False, message='Invalid role selected.'), 400
 
-        # NEW: BHWs don't register a device or an elder. They go through their own flow
-        # and wait for admin approval.
-                # NEW: BHWs don't register a device or an elder. They go through their own flow
-        # and wait for admin approval.
         if role == 'bhw':
             return _register_bhw(full_name, email, password, contact_number, barangay_assigned)
 
-        # NEW: family password strength. Mirrors PASSWORD_RULES in static/js/auth.js.
-        # BHW passwords are not checked here — that flow returns above.
         password_error = _check_family_password(password)
         if password_error:
             return jsonify(success=False, message=password_error), 400
@@ -232,8 +220,7 @@ def register():
                 return jsonify(success=False, message='Missing elder reference for joining.'), 400
             if not relationship:
                 return jsonify(success=False, message='Please specify your relationship to the elder.'), 400
-            
-        # Email uniqueness (Firestore has no UNIQUE constraint — check manually)
+
         existing_user = list(
             db.collection('user_account').where(
                 'email', '==', email).limit(1).stream()
@@ -249,7 +236,6 @@ def register():
 
             if join_mode == 'claim':
                 if device.get('is_registered'):
-                    # Device already registered — auto-join if there's room and user is family
                     elder_id = device.get('elder_id')
                     elder_doc = db.collection(
                         'elder_profile').document(elder_id).get()
@@ -301,7 +287,6 @@ def register():
 
 
 def _register_bhw(full_name, email, password, contact_number, barangay_assigned):
-    """Create a BHW account with approval_status 'pending' plus its bhw_profile."""
     dob = request.form.get('bhw_dob', '').strip()
     health_center = request.form.get('health_center', '').strip()
     years_of_service = request.form.get('years_of_service', '').strip()
@@ -323,13 +308,11 @@ def _register_bhw(full_name, email, password, contact_number, barangay_assigned)
     except ValueError:
         return jsonify(success=False, message='Please enter a valid date of birth.'), 400
 
-    # Uniqueness checks (Firestore has no UNIQUE constraint)
     if list(db.collection('user_account').where('email', '==', email).limit(1).stream()):
         return jsonify(success=False, message='An account with this email already exists.'), 400
     if list(db.collection('bhw_profile').where('bhw_id_number', '==', bhw_id_number).limit(1).stream()):
         return jsonify(success=False, message='This BHW ID number is already registered.'), 400
 
-    # Optional valid ID upload
     valid_id_filename = None
     stored_path = None
     if valid_id and valid_id.filename:
@@ -359,7 +342,7 @@ def _register_bhw(full_name, email, password, contact_number, barangay_assigned)
             'full_name': full_name, 'email': email,
             'password_hash': generate_password_hash(password),
             'role': 'bhw', 'contact_number': contact_number,
-            'approval_status': 'pending',  # admin changes this to 'approved' or 'rejected'
+            'approval_status': 'pending',
             'created_at': firestore.SERVER_TIMESTAMP, 'deleted_at': None, 'is_archived': 0
         })
 
@@ -410,9 +393,6 @@ def _create_account_and_elder(full_name, email, password, role, contact_number,
         'family_user_id': user_id, 'elder_id': elder_id, 'relationship': relationship
     })
 
-    # ---- Device: fill in the fields the IoT device is expected to report.
-    # These start as placeholders; once the physical device comes online it
-    # should PATCH/update this same document with its real gps/status/sim_number.
     device_ref = db.collection('device').document(serial_number)
     device_doc = device_ref.get()
     device_data = device_doc.to_dict() if device_doc.exists else {}
@@ -422,8 +402,6 @@ def _create_account_and_elder(full_name, email, password, role, contact_number,
         'is_registered': True,
         'registered_at': firestore.SERVER_TIMESTAMP,
         'serial_number': serial_number,
-        # Only backfill these if they're not already on the document, so we
-        # never overwrite real data that the IoT device may have already sent.
         'gps': device_data.get('gps', 'Inactive'),
         'sim_number': device_data.get('sim_number', None),
         'status': device_data.get('status', 'Offline'),
@@ -480,16 +458,13 @@ def login():
         password_ok = False
         if user and not user.get('deleted_at'):
             if 'password_hash' in user:
-                # Old system — bhw/admin accounts, or family accounts not yet migrated
                 password_ok = check_password_hash(
                     user['password_hash'], password)
             else:
-                # New system — family accounts created via Firebase Auth
                 password_ok = _verify_firebase_password(
                     email, password) is not None
 
         if user and not user.get('deleted_at') and password_ok:
-            # NEW: BHWs can't sign in until an admin approves them.
             if user.get('role') == 'bhw' and user.get('approval_status') != 'approved':
                 if user.get('approval_status') == 'rejected':
                     flash(
@@ -503,17 +478,15 @@ def login():
             session['full_name'] = user['full_name']
             session['role'] = user['role']
 
-            # Remember the previous sign-in for "Last Login" on the profile page.
             previous = user.get('last_login_at')
             if hasattr(previous, 'astimezone'):
                 previous = previous.astimezone(
-                    timezone(timedelta(hours=8)))  # Philippine time
+                    timezone(timedelta(hours=8)))
             session['previous_login'] = previous.strftime(
                 '%b %d, %Y %I:%M %p') if hasattr(previous, 'strftime') else None
             updates = {'last_login_at': firestore.SERVER_TIMESTAMP}
 
             if user['role'] == 'bhw':
-                # First sign-in after approval: show the "Account Approved!" screen once.
                 if not user.get('approved_notice_seen'):
                     updates['approved_notice_seen'] = True
                     user_doc.reference.update(updates)
@@ -576,7 +549,6 @@ def my_loved_ones():
         elder_data = elder_doc.to_dict()
         elder_name = elder_data.get('full_name', 'Unnamed')
 
-        # ---- Device: 'device' docs are keyed by serial number and store elder_id ----
         device_docs = list(
             db.collection('device')
             .where('elder_id', '==', elder_id)
@@ -588,9 +560,6 @@ def my_loved_ones():
         device_registered = bool(
             device_doc and device_doc.to_dict().get('is_registered'))
 
-        # ---- Last known location + last check-in (from DEVICE_LOCATION) ----
-        # Falls back to TEMP_LOCATION (sample/dummy coords) until the real
-        # IoT device has sent at least one location update.
         location_text = TEMP_LOCATION['address']
         last_checkin_text = TEMP_LOCATION['last_updated']
         checkin_overdue = True
@@ -624,7 +593,6 @@ def my_loved_ones():
         if not device_registered:
             status_class = 'attention'
 
-        # ---- Next medicine reminder ----
         next_medicine_text = 'No reminders set'
         medicine_overdue = False
         try:
@@ -704,7 +672,6 @@ def add_loved_one():
         None, [house_no, street, barangay, city, province, zip_code]))
 
     try:
-        # ---- If a Device ID was given, check it BEFORE creating anything ----
         device_data = None
         if device_id:
             device_doc = db.collection('device').document(device_id).get()
@@ -721,7 +688,6 @@ def add_loved_one():
                             'Leave it blank if you just want to register the person for now.'
                 ), 409
 
-        # ---- Create the elder profile ----
         elder_ref = db.collection('elder_profile').document()
         elder_ref.set({
             'full_name': full_name,
@@ -733,14 +699,12 @@ def add_loved_one():
         })
         elder_id = elder_ref.id
 
-        # ---- Link the elder to the logged-in family account ----
         db.collection('family_elder_link').add({
             'family_user_id': session['user_id'],
             'elder_id': elder_id,
             'relationship': relationship,
         })
 
-        # ---- Link the device, if one was provided ----
         if device_id:
             db.collection('device').document(device_id).set({
                 'elder_id': elder_id,
@@ -752,6 +716,18 @@ def add_loved_one():
                 'status': (device_data or {}).get('status', 'Offline'),
             }, merge=True)
 
+        # ---- HISTORY: log this loved one being added ----
+        _log_activity(
+            elder_id, 'device',
+            title=f'{full_name} was added to the account',
+            detail=f'Device {device_id} linked' if device_id else 'No device linked yet',
+            badge='Linked' if device_id else 'Pending',
+            badge_class='success' if device_id else 'warning',
+            location_address=address,
+            device_id=device_id or None,
+            actor_user_id=session['user_id'],
+        )
+
         return jsonify(success=True, message=f'{full_name} has been added to your loved ones.')
 
     except Exception as e:
@@ -761,8 +737,6 @@ def add_loved_one():
 # ---------- LOVED ONE DETAILS (view modal) ----------
 
 def _get_elder_if_linked(elder_id):
-    """Return (elder_doc, link_data) if the logged-in family user is linked
-    to this elder, else (None, None)."""
     links = list(
         db.collection('family_elder_link')
         .where('family_user_id', '==', session['user_id'])
@@ -910,12 +884,10 @@ def loved_one_delete(elder_id):
     if not elder_doc:
         return jsonify(success=False, message='Loved one not found.'), 404
 
-    # Soft-delete the elder profile
     db.collection('elder_profile').document(elder_id).update({
         'deleted_at': firestore.SERVER_TIMESTAMP
     })
 
-    # Remove the link between this family user and the elder
     links = list(
         db.collection('family_elder_link')
         .where('family_user_id', '==', session['user_id'])
@@ -925,7 +897,6 @@ def loved_one_delete(elder_id):
     for link in links:
         link.reference.delete()
 
-    # Unlink any device pointed at this elder
     device_docs = list(
         db.collection('device').where('elder_id', '==', elder_id).stream()
     )
@@ -973,13 +944,21 @@ def loved_one_update(elder_id):
         if links:
             links[0].reference.update({'relationship': relationship})
 
+        # ---- HISTORY: log this profile edit ----
+        _log_activity(
+            elder_id, 'device',
+            title=f'{full_name} profile updated',
+            badge='Updated', badge_class='warning',
+            location_address=address,
+            actor_user_id=session['user_id'],
+        )
+
         return jsonify(success=True, message='Changes saved.')
     except Exception as e:
         return jsonify(success=False, message=f'Error: {str(e)}'), 500
 
 
 # ---------- ALERTS ----------
-
 
 @app.route('/alerts')
 def alerts():
@@ -1023,6 +1002,212 @@ def medication_reminders():
 
 
 # ---------- HISTORY ----------
+#
+# activity_log/{id}
+#   elder_id      -- the anchor every role scopes on
+#   type          -- 'alert' | 'med_reminder' | 'device'
+#   title, detail -- what to show in the row
+#   badge, badge_class
+#   location_address, device_id
+#   actor_user_id -- who did it, when a person did
+#   created_at    -- REQUIRED, this is the sort key
+#
+# Family sees elders they are linked to, a BHW sees elders in their
+# barangay, an admin sees everything — all through _activity_feed().
+
+ACTIVITY_PAGE_SIZE = 20
+
+ACTIVITY_TYPES = {
+    'alert': {
+        'label': 'Emergency Alert',
+        'icon': 'triangle-alert',
+        'class': 'alert',
+        'person_icon': 'user-round',
+    },
+    'med_reminder': {
+        'label': 'Med Reminder',
+        'icon': 'pill',
+        'class': 'med',
+        'person_icon': 'user-round',
+    },
+    'device': {
+        'label': 'Device Activity',
+        'icon': 'smartphone',
+        'class': 'device',
+        'person_icon': 'smartphone',
+    },
+}
+
+
+def _log_activity(elder_id, activity_type, title, detail='',
+                  badge='', badge_class='', location_address='',
+                  device_id=None, actor_user_id=None):
+    """Append one row to the shared history.
+
+    Deliberately swallows its own errors: a history write failing should
+    never break the action the user actually asked for.
+    """
+    if not elder_id or activity_type not in ACTIVITY_TYPES:
+        return
+
+    try:
+        db.collection('activity_log').add({
+            'elder_id': elder_id,
+            'type': activity_type,
+            'title': title,
+            'detail': detail,
+            'badge': badge,
+            'badge_class': badge_class,
+            'location_address': location_address,
+            'device_id': device_id,
+            'actor_user_id': actor_user_id,
+            'created_at': firestore.SERVER_TIMESTAMP,
+        })
+    except Exception:
+        pass
+
+
+def _elders_for_role():
+    """The elder ids the signed-in account may see, and their display info.
+
+    family -> elders linked to this account
+    bhw    -> elders whose address is in this BHW's barangay
+    admin  -> every elder
+    """
+    role = session.get('role')
+    elders = {}
+
+    if role == 'family':
+        links = list(
+            db.collection('family_elder_link')
+            .where('family_user_id', '==', session['user_id'])
+            .stream()
+        )
+        wanted = {(l.to_dict() or {}).get('elder_id') for l in links}
+        relationships = {
+            (l.to_dict() or {}).get('elder_id'): (l.to_dict() or {}).get('relationship')
+            for l in links
+        }
+    else:
+        wanted = None
+        relationships = {}
+
+    barangay = None
+    if role == 'bhw':
+        matches = list(
+            db.collection('bhw_profile')
+            .where('user_id', '==', session['user_id']).limit(1).stream()
+        )
+        barangay = (matches[0].to_dict() or {}).get(
+            'barangay_assigned') if matches else None
+
+    for doc in db.collection('elder_profile').stream():
+        elder = doc.to_dict() or {}
+        if elder.get('deleted_at'):
+            continue
+        if wanted is not None and doc.id not in wanted:
+            continue
+        if role == 'bhw' and not _in_elder_barangay(elder.get('address'), barangay):
+            continue
+
+        elders[doc.id] = {
+            'name': elder.get('full_name') or 'Unnamed',
+            'photo_url': elder.get('photo_url') or None,
+            'relationship': relationships.get(doc.id) or 'Elderly',
+        }
+
+    return elders
+
+
+def _in_elder_barangay(address, barangay):
+    """Whole-part match so 'Sudlon I' never matches 'Sudlon II'."""
+    if not address or not barangay:
+        return False
+    parts = [p.strip().casefold() for p in address.split(',')]
+    return barangay.strip().casefold() in parts
+
+
+def _activity_feed(elders):
+    """Every activity row for the given elders, newest first."""
+    ph_tz = timezone(timedelta(hours=8))
+    rows = []
+
+    for elder_id, elder in elders.items():
+        try:
+            docs = list(
+                db.collection('activity_log')
+                .where('elder_id', '==', elder_id)
+                .stream()
+            )
+        except Exception:
+            docs = []
+
+        for doc in docs:
+            item = doc.to_dict() or {}
+            meta = ACTIVITY_TYPES.get(
+                item.get('type')) or ACTIVITY_TYPES['device']
+            created = item.get('created_at')
+            local = created.astimezone(ph_tz) if hasattr(
+                created, 'astimezone') else None
+
+            rows.append({
+                'id': doc.id,
+                'elder_id': elder_id,
+                'date': local.strftime('%b %d, %Y') if local else '—',
+                'time': local.strftime('%I:%M %p') if local else '',
+                'sort_key': created.timestamp() if hasattr(created, 'timestamp') else 0,
+
+                'type_filter': item.get('type') or 'device',
+                'type_label': meta['label'],
+                'type_icon': meta['icon'],
+                'type_class': meta['class'],
+
+                'person_name': elder['name'],
+                'person_photo_url': elder['photo_url'],
+                'person_relationship': elder['relationship'],
+                'person_icon': meta['person_icon'],
+
+                'detail_main': item.get('title') or '—',
+                'detail_badge': item.get('badge') or '',
+                'detail_badge_class': item.get('badge_class') or '',
+                'location': item.get('location_address') or 'Not recorded',
+            })
+
+    rows.sort(key=lambda r: r['sort_key'], reverse=True)
+    return rows
+
+
+def _paginate(rows, page, per_page=ACTIVITY_PAGE_SIZE):
+    """Slices rows and builds the page-number list the template renders."""
+    total = len(rows)
+    total_pages = max(1, (total + per_page - 1) // per_page)
+    page = max(1, min(page, total_pages))
+
+    start = (page - 1) * per_page
+    window = rows[start:start + per_page]
+
+    if total_pages <= 7:
+        pages = list(range(1, total_pages + 1))
+    else:
+        pages = [1]
+        if page > 3:
+            pages.append('...')
+        for p in range(max(2, page - 1), min(total_pages, page + 1) + 1):
+            pages.append(p)
+        if page < total_pages - 2:
+            pages.append('...')
+        if total_pages not in pages:
+            pages.append(total_pages)
+
+    return window, {
+        'start': start + 1 if window else 0,
+        'end': start + len(window),
+        'total': total,
+        'current_page': page,
+        'total_pages': total_pages,
+        'pages': pages,
+    }
+
 
 @app.route('/history')
 def history():
@@ -1030,16 +1215,55 @@ def history():
         flash('Please log in first.', 'error')
         return redirect(url_for('login'))
 
-    pagination = {'start': 0, 'end': 0, 'total': 0,
-                  'current_page': 1, 'total_pages': 1, 'pages': [1]}
+    try:
+        page = int(request.args.get('page', 1))
+    except ValueError:
+        page = 1
+
+    all_rows = _activity_feed(_elders_for_role())
+    activities, pagination = _paginate(all_rows, page)
 
     return render_template(
         'family/history.html',
         full_name=session['full_name'], role=session['role'],
-        care_plan=_get_care_plan(), activities=[],
-        alert_count=0, med_reminder_count=0, device_activity_count=0,
-        notification_count=0, date_range_label='This Month',
+        care_plan=_get_care_plan(),
+        activities=activities,
+        alert_count=sum(1 for r in all_rows if r['type_filter'] == 'alert'),
+        med_reminder_count=sum(
+            1 for r in all_rows if r['type_filter'] == 'med_reminder'),
+        device_activity_count=sum(
+            1 for r in all_rows if r['type_filter'] == 'device'),
+        total_activity_count=len(all_rows),
+        notification_count=0, date_range_label='All Time',
         pagination=pagination, current_year=datetime.now().year,
+    )
+
+
+@app.route('/history/export')
+def export_history():
+    """Downloads the whole feed as CSV — not just the page on screen."""
+    if 'user_id' not in session:
+        flash('Please log in first.', 'error')
+        return redirect(url_for('login'))
+
+    rows = _activity_feed(_elders_for_role())
+
+    buffer = io.StringIO()
+    writer = csv.writer(buffer)
+    writer.writerow(['Date', 'Time', 'Type', 'Person',
+                     'Relationship', 'Details', 'Status', 'Location'])
+    for r in rows:
+        writer.writerow([
+            r['date'], r['time'], r['type_label'], r['person_name'],
+            r['person_relationship'], r['detail_main'],
+            r['detail_badge'], r['location'],
+        ])
+
+    filename = f"alisto-history-{datetime.now().strftime('%Y%m%d')}.csv"
+    return Response(
+        buffer.getvalue(),
+        mimetype='text/csv',
+        headers={'Content-Disposition': f'attachment; filename={filename}'},
     )
 
 
@@ -1050,6 +1274,7 @@ def activity_details(activity_id):
         return redirect(url_for('login'))
     flash('Activity details page not implemented yet.', 'info')
     return redirect(url_for('history'))
+
 
 # ---------- SETTINGS ----------
 
@@ -1074,16 +1299,14 @@ def settings():
 
 @app.route('/settings/change-password')
 def change_password():
-    """The real change-password form lives on My Profile now."""
     if 'user_id' not in session:
         flash('Please log in first.', 'error')
         return redirect(url_for('login'))
     return redirect(url_for('my_profile'))
+
+
 # ---------- MY PROFILE ----------
 
-# Photos are stored inline on the user_account document as base64, the same
-# way the mobile app does it (FirestoreService.saveProfilePhoto). Firebase
-# Storage is not used because it requires billing to be enabled.
 MAX_PHOTO_BASE64_BYTES = 700 * 1024
 
 
@@ -1148,7 +1371,6 @@ def update_my_profile():
         flash('Email address cannot be empty.', 'profile_error')
         return redirect(url_for('my_profile'))
 
-    # Email must stay unique (Firestore has no UNIQUE constraint).
     if email != user.get('email'):
         clash = list(db.collection('user_account')
                      .where('email', '==', email).limit(1).stream())
@@ -1157,8 +1379,6 @@ def update_my_profile():
             return redirect(url_for('my_profile'))
 
     try:
-        # Accounts without password_hash live in Firebase Auth — keep it in
-        # sync, or the sign-in email and this one would drift apart.
         if 'password_hash' not in user:
             firebase_auth.update_user(session['user_id'],
                                       email=email, display_name=full_name)
@@ -1195,11 +1415,11 @@ def change_my_password():
     new = request.form.get('new_password', '')
     confirm = request.form.get('confirm_password', '')
 
-    # Verify the current password on whichever system this account uses.
     if 'password_hash' in user:
         current_ok = check_password_hash(user['password_hash'], current)
     else:
-        current_ok = _verify_firebase_password(user.get('email'), current) is not None
+        current_ok = _verify_firebase_password(
+            user.get('email'), current) is not None
 
     if not current_ok:
         flash('Your current password is incorrect.', 'profile_error')
@@ -1208,7 +1428,8 @@ def change_my_password():
         flash('New password and confirm password do not match.', 'profile_error')
         return redirect(url_for('my_profile'))
     if new == current:
-        flash('Your new password must be different from your current one.', 'profile_error')
+        flash('Your new password must be different from your current one.',
+              'profile_error')
         return redirect(url_for('my_profile'))
 
     error = _check_family_password(new)
@@ -1224,7 +1445,8 @@ def change_my_password():
             })
         else:
             firebase_auth.update_user(session['user_id'], password=new)
-            user_ref.update({'password_changed_at': firestore.SERVER_TIMESTAMP})
+            user_ref.update(
+                {'password_changed_at': firestore.SERVER_TIMESTAMP})
     except Exception as e:
         flash(f'Could not update your password: {e}', 'profile_error')
         return redirect(url_for('my_profile'))
@@ -1244,7 +1466,8 @@ def upload_my_photo():
         flash('No photo was selected.', 'profile_error')
         return redirect(url_for('my_profile'))
     if len(encoded) > MAX_PHOTO_BASE64_BYTES:
-        flash('That photo is too large. Please choose a different one.', 'profile_error')
+        flash('That photo is too large. Please choose a different one.',
+              'profile_error')
         return redirect(url_for('my_profile'))
 
     try:
@@ -1253,7 +1476,6 @@ def upload_my_photo():
         flash('That photo could not be read.', 'profile_error')
         return redirect(url_for('my_profile'))
 
-    # Field names match the mobile app exactly, so both read the same photo.
     db.collection('user_account').document(session['user_id']).set({
         'photoBase64': encoded,
         'photoUpdatedAt': firestore.SERVER_TIMESTAMP,
@@ -1276,6 +1498,7 @@ def remove_my_photo():
 
     flash('Your profile photo has been removed.', 'profile_success')
     return redirect(url_for('my_profile'))
+
 
 # ---------- HELP & SUPPORT ----------
 
@@ -1375,25 +1598,20 @@ def _initials(name: str) -> str:
 
 @app.route('/map-modal/<elderly_id>')
 def map_modal(elderly_id):
-    """Fetch location data and return modal HTML"""
     try:
-        # Get elderly profile
         elderly = db.collection('elder_profile').document(elderly_id).get()
         if not elderly.exists:
             return jsonify({"error": "Elderly not found"}), 404
 
         elderly_data = elderly.to_dict()
 
-        # Get device linked to this elderly
         device_id = elderly_data.get('device_id')
         if not device_id:
-            # No device linked yet — show fallback location
             return render_template('map_modal.html',
                                    elderly_name=elderly_data.get('full_name'),
                                    lat=10.3157, lng=123.8854,
                                    address='No device linked yet')
 
-        # Get latest location from DEVICE_LOCATION collection
         locations = list(
             db.collection('DEVICE_LOCATION')
             .where('device_id', '==', device_id)
@@ -1408,7 +1626,6 @@ def map_modal(elderly_id):
             lng = loc.get('gps_long', 123.8854)
             address = loc.get('location_address', 'Location pending...')
         else:
-            # Device exists but no location logged yet
             lat, lng, address = 10.3157, 123.8854, 'Waiting for first location update...'
 
         return render_template('map_modal.html',
@@ -1438,26 +1655,23 @@ def dashboard():
             'elder_id', 'in', elder_ids[:10]).stream()
         emergency_contact_count = sum(1 for _ in contacts)
 
-    # ---- My Loved One (first linked elder) ----
     loved_one = {'name': 'No elder linked yet',
                  'photo_url': None, 'initials': '?', 'elder_id': None}
-    elderly_id = None  # ← STORE ELDERLY ID FOR MAP MODAL
+    elderly_id = None
 
     if elder_ids:
         elder_doc = db.collection('elder_profile').document(elder_ids[0]).get()
         if elder_doc.exists:
             elder_data = elder_doc.to_dict()
             elder_name = elder_data.get('full_name', 'Unnamed')
-            elderly_id = elder_ids[0]  # ← CAPTURE IT HERE
+            elderly_id = elder_ids[0]
             loved_one = {
                 'name': elder_name,
                 'photo_url': elder_data.get('photo_url') or None,
                 'initials': _initials(elder_name),
-                'elder_id': elderly_id,  # ← PASS IT TO DICT
+                'elder_id': elderly_id,
             }
 
-    # ---- Last Known Location (DEVICE_LOCATION collection) ----
-    # start with fallback; overwritten below if real data exists
     location = dict(TEMP_LOCATION)
     location['map_link'] = '#'
 
@@ -1503,7 +1717,6 @@ def dashboard():
          'status_class': 'completed', 'icon': 'bell', 'icon_class': 'warn'},
     ]
 
-    # ---- Recent Alerts (feeds the redesigned dashboard panel) ----
     recent_alerts = [
         {'icon': 'check-circle-2', 'icon_class': 'ok', 'title': 'All is well',
          'subtext': f"{loved_one['name']} is doing well.", 'timestamp': 'Today, 10:29 AM'},
@@ -1521,18 +1734,14 @@ def dashboard():
         last_trigger=last_trigger, next_reminder=next_reminder,
         recent_activity=recent_activity, notification_count=2,
         loved_one=loved_one, location=location, recent_alerts=recent_alerts,
-        elderly_id=elderly_id,  # ← PASS THIS TO TEMPLATE FOR MAP MODAL BUTTON
+        elderly_id=elderly_id,
         current_year=datetime.now().year,
     )
 
+
 # ---------- LIVE MAP ----------
 
-# How recently a device must have reported to count as online.
 DEVICE_ONLINE_WINDOW = timedelta(minutes=10)
-
-# Where emergencies are written. The mobile app uses 'alert'; schema.sql
-# called it 'emergency_alert'. Change this one constant once the team
-# settles on a name — nothing else here needs to move.
 ALERT_COLLECTION = 'alert'
 
 RESPONDED_STATUSES = {'ACKNOWLEDGED', 'RESPONDED', 'acknowledged', 'responded'}
@@ -1540,7 +1749,6 @@ RESOLVED_STATUSES = {'RESOLVED', 'CANCELLED', 'resolved', 'cancelled'}
 
 
 def _latest_device_location(device_serial):
-    """Newest DEVICE_LOCATION row for a device, or None if it never reported."""
     if not device_serial:
         return None
     try:
@@ -1557,7 +1765,6 @@ def _latest_device_location(device_serial):
 
 
 def _open_alert_for_elder(elder_id):
-    """Newest alert for this elder that has not been resolved or cancelled."""
     try:
         docs = list(
             db.collection(ALERT_COLLECTION)
@@ -1578,11 +1785,6 @@ def _open_alert_for_elder(elder_id):
 
 
 def _elder_map_status(alert, recorded_at):
-    """One of: emergency, responded, online, offline.
-
-    Emergency outranks everything. A device that has gone quiet during an
-    emergency is the most important pin on the map, not the least.
-    """
     if alert:
         status = str(alert.get('status') or '')
         return 'responded' if status in RESPONDED_STATUSES else 'emergency'
@@ -1598,14 +1800,6 @@ def _elder_map_status(alert, recorded_at):
 
 @app.route('/api/loved-ones/map')
 def loved_ones_map_data():
-    """Every loved one on this account who has a device, with their newest
-    reported position.
-
-    An elder whose device has never reported comes back with
-    has_location false rather than a placeholder coordinate — the map
-    counts them but does not pin them. A pin in the wrong place is worse
-    than no pin at all.
-    """
     if 'user_id' not in session:
         return jsonify(success=False, message='Please log in first.'), 401
 
@@ -1635,7 +1829,7 @@ def loved_ones_map_data():
             .stream()
         )
         if not device_docs:
-            continue  # no device, nothing to plot
+            continue
         device_serial = device_docs[0].id
         device = device_docs[0].to_dict() or {}
 
@@ -1645,7 +1839,8 @@ def loved_ones_map_data():
 
         lat = loc.get('gps_lat') if loc else None
         lng = loc.get('gps_long') if loc else None
-        has_location = isinstance(lat, (int, float)) and isinstance(lng, (int, float))
+        has_location = isinstance(
+            lat, (int, float)) and isinstance(lng, (int, float))
 
         name = elder.get('full_name') or 'Unnamed'
         elders.append({
@@ -1673,6 +1868,7 @@ def loved_ones_map_data():
         success=True, elders=elders, total=len(elders),
         plotted=len(plotted), waiting=len(elders) - len(plotted),
     )
-    
+
+
 if __name__ == '__main__':
     app.run(debug=True)

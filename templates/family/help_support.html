@@ -867,7 +867,11 @@
                 </div>
                 {% endfor %}
               </div>
-              <button type="button" class="panel-link left-aligned" id="viewMoreFaqsBtn">
+              <button
+                type="button"
+                class="panel-link left-aligned"
+                id="viewMoreFaqsBtn"
+              >
                 View more FAQs <i data-lucide="chevron-right"></i>
               </button>
             </div>
@@ -987,11 +991,20 @@
     </div>
 
     <!-- ============ MORE FAQs MODAL ============ -->
-    <div class="modal-overlay" id="moreFaqsModal" role="dialog" aria-modal="true">
+    <div
+      class="modal-overlay"
+      id="moreFaqsModal"
+      role="dialog"
+      aria-modal="true"
+    >
       <div class="modal-content">
         <div class="modal-header">
           <h2 class="modal-title">Frequently Asked Questions</h2>
-          <button type="button" class="modal-close-btn" data-modal="moreFaqsModal">
+          <button
+            type="button"
+            class="modal-close-btn"
+            data-modal="moreFaqsModal"
+          >
             <i data-lucide="x"></i>
           </button>
         </div>
@@ -1002,11 +1015,20 @@
     </div>
 
     <!-- ============ USER GUIDE MODAL ============ -->
-    <div class="modal-overlay" id="userGuideModal" role="dialog" aria-modal="true">
+    <div
+      class="modal-overlay"
+      id="userGuideModal"
+      role="dialog"
+      aria-modal="true"
+    >
       <div class="modal-content">
         <div class="modal-header">
           <h2 class="modal-title">How to Use ALISTO</h2>
-          <button type="button" class="modal-close-btn" data-modal="userGuideModal">
+          <button
+            type="button"
+            class="modal-close-btn"
+            data-modal="userGuideModal"
+          >
             <i data-lucide="x"></i>
           </button>
         </div>
@@ -1016,7 +1038,10 @@
               <div class="guide-step-number">1</div>
               <div class="guide-step-content">
                 <h4>Enable Emergency Trigger</h4>
-                <p>Say the emergency phrase in Cebuano: "Alisto, tabanag!" or press the emergency button on your ALISTO device.</p>
+                <p>
+                  Say the emergency phrase in Cebuano: "Alisto, tabanag!" or
+                  press the emergency button on your ALISTO device.
+                </p>
               </div>
             </div>
 
@@ -1024,7 +1049,10 @@
               <div class="guide-step-number">2</div>
               <div class="guide-step-content">
                 <h4>Offline Detection</h4>
-                <p>ALISTO works completely offline. The device detects your emergency phrase without needing internet connection.</p>
+                <p>
+                  ALISTO works completely offline. The device detects your
+                  emergency phrase without needing internet connection.
+                </p>
               </div>
             </div>
 
@@ -1032,7 +1060,10 @@
               <div class="guide-step-number">3</div>
               <div class="guide-step-content">
                 <h4>5-Second Cancellation</h4>
-                <p>After triggering, you have 5 seconds to cancel the alert if it was a false alarm by pressing the cancel button.</p>
+                <p>
+                  After triggering, you have 5 seconds to cancel the alert if it
+                  was a false alarm by pressing the cancel button.
+                </p>
               </div>
             </div>
 
@@ -1040,7 +1071,10 @@
               <div class="guide-step-number">4</div>
               <div class="guide-step-content">
                 <h4>Family Notification</h4>
-                <p>If not canceled, your registered family members and BHW receive an SMS alert with your location instantly.</p>
+                <p>
+                  If not canceled, your registered family members and BHW
+                  receive an SMS alert with your location instantly.
+                </p>
               </div>
             </div>
 
@@ -1048,7 +1082,10 @@
               <div class="guide-step-number">5</div>
               <div class="guide-step-content">
                 <h4>Emergency Response</h4>
-                <p>The BHW coordinates immediate emergency response. You can track the responder's location on the app.</p>
+                <p>
+                  The BHW coordinates immediate emergency response. You can
+                  track the responder's location on the app.
+                </p>
               </div>
             </div>
 
@@ -1056,7 +1093,10 @@
               <div class="guide-step-number">6</div>
               <div class="guide-step-content">
                 <h4>View History</h4>
-                <p>All alerts and their outcomes are saved in your alert history. Share with healthcare providers if needed.</p>
+                <p>
+                  All alerts and their outcomes are saved in your alert history.
+                  Share with healthcare providers if needed.
+                </p>
               </div>
             </div>
           </div>
@@ -1065,91 +1105,169 @@
     </div>
 
     <!-- ============ REPORT PROBLEM MODAL ============ -->
-    <div class="modal-overlay" id="reportProblemModal" role="dialog" aria-modal="true">
-      <div class="modal-content">
-        <div class="modal-header">
-          <h2 class="modal-title">Report a Problem</h2>
-          <button type="button" class="modal-close-btn" data-modal="reportProblemModal">
+    <div
+      class="modal-overlay"
+      id="reportProblemModal"
+      role="dialog"
+      aria-modal="true"
+    >
+      <div class="modal-content report-modal-content">
+        <div class="modal-header report-modal-header">
+          <button
+            type="button"
+            class="modal-back-btn"
+            id="reportBackBtn"
+            aria-label="Back"
+            style="visibility: hidden"
+          >
+            <i data-lucide="arrow-left"></i>
+          </button>
+          <h2 class="modal-title" id="reportModalTitle">Report a Problem</h2>
+          <button
+            type="button"
+            class="modal-close-btn"
+            data-modal="reportProblemModal"
+          >
             <i data-lucide="x"></i>
           </button>
         </div>
         <div class="modal-body">
-          <form class="report-form" id="reportProblemForm">
-            <div class="form-group">
-              <label class="form-label">What's the issue about?</label>
-              <div class="report-category-options">
-                <div>
-                  <input type="radio" id="cat-app" name="category" value="app" class="category-radio" required />
-                  <label for="cat-app" class="category-label">
-                    <i data-lucide="smartphone"></i>
-                    <span>App Issue</span>
-                  </label>
-                </div>
-                <div>
-                  <input type="radio" id="cat-device" name="category" value="device" class="category-radio" />
-                  <label for="cat-device" class="category-label">
-                    <i data-lucide="radio"></i>
-                    <span>Device Issue</span>
-                  </label>
-                </div>
-                <div>
-                  <input type="radio" id="cat-alert" name="category" value="alert" class="category-radio" />
-                  <label for="cat-alert" class="category-label">
-                    <i data-lucide="bell-ring"></i>
-                    <span>Alert Issue</span>
-                  </label>
-                </div>
-                <div>
-                  <input type="radio" id="cat-other" name="category" value="other" class="category-radio" />
-                  <label for="cat-other" class="category-label">
-                    <i data-lucide="help-circle"></i>
-                    <span>Other</span>
-                  </label>
-                </div>
+          <!-- STEP 1: category -->
+          <div class="report-step" data-step="1">
+            <p class="report-step-label">Why are you reporting this?</p>
+            <div class="report-list">
+              <button
+                type="button"
+                class="report-row"
+                data-category="app"
+                data-label="App Issue"
+              >
+                <span>App Issue</span>
+                <i data-lucide="chevron-right"></i>
+              </button>
+              <button
+                type="button"
+                class="report-row"
+                data-category="device"
+                data-label="Device Issue"
+              >
+                <span>Device Issue</span>
+                <i data-lucide="chevron-right"></i>
+              </button>
+              <button
+                type="button"
+                class="report-row"
+                data-category="alert"
+                data-label="Alert Issue"
+              >
+                <span>Alert Issue</span>
+                <i data-lucide="chevron-right"></i>
+              </button>
+              <button
+                type="button"
+                class="report-row"
+                data-category="account"
+                data-label="Account Issue"
+              >
+                <span>Account Issue</span>
+                <i data-lucide="chevron-right"></i>
+              </button>
+              <button
+                type="button"
+                class="report-row"
+                data-category="other"
+                data-label="Other"
+                data-skip-subcategory="true"
+              >
+                <span>Other</span>
+                <i data-lucide="chevron-right"></i>
+              </button>
+            </div>
+          </div>
+
+          <!-- STEP 2: subcategory (built by JS) -->
+          <div class="report-step" data-step="2" hidden>
+            <p class="report-step-label">Which best describes the problem?</p>
+            <div class="report-list" id="reportSubcategoryList"></div>
+          </div>
+
+          <!-- STEP 3: description -->
+          <div class="report-step" data-step="3" hidden>
+            <form class="report-form" id="reportProblemForm">
+              <div class="form-group">
+                <label class="form-label" for="problemDescription"
+                  >Describe the problem</label
+                >
+                <textarea
+                  id="problemDescription"
+                  name="description"
+                  class="form-input"
+                  placeholder="Tell us what happened..."
+                  required
+                ></textarea>
               </div>
-            </div>
+              <div class="form-group">
+                <label class="form-label" for="problemEmail"
+                  >Your email (optional)</label
+                >
+                <input
+                  type="email"
+                  id="problemEmail"
+                  name="email"
+                  class="form-input"
+                  placeholder="you@example.com"
+                />
+              </div>
+            </form>
+          </div>
 
-            <div class="form-group">
-              <label class="form-label" for="problemDescription">Describe the problem</label>
-              <textarea
-                id="problemDescription"
-                name="description"
-                class="form-input"
-                placeholder="Tell us what happened..."
-                required
-              ></textarea>
+          <!-- STEP 4: review -->
+          <div class="report-step" data-step="4" hidden>
+            <p class="report-step-label">You're about to submit a report</p>
+            <div class="review-box">
+              <span class="review-label">Category</span>
+              <strong class="review-value" id="reviewCategory">—</strong>
             </div>
-
-            <div class="form-group">
-              <label class="form-label" for="problemEmail">Your email (optional)</label>
-              <input
-                type="email"
-                id="problemEmail"
-                name="email"
-                class="form-input"
-                placeholder="you@example.com"
-              />
+            <div class="review-box">
+              <span class="review-label">Problem type</span>
+              <strong class="review-value" id="reviewSubcategory">—</strong>
             </div>
-          </form>
+            <div class="review-box">
+              <span class="review-label">Description</span>
+              <strong class="review-value" id="reviewDescription">—</strong>
+            </div>
+          </div>
         </div>
-        <div class="modal-footer">
-          <button type="button" class="btn btn-secondary" data-modal="reportProblemModal">
+        <div class="modal-footer" id="reportModalFooter" style="display: none">
+          <button
+            type="button"
+            class="btn btn-secondary"
+            data-modal="reportProblemModal"
+          >
             Cancel
           </button>
-          <button type="submit" class="btn btn-primary" id="submitReportBtn" form="reportProblemForm">
-            <i data-lucide="send"></i>
-            Submit
+          <button type="button" class="btn btn-primary" id="reportNextBtn">
+            Continue
           </button>
         </div>
       </div>
     </div>
 
     <!-- ============ ABOUT ALISTO MODAL ============ -->
-    <div class="modal-overlay" id="aboutAlistoModal" role="dialog" aria-modal="true">
+    <div
+      class="modal-overlay"
+      id="aboutAlistoModal"
+      role="dialog"
+      aria-modal="true"
+    >
       <div class="modal-content">
         <div class="modal-header">
           <h2 class="modal-title">About ALISTO</h2>
-          <button type="button" class="modal-close-btn" data-modal="aboutAlistoModal">
+          <button
+            type="button"
+            class="modal-close-btn"
+            data-modal="aboutAlistoModal"
+          >
             <i data-lucide="x"></i>
           </button>
         </div>
@@ -1160,7 +1278,10 @@
                 <i data-lucide="stethoscope"></i> What is ALISTO?
               </h3>
               <p class="about-description">
-                ALISTO is an offline emergency response system designed specifically to help elderly individuals during emergencies. It detects emergency voice commands in Cebuano (Bisaya) without requiring an internet connection.
+                ALISTO is an offline emergency response system designed
+                specifically to help elderly individuals during emergencies. It
+                detects emergency voice commands in Cebuano (Bisaya) without
+                requiring an internet connection.
               </p>
             </div>
 
@@ -1215,7 +1336,14 @@
                 <li>Josh Neo Ylaya</li>
                 <li>Lemuel Alonso</li>
               </ul>
-              <p style="font-size: 11px; color: var(--text-soft); margin-top: 6px; margin-bottom: 0;">
+              <p
+                style="
+                  font-size: 11px;
+                  color: var(--text-soft);
+                  margin-top: 6px;
+                  margin-bottom: 0;
+                "
+              >
                 Bachelor of Science in Information Technology<br />
                 University of Cebu - Main Campus
               </p>
@@ -1226,11 +1354,20 @@
     </div>
 
     <!-- ============ CONTACT SUPPORT MODAL ============ -->
-    <div class="modal-overlay" id="contactSupportModal" role="dialog" aria-modal="true">
+    <div
+      class="modal-overlay"
+      id="contactSupportModal"
+      role="dialog"
+      aria-modal="true"
+    >
       <div class="modal-content">
         <div class="modal-header">
           <h2 class="modal-title">Contact Support</h2>
-          <button type="button" class="modal-close-btn" data-modal="contactSupportModal">
+          <button
+            type="button"
+            class="modal-close-btn"
+            data-modal="contactSupportModal"
+          >
             <i data-lucide="x"></i>
           </button>
         </div>
@@ -1280,16 +1417,25 @@
                 class="form-input"
                 placeholder="Tell us more..."
                 required
-                style="min-height: 100px;"
+                style="min-height: 100px"
               ></textarea>
             </div>
           </form>
         </div>
         <div class="modal-footer">
-          <button type="button" class="btn btn-secondary" data-modal="contactSupportModal">
+          <button
+            type="button"
+            class="btn btn-secondary"
+            data-modal="contactSupportModal"
+          >
             Cancel
           </button>
-          <button type="submit" class="btn btn-primary" id="submitContactBtn" form="contactSupportForm">
+          <button
+            type="submit"
+            class="btn btn-primary"
+            id="submitContactBtn"
+            form="contactSupportForm"
+          >
             <i data-lucide="send"></i>
             Send
           </button>
@@ -1299,15 +1445,9 @@
 
     <!-- ============ LOGOUT CONFIRMATION ============ -->
     <div class="confirm-overlay" id="logoutConfirm" aria-hidden="true">
-      <div
-        class="confirm-dialog"
-        role="dialog"
-        aria-modal="true"
-      >
+      <div class="confirm-dialog" role="dialog" aria-modal="true">
         <div class="confirm-icon"><i data-lucide="log-out"></i></div>
-        <h2 class="confirm-title">
-          Are you sure you want to log out?
-        </h2>
+        <h2 class="confirm-title">Are you sure you want to log out?</h2>
         <p class="confirm-text">
           You will need to sign in again to view your loved ones and receive
           alerts on this device.
@@ -1316,11 +1456,7 @@
           <button type="button" class="btn-ghost" id="logoutCancel">
             Cancel
           </button>
-          <button
-            type="button"
-            class="btn-danger-action"
-            id="logoutConfirmBtn"
-          >
+          <button type="button" class="btn-danger-action" id="logoutConfirmBtn">
             Log out
           </button>
         </div>
@@ -1331,7 +1467,12 @@
     <script type="module">
       // Initialize Firebase (Update with your config)
       import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.0/firebase-app.js";
-      import { getFirestore, collection, addDoc, serverTimestamp } from "https://www.gstatic.com/firebasejs/10.7.0/firebase-firestore.js";
+      import {
+        getFirestore,
+        collection,
+        addDoc,
+        serverTimestamp,
+      } from "https://www.gstatic.com/firebasejs/10.7.0/firebase-firestore.js";
 
       const firebaseConfig = {
         apiKey: "YOUR_API_KEY",
@@ -1339,7 +1480,7 @@
         projectId: "YOUR_PROJECT_ID",
         storageBucket: "YOUR_STORAGE_BUCKET",
         messagingSenderId: "YOUR_MESSAGING_SENDER_ID",
-        appId: "YOUR_APP_ID"
+        appId: "YOUR_APP_ID",
       };
 
       const app = initializeApp(firebaseConfig);
@@ -1358,44 +1499,54 @@
       const allFaqs = [
         {
           question: "How do I set up the ALISTO device for my loved one?",
-          answer: "To set up ALISTO: 1) Charge the device fully, 2) Register it in the app, 3) Add family members as emergency contacts, 4) Test the emergency trigger, 5) Keep the device within Bluetooth range."
+          answer:
+            "To set up ALISTO: 1) Charge the device fully, 2) Register it in the app, 3) Add family members as emergency contacts, 4) Test the emergency trigger, 5) Keep the device within Bluetooth range.",
         },
         {
           question: "What happens when an emergency alert is triggered?",
-          answer: "When triggered, ALISTO immediately sends SMS alerts to all registered contacts with the user's location. The Barangay Health Worker is also notified and can provide emergency response."
+          answer:
+            "When triggered, ALISTO immediately sends SMS alerts to all registered contacts with the user's location. The Barangay Health Worker is also notified and can provide emergency response.",
         },
         {
           question: "Can more than one family member link to the same elder?",
-          answer: "Yes! Multiple family members can be registered as emergency contacts for the same user. They will all receive alerts when an emergency is triggered."
+          answer:
+            "Yes! Multiple family members can be registered as emergency contacts for the same user. They will all receive alerts when an emergency is triggered.",
         },
         {
           question: "How does ALISTO work without internet?",
-          answer: "ALISTO has offline voice recognition built into the device itself. It continuously listens for emergency phrases without needing an internet connection."
+          answer:
+            "ALISTO has offline voice recognition built into the device itself. It continuously listens for emergency phrases without needing an internet connection.",
         },
         {
           question: "What if I accidentally trigger an alarm?",
-          answer: "You have 5 seconds to cancel the alarm after it's triggered by pressing the cancel button on the ALISTO device. This prevents false alerts from being sent."
+          answer:
+            "You have 5 seconds to cancel the alarm after it's triggered by pressing the cancel button on the ALISTO device. This prevents false alerts from being sent.",
         },
         {
           question: "How do I view my alert history?",
-          answer: "Go to the 'History' section in the app. You can see all past emergencies with timestamps, who was notified, and the outcome of each incident."
+          answer:
+            "Go to the 'History' section in the app. You can see all past emergencies with timestamps, who was notified, and the outcome of each incident.",
         },
         {
           question: "What emergency phrases does ALISTO recognize?",
-          answer: "ALISTO recognizes common Cebuano emergency phrases like 'Alisto, tabanag!' and similar variations. It's trained to understand natural speech."
+          answer:
+            "ALISTO recognizes common Cebuano emergency phrases like 'Alisto, tabanag!' and similar variations. It's trained to understand natural speech.",
         },
         {
           question: "How do I update my emergency contacts?",
-          answer: "Go to Settings, then select 'Emergency Contacts'. You can add, edit, or remove contacts anytime. Changes will sync to your ALISTO device."
+          answer:
+            "Go to Settings, then select 'Emergency Contacts'. You can add, edit, or remove contacts anytime. Changes will sync to your ALISTO device.",
         },
         {
           question: "What should I do if the device is not detecting my voice?",
-          answer: "Make sure the device is in a quiet environment and you're speaking clearly. Ensure the device firmware is up to date. If the issue persists, report it."
+          answer:
+            "Make sure the device is in a quiet environment and you're speaking clearly. Ensure the device firmware is up to date. If the issue persists, report it.",
         },
         {
           question: "Is my location data secure and private?",
-          answer: "Yes, location data is only shared with registered emergency contacts and Barangay Health Workers. We use encryption and follow strict privacy protocols."
-        }
+          answer:
+            "Yes, location data is only shared with registered emergency contacts and Barangay Health Workers. We use encryption and follow strict privacy protocols.",
+        },
       ];
 
       // Modal functionality
@@ -1403,31 +1554,32 @@
       const closeButtons = document.querySelectorAll(".modal-close-btn");
 
       // Open modals
-      document.getElementById("viewMoreFaqsBtn").addEventListener("click", () => {
-        populateFaqModal();
-        document.getElementById("moreFaqsModal").classList.add("open");
-        document.body.classList.add("modal-open");
-      });
+      document
+        .getElementById("viewMoreFaqsBtn")
+        .addEventListener("click", () => {
+          populateFaqModal();
+          document.getElementById("moreFaqsModal").classList.add("open");
+          document.body.classList.add("modal-open");
+        });
 
       document.getElementById("userGuideBtn").addEventListener("click", () => {
         document.getElementById("userGuideModal").classList.add("open");
         document.body.classList.add("modal-open");
       });
 
-      document.getElementById("reportProblemBtn").addEventListener("click", () => {
-        document.getElementById("reportProblemModal").classList.add("open");
-        document.body.classList.add("modal-open");
-      });
+      document
+        .getElementById("aboutAlistoBtn")
+        .addEventListener("click", () => {
+          document.getElementById("aboutAlistoModal").classList.add("open");
+          document.body.classList.add("modal-open");
+        });
 
-      document.getElementById("aboutAlistoBtn").addEventListener("click", () => {
-        document.getElementById("aboutAlistoModal").classList.add("open");
-        document.body.classList.add("modal-open");
-      });
-
-      document.getElementById("contactSupportBtn").addEventListener("click", () => {
-        document.getElementById("contactSupportModal").classList.add("open");
-        document.body.classList.add("modal-open");
-      });
+      document
+        .getElementById("contactSupportBtn")
+        .addEventListener("click", () => {
+          document.getElementById("contactSupportModal").classList.add("open");
+          document.body.classList.add("modal-open");
+        });
 
       // Close modals
       closeButtons.forEach((btn) => {
@@ -1448,7 +1600,9 @@
       function closeModal(modalId) {
         const modal = document.getElementById(modalId);
         modal.classList.remove("open");
-        const anyModalOpen = Array.from(modalOverlays).some((m) => m.classList.contains("open"));
+        const anyModalOpen = Array.from(modalOverlays).some((m) =>
+          m.classList.contains("open"),
+        );
         if (!anyModalOpen) {
           document.body.classList.remove("modal-open");
         }
@@ -1482,14 +1636,14 @@
           const faqItem = document.createElement("div");
           faqItem.className = "faq-modal-item";
           faqItem.innerHTML = `
-            <button type="button" class="faq-modal-question">
-              <i data-lucide="circle-help"></i>
-              <span>${faq.question}</span>
-            </button>
-            <div class="faq-modal-answer">
-              <p>${faq.answer}</p>
-            </div>
-          `;
+        <button type="button" class="faq-modal-question">
+          <i data-lucide="circle-help"></i>
+          <span>${faq.question}</span>
+        </button>
+        <div class="faq-modal-answer">
+          <p>${faq.answer}</p>
+        </div>
+      `;
 
           const question = faqItem.querySelector(".faq-modal-question");
           question.addEventListener("click", () => {
@@ -1503,89 +1657,253 @@
         lucide.createIcons();
       }
 
-      // Report problem form
-      document.getElementById("reportProblemForm").addEventListener("submit", async (e) => {
-        e.preventDefault();
+      // ---- Report a Problem — multi-step, Facebook-style tap-through flow ----
+      (function () {
+        const modal = document.getElementById("reportProblemModal");
+        if (!modal) return;
 
-        const formData = {
-          category: document.querySelector('input[name="category"]:checked').value,
-          description: document.getElementById("problemDescription").value,
-          email: document.getElementById("problemEmail").value || "Not provided",
-          userEmail: "{{ account.email }}",
-          userName: "{{ account.full_name }}",
-          timestamp: new Date().toISOString(),
+        const steps = modal.querySelectorAll(".report-step");
+        const backBtn = document.getElementById("reportBackBtn");
+        const titleEl = document.getElementById("reportModalTitle");
+        const footer = document.getElementById("reportModalFooter");
+        const nextBtn = document.getElementById("reportNextBtn");
+        const subcategoryList = document.getElementById(
+          "reportSubcategoryList",
+        );
+
+        const SUBCATEGORIES = {
+          app: [
+            { value: "crash", label: "App crashes or freezes" },
+            { value: "buttons", label: "Buttons or links not working" },
+            { value: "slow", label: "App is slow" },
+            { value: "other_app", label: "Other app issue" },
+          ],
+          device: [
+            { value: "connect", label: "Device won't connect" },
+            { value: "battery", label: "Battery drains too fast" },
+            { value: "voice", label: "Device isn't detecting voice" },
+            { value: "other_device", label: "Other device issue" },
+          ],
+          alert: [
+            { value: "not_received", label: "Alert wasn't received" },
+            { value: "false_alarm", label: "False alarm triggered" },
+            { value: "wrong_location", label: "Location was incorrect" },
+            { value: "other_alert", label: "Other alert issue" },
+          ],
+          account: [
+            { value: "login", label: "Can't log in" },
+            { value: "reset_password", label: "Can't reset password" },
+            { value: "profile_info", label: "Profile info is wrong" },
+            { value: "other_account", label: "Other account issue" },
+          ],
         };
 
-        const submitBtn = document.getElementById("submitReportBtn");
-        submitBtn.disabled = true;
-        submitBtn.innerHTML = '<i data-lucide="loader"></i> Submitting...';
-        lucide.createIcons();
+        let currentStep = 1;
+        let selection = {
+          category: null,
+          categoryLabel: null,
+          subcategory: null,
+          subcategoryLabel: null,
+        };
 
-        try {
-          await window.addDoc(window.collection(window.db, "reports"), {
-            ...formData,
-            createdAt: window.serverTimestamp(),
+        function showStep(stepNumber, title) {
+          steps.forEach((step) => {
+            step.hidden = Number(step.dataset.step) !== stepNumber;
           });
+          currentStep = stepNumber;
+          titleEl.textContent = title;
+          backBtn.style.visibility = stepNumber === 1 ? "hidden" : "visible";
 
+          // Steps 1-2 are tap-to-choose lists, like Facebook's flow — no
+          // footer buttons needed there. Only description + review need one.
+          footer.style.display =
+            stepNumber === 3 || stepNumber === 4 ? "flex" : "none";
+          nextBtn.textContent = stepNumber === 4 ? "Submit" : "Continue";
+        }
+
+        function resetFlow() {
+          selection = {
+            category: null,
+            categoryLabel: null,
+            subcategory: null,
+            subcategoryLabel: null,
+          };
           document.getElementById("reportProblemForm").reset();
-          closeModal("reportProblemModal");
-          showToast("Problem reported successfully! Thank you.", "success");
-        } catch (error) {
-          console.error("Error submitting report:", error);
-          showToast("Failed to submit report. Please try again.", "error");
-        } finally {
-          submitBtn.disabled = false;
-          submitBtn.innerHTML = '<i data-lucide="send"></i> Submit';
+          showStep(1, "Report a Problem");
+        }
+
+        function buildSubcategoryList(category) {
+          subcategoryList.innerHTML = "";
+          (SUBCATEGORIES[category] || []).forEach((item) => {
+            const row = document.createElement("button");
+            row.type = "button";
+            row.className = "report-row";
+            row.innerHTML = `<span>${item.label}</span><i data-lucide="chevron-right"></i>`;
+            row.addEventListener("click", () => {
+              selection.subcategory = item.value;
+              selection.subcategoryLabel = item.label;
+              showStep(3, "Describe the Problem");
+            });
+            subcategoryList.appendChild(row);
+          });
           lucide.createIcons();
         }
-      });
+
+        modal
+          .querySelectorAll('.report-step[data-step="1"] .report-row')
+          .forEach((row) => {
+            row.addEventListener("click", () => {
+              selection.category = row.dataset.category;
+              selection.categoryLabel = row.dataset.label;
+
+              if (row.dataset.skipSubcategory) {
+                selection.subcategory = null;
+                selection.subcategoryLabel = null;
+                showStep(3, "Describe the Problem");
+              } else {
+                buildSubcategoryList(selection.category);
+                showStep(2, "Which best describes the problem?");
+              }
+            });
+          });
+
+        backBtn.addEventListener("click", () => {
+          if (currentStep === 4) {
+            showStep(3, "Describe the Problem");
+          } else if (currentStep === 3) {
+            if (SUBCATEGORIES[selection.category]) {
+              buildSubcategoryList(selection.category);
+              showStep(2, "Which best describes the problem?");
+            } else {
+              showStep(1, "Report a Problem");
+            }
+          } else if (currentStep === 2) {
+            showStep(1, "Report a Problem");
+          }
+        });
+
+        function populateReview() {
+          document.getElementById("reviewCategory").textContent =
+            selection.categoryLabel || "—";
+          document.getElementById("reviewSubcategory").textContent =
+            selection.subcategoryLabel || "Not specified";
+          document.getElementById("reviewDescription").textContent = document
+            .getElementById("problemDescription")
+            .value.trim();
+        }
+
+        async function submitReport() {
+          const formData = {
+            category: selection.category,
+            subcategory: selection.subcategory,
+            description: document.getElementById("problemDescription").value,
+            email:
+              document.getElementById("problemEmail").value || "Not provided",
+            userEmail: "{{ account.email }}",
+            userName: "{{ account.full_name }}",
+            timestamp: new Date().toISOString(),
+          };
+
+          nextBtn.disabled = true;
+          nextBtn.textContent = "Submitting...";
+
+          try {
+            await window.addDoc(window.collection(window.db, "reports"), {
+              ...formData,
+              createdAt: window.serverTimestamp(),
+            });
+
+            closeModal("reportProblemModal");
+            showToast("Problem reported successfully! Thank you.", "success");
+            resetFlow();
+          } catch (error) {
+            console.error("Error submitting report:", error);
+            showToast("Failed to submit report. Please try again.", "error");
+          } finally {
+            nextBtn.disabled = false;
+            nextBtn.textContent = "Submit";
+          }
+        }
+
+        nextBtn.addEventListener("click", async () => {
+          if (currentStep === 3) {
+            const description = document.getElementById("problemDescription");
+            if (!description.value.trim()) {
+              description.focus();
+              return;
+            }
+            populateReview();
+            showStep(4, "Submit Report");
+            return;
+          }
+          if (currentStep === 4) {
+            await submitReport();
+          }
+        });
+
+        document
+          .getElementById("reportProblemBtn")
+          .addEventListener("click", () => {
+            resetFlow();
+            modal.classList.add("open");
+            document.body.classList.add("modal-open");
+          });
+      })();
 
       // Contact support form
-      document.getElementById("contactSupportForm").addEventListener("submit", async (e) => {
-        e.preventDefault();
+      document
+        .getElementById("contactSupportForm")
+        .addEventListener("submit", async (e) => {
+          e.preventDefault();
 
-        const formData = {
-          name: document.getElementById("supportName").value,
-          email: document.getElementById("supportEmail").value,
-          subject: document.getElementById("supportSubject").value,
-          message: document.getElementById("supportMessage").value,
-          userEmail: "{{ account.email }}",
-          userId: "{{ account.id }}",
-          timestamp: new Date().toISOString(),
-        };
+          const formData = {
+            name: document.getElementById("supportName").value,
+            email: document.getElementById("supportEmail").value,
+            subject: document.getElementById("supportSubject").value,
+            message: document.getElementById("supportMessage").value,
+            userEmail: "{{ account.email }}",
+            userId: "{{ account.id }}",
+            timestamp: new Date().toISOString(),
+          };
 
-        const submitBtn = document.getElementById("submitContactBtn");
-        submitBtn.disabled = true;
-        submitBtn.innerHTML = '<i data-lucide="loader"></i> Sending...';
-        lucide.createIcons();
-
-        try {
-          await window.addDoc(window.collection(window.db, "support_messages"), {
-            ...formData,
-            createdAt: window.serverTimestamp(),
-          });
-
-          document.getElementById("contactSupportForm").reset();
-          closeModal("contactSupportModal");
-          showToast("Message sent! We'll respond within 24 hours.", "success");
-        } catch (error) {
-          console.error("Error sending message:", error);
-          showToast("Failed to send message. Please try again.", "error");
-        } finally {
-          submitBtn.disabled = false;
-          submitBtn.innerHTML = '<i data-lucide="send"></i> Send';
+          const submitBtn = document.getElementById("submitContactBtn");
+          submitBtn.disabled = true;
+          submitBtn.innerHTML = '<i data-lucide="loader"></i> Sending...';
           lucide.createIcons();
-        }
-      });
+
+          try {
+            await window.addDoc(
+              window.collection(window.db, "support_messages"),
+              {
+                ...formData,
+                createdAt: window.serverTimestamp(),
+              },
+            );
+
+            document.getElementById("contactSupportForm").reset();
+            closeModal("contactSupportModal");
+            showToast(
+              "Message sent! We'll respond within 24 hours.",
+              "success",
+            );
+          } catch (error) {
+            console.error("Error sending message:", error);
+            showToast("Failed to send message. Please try again.", "error");
+          } finally {
+            submitBtn.disabled = false;
+            submitBtn.innerHTML = '<i data-lucide="send"></i> Send';
+            lucide.createIcons();
+          }
+        });
 
       // Toast notifications
       function showToast(message, type = "success") {
         const toast = document.createElement("div");
         toast.className = `toast ${type}`;
         toast.innerHTML = `
-          <i data-lucide="${type === "success" ? "check-circle" : "alert-circle"}"></i>
-          <span>${message}</span>
-        `;
+      <i data-lucide="${type === "success" ? "check-circle" : "alert-circle"}"></i>
+      <span>${message}</span>
+    `;
         document.body.appendChild(toast);
         lucide.createIcons();
 

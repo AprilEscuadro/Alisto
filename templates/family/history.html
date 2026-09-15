@@ -557,10 +557,8 @@
               <span class="page-btn disabled">
                 <i data-lucide="chevron-left"></i>
               </span>
-              {% endif %}
-
-              {% for page in pagination.pages %}
-              {% if page == '...' %}
+              {% endif %} {% for page in pagination.pages %} {% if page == '...'
+              %}
               <span class="page-ellipsis">…</span>
               {% elif page == pagination.current_page %}
               <span class="page-btn active">{{ page }}</span>
@@ -568,10 +566,8 @@
               <a class="page-btn" href="{{ url_for('history', page=page) }}">
                 {{ page }}
               </a>
-              {% endif %}
-              {% endfor %}
-
-              {% if pagination.current_page < pagination.total_pages %}
+              {% endif %} {% endfor %} {% if pagination.current_page <
+              pagination.total_pages %}
               <a
                 class="page-btn"
                 href="{{ url_for('history', page=pagination.current_page + 1) }}"
@@ -614,11 +610,7 @@
           <button type="button" class="btn-ghost" id="logoutCancel">
             Cancel
           </button>
-          <button
-            type="button"
-            class="btn-danger-action"
-            id="logoutConfirmBtn"
-          >
+          <button type="button" class="btn-danger-action" id="logoutConfirmBtn">
             Log out
           </button>
         </div>
@@ -644,7 +636,9 @@
         const filterButtons = document.querySelectorAll(
           "#historyFilters .filter-tab[data-filter]",
         );
-        const rows = document.querySelectorAll("#historyTableBody tr[data-type]");
+        const rows = document.querySelectorAll(
+          "#historyTableBody tr[data-type]",
+        );
         const searchInput = document.getElementById("historySearch");
         const emptyRow = document.querySelector(".history-empty");
 

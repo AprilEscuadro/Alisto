@@ -264,3 +264,108 @@
   .help-options-grid { grid-template-columns: 1fr; }
   .contact-info-row { grid-template-columns: 1fr; }
 }
+
+/* ---- Multi-step Report modal (Facebook-style tap-through flow) ---- */
+.report-modal-header .modal-title {
+  flex: 1;
+  text-align: center;
+}
+
+.modal-back-btn {
+  width: 28px;
+  height: 28px;
+  border: none;
+  background: transparent;
+  border-radius: 6px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--text-soft);
+  transition: all 0.15s;
+}
+
+.modal-back-btn:hover {
+  background: var(--muted-light);
+}
+
+.modal-back-btn svg {
+  width: 18px;
+  height: 18px;
+}
+
+.report-step-label {
+  margin: 0 0 12px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-soft);
+}
+
+.report-list {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.report-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  padding: 14px 4px;
+  border: none;
+  border-bottom: 1px solid var(--border);
+  background: transparent;
+  font-family: inherit;
+  font-size: 13.5px;
+  font-weight: 600;
+  color: var(--text);
+  text-align: left;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+
+.report-row:last-child {
+  border-bottom: none;
+}
+
+.report-row:hover {
+  background: var(--muted-light);
+}
+
+.report-row svg {
+  width: 16px;
+  height: 16px;
+  color: var(--text-soft);
+  flex-shrink: 0;
+}
+
+.review-box {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  padding: 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: #fafbfd;
+  margin-bottom: 10px;
+}
+
+.review-box:last-child {
+  margin-bottom: 0;
+}
+
+.review-label {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-soft);
+  text-transform: uppercase;
+  letter-spacing: 0.3px;
+}
+
+.review-value {
+  font-size: 13.5px;
+  color: var(--text);
+  font-weight: 600;
+  white-space: pre-wrap;
+}
