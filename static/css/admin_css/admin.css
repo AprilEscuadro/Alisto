@@ -157,9 +157,15 @@ h1, h2 { font-family: 'Nunito', sans-serif; margin: 0; }
   gap: 22px;
 }
 
+.admin-notif { position: relative; }
+
 .admin-bell {
   position: relative;
   display: flex;
+  padding: 0;
+  border: none;
+  background: none;
+  cursor: pointer;
   color: var(--admin-text);
 }
 
@@ -335,6 +341,15 @@ h1, h2 { font-family: 'Nunito', sans-serif; margin: 0; }
   font-size: 12px;
   font-weight: 600;
   text-decoration: none;
+  /* Some of these are <button> elements (they filter a table rather than
+     navigate), so clear the browser's default button chrome. */
+  padding: 0;
+  border: none;
+  background: none;
+  font-family: inherit;
+  line-height: inherit;
+  text-align: left;
+  cursor: pointer;
 }
 
 .stat-link svg,
@@ -968,165 +983,95 @@ h1, h2 { font-family: 'Nunito', sans-serif; margin: 0; }
   .admin-stats-3 { grid-template-columns: 1fr; }
 }
 
-/* Sidebar count badge (open support tickets) */
-.admin-nav-count {
-  margin-left: auto;
-  min-width: 20px;
-  padding: 1px 7px;
+
+/* ---------- Notification panel ---------- */
+
+.notif-panel {
+  position: absolute;
+  right: 0;
+  top: calc(100% + 12px);
+  z-index: 40;
+  width: 340px;
+  max-width: calc(100vw - 32px);
+  background: #fff;
+  border: 1px solid var(--admin-border);
+  border-radius: 12px;
+  box-shadow: 0 14px 40px rgba(15, 27, 61, 0.16);
+  overflow: hidden;
+  display: none;
+}
+
+.admin-notif.open .notif-panel { display: block; }
+
+.notif-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 14px 16px;
+  border-bottom: 1px solid var(--admin-border);
+}
+
+.notif-head strong { font-size: 14px; }
+
+.notif-count {
+  padding: 3px 9px;
   border-radius: 999px;
-  background: #ef4444;
-  color: #fff;
+  background: var(--orange-bg);
+  color: #c77700;
   font-size: 11px;
   font-weight: 700;
-  text-align: center;
 }
 
-/* ---------- Emergency Logs page ---------- */
+.notif-list { max-height: 320px; overflow-y: auto; }
 
-.admin-stats-5 { grid-template-columns: repeat(5, minmax(0, 1fr)); }
-.stat-note { margin-top: 2px; font-size: 12px; color: var(--admin-muted); }
-
-.filter-card {
+.notif-item {
   display: flex;
-  flex-direction: row;
-  align-items: flex-end;
-  flex-wrap: wrap;
-  gap: 14px;
-  margin-bottom: 16px;
+  align-items: center;
+  gap: 11px;
+  padding: 12px 16px;
+  text-decoration: none;
+  color: inherit;
+  border-bottom: 1px solid var(--admin-border);
 }
 
-.filter-search { flex: 1 1 260px; }
+.notif-item:last-child { border-bottom: none; }
+.notif-item:hover { background: var(--admin-bg); }
 
-.filter-field {
+.notif-body {
+  flex: 1;
   display: flex;
   flex-direction: column;
-  gap: 6px;
-  font-size: 12px;
-  font-weight: 600;
+  gap: 1px;
+  min-width: 0;
 }
 
-.filter-field select,
-.date-range input {
-  height: 40px;
-  padding: 0 12px;
-  background: #fff;
-  border: 1px solid var(--admin-border);
-  border-radius: 8px;
-  font-family: inherit;
-  font-size: 13px;
-  color: var(--admin-text);
-}
+.notif-body strong { font-size: 13px; }
+.notif-body small { font-size: 12px; color: var(--admin-muted); }
+.notif-item > svg { width: 16px; height: 16px; color: var(--admin-muted); flex-shrink: 0; }
 
-.filter-field select { min-width: 170px; cursor: pointer; }
-.filter-field select:focus,
-.date-range input:focus { outline: none; border-color: var(--admin-primary); }
-
-.date-range {
+.notif-footer {
   display: flex;
   align-items: center;
+  justify-content: center;
   gap: 6px;
-}
-
-.filter-clear {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  height: 40px;
-  margin-left: auto;
-  padding: 0 4px;
-  border: none;
-  background: none;
+  padding: 12px 16px;
+  border-top: 1px solid var(--admin-border);
+  background: #fafbfd;
   color: var(--admin-primary);
-  font-family: inherit;
   font-size: 13px;
   font-weight: 600;
-  cursor: pointer;
+  text-decoration: none;
 }
 
-.filter-clear svg { width: 15px; height: 15px; }
-.filter-clear:hover { text-decoration: underline; }
+.notif-footer:hover { background: var(--admin-bg); }
+.notif-footer svg { width: 15px; height: 15px; }
 
-.col-icon { width: 36px; padding-right: 0 !important; }
-.col-icon svg { width: 18px; height: 18px; }
-
-.stack-cell { display: flex; flex-direction: column; gap: 2px; }
-.stack-cell strong { font-size: 13px; font-weight: 600; }
-.stack-cell small { color: var(--admin-muted); font-size: 12px; }
-
-.badge-low { background: var(--blue-bg); color: var(--blue); }
-
-.badge-dot::before {
-  content: '';
-  display: inline-block;
-  width: 6px;
-  height: 6px;
-  margin-right: 6px;
-  border-radius: 50%;
-  background: currentColor;
-  vertical-align: middle;
-}
-
-.alert-modal-card { max-width: 600px; }
-
-.modal-section-title {
-  margin: 18px 0 10px;
-  font-size: 14px;
-  font-weight: 700;
-}
-
-.alert-timeline {
-  margin: 0;
-  padding: 0 0 0 16px;
-  border-left: 2px solid var(--admin-border);
-  list-style: none;
-}
-
-.alert-timeline li { position: relative; padding: 0 0 12px 4px; }
-
-.alert-timeline li::before {
-  content: '';
-  position: absolute;
-  left: -22px;
-  top: 4px;
-  width: 10px;
-  height: 10px;
-  border-radius: 50%;
-  background: var(--admin-primary);
-  border: 2px solid #fff;
-}
-
-.alert-timeline strong { display: block; font-size: 13px; }
-.alert-timeline small { color: var(--admin-muted); font-size: 12px; }
-
-.alert-update-form { margin-top: 6px; padding-top: 4px; border-top: 1px solid var(--admin-border); }
-
-.field-row { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
-
-.admin-modal .field select {
-  width: 100%;
-  height: 40px;
-  padding: 0 12px;
-  border: 1px solid var(--admin-border);
-  border-radius: 8px;
-  background: #fff;
-  font-family: inherit;
-  font-size: 13px;
-  color: var(--admin-text);
-}
-
-.admin-modal .field select:focus { outline: none; border-color: var(--admin-primary); }
-.admin-modal .field textarea#alertUpdateNotes { font-family: inherit; }
-
-@media (max-width: 1280px) {
-  .admin-stats-5 { grid-template-columns: repeat(3, minmax(0, 1fr)); }
-}
+.notif-empty { padding: 26px 16px; text-align: center; color: var(--admin-muted); }
+.notif-empty .empty-icon { margin: 0 auto; }
+.notif-empty strong { display: block; margin-top: 10px; color: var(--admin-text); font-size: 14px; }
+.notif-empty p { margin: 4px 0 0; font-size: 12px; }
 
 @media (max-width: 640px) {
-  .admin-stats-5 { grid-template-columns: 1fr 1fr; }
-  .filter-field,
-  .filter-field select,
-  .date-range,
-  .date-range input { width: 100%; }
-  .filter-clear { margin-left: 0; }
-  .field-row { grid-template-columns: 1fr; }
+  .notif-panel { width: 300px; }
 }

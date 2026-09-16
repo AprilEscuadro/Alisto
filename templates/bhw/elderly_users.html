@@ -22,6 +22,7 @@
     <select id="deviceStatusFilter">
       <option value="">All</option>
       <option value="online">Online</option>
+      <option value="weak">Weak signal</option>
       <option value="offline">Offline</option>
       <option value="none">No device</option>
     </select>
@@ -73,6 +74,8 @@
           <td>
             {% if row.device_status == 'online' %}
             <span class="badge badge-active">Online</span>
+            {% elif row.device_status == 'weak' %}
+            <span class="badge badge-pending">Weak signal</span>
             {% elif row.device_status == 'offline' %}
             <span class="badge badge-archived">Offline</span>
             {% else %}
@@ -80,7 +83,9 @@
             {% endif %}
           </td>
           <td>
-            {% if row.current_status == 'safe' %}
+            {% if row.current_status == 'emergency' %}
+            <a href="{{ url_for('bhw.alerts', alert=row.open_alert.id) }}" class="badge badge-alert-active badge-link">Emergency</a>
+            {% elif row.current_status == 'safe' %}
             <span class="badge badge-active">Safe</span>
             {% elif row.current_status == 'offline' %}
             <span class="badge badge-archived">Offline</span>

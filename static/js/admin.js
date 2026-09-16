@@ -7,17 +7,23 @@
     if (window.lucide) window.lucide.createIcons();
   }
 
-  // ---------- Profile dropdown ----------
-  function setupProfileMenu() {
-    const profile = $('#adminProfile');
-    const button = $('#adminProfileBtn');
-    if (!profile || !button) return;
+  // ---------- Top bar dropdowns (profile + notifications) ----------
+  function setupDropdown(wrapperId, buttonId, closeOthers = []) {
+    const wrapper = $(wrapperId);
+    const button = $(buttonId);
+    if (!wrapper || !button) return;
 
     button.addEventListener('click', (e) => {
       e.stopPropagation();
-      const open = profile.classList.toggle('open');
+      closeOthers.forEach((id) => { const el = $(id); if (el) el.classList.remove('open'); });
+      const open = wrapper.classList.toggle('open');
       button.setAttribute('aria-expanded', String(open));
     });
+  }
+
+  function setupProfileMenu() {
+    setupDropdown('#adminProfile', '#adminProfileBtn', ['#adminNotif']);
+    setupDropdown('#adminNotif', '#adminBellBtn', ['#adminProfile']);
   }
 
   // ---------- Sidebar on small screens ----------
@@ -75,13 +81,17 @@
 
       const profile = $('#adminProfile');
       if (profile && !e.target.closest('#adminProfile')) profile.classList.remove('open');
+      const notif = $('#adminNotif');
+      if (notif && !e.target.closest('#adminNotif')) notif.classList.remove('open');
     });
 
     document.addEventListener('keydown', (e) => {
       if (e.key !== 'Escape') return;
       closeRowMenus();
-      const profile = $('#adminProfile');
-      if (profile) profile.classList.remove('open');
+      ['#adminProfile', '#adminNotif'].forEach((id) => {
+        const el = $(id);
+        if (el) el.classList.remove('open');
+      });
       closeModal();
     });
 
@@ -96,6 +106,10 @@
         if (!confirm(`Remove serial number ${serial}? It will no longer work for registration.`)) {
           e.preventDefault();
         }
+      }
+      if (e.target.classList.contains('js-confirm-false-alarm') &&
+          !confirm('Mark this alert as a false alarm? It will stop showing as active.')) {
+        e.preventDefault();
       }
       if (e.target.classList.contains('js-confirm-unregister')) {
         const serial = e.target.closest('tr').dataset.serial;
@@ -196,15 +210,13 @@
       filters: { status: '#deviceStatusFilter' }, clearButton: '#elderlyClearFilters',
     },
     {
-      table: '#devicesTable', search: '#deviceSearch', noun: 'serial numbers',
-      filters: { status: '#deviceStatusFilter' }, exportButton: '#exportDevices',
-            columns: ['serial', 'batch', 'assignedTo', 'status', 'added'],
+      table: '#alertsTable', search: '#alertSearch', noun: 'alerts',
+      filters: { group: '#alertGroupFilter' },
     },
     {
-      table: '#alertsTable', search: '#alertSearch', noun: 'logs',
-      filters: { status: '#alertStatusFilter', severity: '#alertSeverityFilter' },
-      dateFrom: '#alertDateFrom', dateTo: '#alertDateTo',
-      exportButton: '#exportAlerts', clearButton: '#alertClearFilters',
+      table: '#devicesTable', search: '#deviceSearch', noun: 'serial numbers',
+      filters: { status: '#deviceStatusFilter' }, exportButton: '#exportDevices',
+      columns: ['serial', 'batch', 'assignedTo', 'status', 'added'],
     },
   ];
 
@@ -222,9 +234,6 @@
     const filters = Object.entries(config.filters)
       .map(([key, sel]) => [key, $(sel)])
       .filter(([, el]) => el);
-    // Optional date range: rows carry data-date="YYYY-MM-DD".
-    const dateFrom = config.dateFrom ? $(config.dateFrom) : null;
-    const dateTo = config.dateTo ? $(config.dateTo) : null;
     let page = 1;
     let matches = rows;
 
@@ -236,13 +245,9 @@
 
     function applyFilters() {
       const q = search ? search.value.trim().toLowerCase() : '';
-      const from = dateFrom ? dateFrom.value : '';
-      const to = dateTo ? dateTo.value : '';
       matches = rows.filter((row) =>
         (!q || row.textContent.toLowerCase().includes(q)) &&
-        filters.every(([key, el]) => !el.value || row.dataset[key] === el.value) &&
-        (!from || (row.dataset.date && row.dataset.date >= from)) &&
-        (!to || (row.dataset.date && row.dataset.date <= to))
+        filters.every(([key, el]) => !el.value || row.dataset[key] === el.value)
       );
       page = 1;
       render();
@@ -331,18 +336,59 @@
 
     if (search) search.addEventListener('input', applyFilters);
     filters.forEach(([, el]) => el.addEventListener('change', applyFilters));
-    [dateFrom, dateTo].forEach((el) => { if (el) el.addEventListener('change', applyFilters); });
     if (config.exportButton && $(config.exportButton)) $(config.exportButton).addEventListener('click', exportCsv);
     if (config.clearButton && $(config.clearButton)) {
       $(config.clearButton).addEventListener('click', () => {
         if (search) search.value = '';
         filters.forEach(([, el]) => { el.value = ''; });
-        [dateFrom, dateTo].forEach((el) => { if (el) el.value = ''; });
         applyFilters();
       });
     }
 
     applyFilters();
+  }
+
+  // ---------- Alert filter pills ----------
+  // The pills and the "View all active" links both set one hidden <select>,
+  // so the shared table code above does the actual filtering.
+  function setupAlertFilters() {
+    const table = $('#alertsTable');
+    if (!table) return;
+
+    const select = document.createElement('select');
+    select.id = 'alertGroupFilter';
+    select.hidden = true;
+    ['', 'active', 'resolved', 'medication', 'false_alarm'].forEach((value) => {
+      select.add(new Option(value || 'All', value));
+    });
+    table.parentElement.appendChild(select);
+
+    function apply(value) {
+      select.value = value;
+      select.dispatchEvent(new Event('change'));
+      $$('#alertPills .pill').forEach((pill) => {
+        pill.classList.toggle('active', (pill.dataset.filter || '') === value);
+      });
+    }
+
+    $$('#alertPills .pill').forEach((pill) => {
+      pill.addEventListener('click', () => apply(pill.dataset.filter || ''));
+    });
+    // Clicking anywhere on a row opens that alert, not just the button.
+    $$('tbody tr[data-alert-id]', table).forEach((row) => {
+      row.addEventListener('click', (e) => {
+        if (e.target.closest('a, button, form')) return;
+        const link = $('a[href]', row);
+        if (link) window.location = link.href;
+      });
+    });
+
+    $$('.js-alert-filter').forEach((link) => {
+      link.addEventListener('click', () => {
+        apply(link.dataset.filter);
+        table.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      });
+    });
   }
 
   // ---------- Register serial numbers window ----------
@@ -407,6 +453,7 @@
     setupSidebar();
     setupRowMenus();
     setupModal();
+    setupAlertFilters();   // creates the hidden select the alerts table filters on
     FILTER_TABLES.forEach(setupFilterTable);
     setupAddDevices();
     setupPasswordToggles();

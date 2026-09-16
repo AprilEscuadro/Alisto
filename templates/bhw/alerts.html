@@ -1,0 +1,230 @@
+{% extends 'bhw/base.html' %}
+{% block title %}Alerts{% endblock %}
+
+{% block content %}
+<div class="admin-page-header">
+  <div>
+    <h1>Alerts</h1>
+    <p>Monitor and respond to alerts from elderly users in Barangay {{ bhw_barangay or '—' }}.</p>
+  </div>
+</div>
+
+<!-- STAT CARDS -->
+<section class="admin-stats admin-stats-4">
+  <div class="stat-card bhw-stat">
+    <span class="stat-icon tint-red"><i data-lucide="siren"></i></span>
+    <div class="stat-body">
+      <strong class="stat-value">{{ stats.active }}</strong>
+      <span class="stat-label">Active Alerts</span>
+      <button type="button" class="stat-link js-alert-filter" data-filter="active">View all active <i data-lucide="arrow-right"></i></button>
+    </div>
+  </div>
+  <div class="stat-card bhw-stat">
+    <span class="stat-icon tint-navy"><i data-lucide="shield-check"></i></span>
+    <div class="stat-body">
+      <strong class="stat-value">{{ stats.resolved }}</strong>
+      <span class="stat-label">Resolved Alerts</span>
+      <button type="button" class="stat-link js-alert-filter" data-filter="resolved">View resolved <i data-lucide="arrow-right"></i></button>
+    </div>
+  </div>
+  <div class="stat-card bhw-stat">
+    <span class="stat-icon tint-orange"><i data-lucide="bell"></i></span>
+    <div class="stat-body">
+      <strong class="stat-value">{{ stats.medication }}</strong>
+      <span class="stat-label">Medication Reminders</span>
+      <button type="button" class="stat-link js-alert-filter" data-filter="medication">View reminders <i data-lucide="arrow-right"></i></button>
+    </div>
+  </div>
+  <div class="stat-card bhw-stat">
+    <span class="stat-icon tint-purple"><i data-lucide="flag"></i></span>
+    <div class="stat-body">
+      <strong class="stat-value">{{ stats.false_alarm }}</strong>
+      <span class="stat-label">False Alarms</span>
+      <button type="button" class="stat-link js-alert-filter" data-filter="false_alarm">View false alarms <i data-lucide="arrow-right"></i></button>
+    </div>
+  </div>
+</section>
+
+<section class="alerts-layout">
+  <div class="alerts-main">
+    <!-- SEARCH + FILTER PILLS -->
+    <div class="alerts-toolbar">
+      <label class="search-box">
+        <i data-lucide="search"></i>
+        <input type="search" id="alertSearch" placeholder="Search alerts by name or type..." aria-label="Search alerts" />
+      </label>
+      <div class="pill-group" id="alertPills" role="group" aria-label="Filter alerts">
+        <button type="button" class="pill active" data-filter="">All</button>
+        <button type="button" class="pill" data-filter="active">Active</button>
+        <button type="button" class="pill" data-filter="resolved">Resolved</button>
+        <button type="button" class="pill" data-filter="false_alarm">False Alarm</button>
+      </div>
+    </div>
+
+    <div class="admin-card admin-table-card">
+      <div class="table-scroll">
+        <table class="admin-table alerts-table" id="alertsTable">
+          <thead>
+            <tr>
+              <th>Resident</th>
+              <th>Alert Type</th>
+              <th>Time</th>
+              <th>Location</th>
+              <th>Status</th>
+              <th class="col-actions">Action</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for row in rows %}
+            <tr
+              data-alert-id="{{ row.id }}"
+              data-status="{{ row.status }}"
+              data-type="{{ row.type }}"
+              data-group="{{ 'active' if row.is_open else ('false_alarm' if 'false_alarm' in (row.status, row.type) else ('medication' if row.type == 'medication' else 'resolved')) }}"
+              class="{% if row.is_open %}row-urgent{% endif %} {% if detail and detail.id == row.id %}row-selected{% endif %}"
+            >
+              <td>
+                <div class="user-cell">
+                  <span class="admin-avatar-lg avatar-elderly">{{ row.initials }}</span>
+                  <strong>{{ row.name }}{% if row.age %}, {{ row.age }}{% endif %}</strong>
+                </div>
+              </td>
+              <td>
+                <span class="type-cell type-{{ row.type_colour }}">
+                  <i data-lucide="{{ row.type_icon }}"></i> {{ row.type_label }}
+                </span>
+              </td>
+              <td class="nowrap">{{ row.time }}</td>
+              <td class="address-cell">{{ row.location }}</td>
+              <td><span class="badge badge-{{ row.status_class }}">{{ row.status_label }}</span></td>
+              <td class="col-actions">
+                <a href="{{ url_for('bhw.alerts', alert=row.id) }}" class="link-btn" title="View details" aria-label="View details for {{ row.name }}">
+                  <i data-lucide="chevron-right"></i>
+                </a>
+              </td>
+            </tr>
+            {% endfor %}
+            <tr class="table-empty" {% if rows %}hidden{% endif %}>
+              <td colspan="6">
+                <div class="empty-state">
+                  <span class="empty-icon"><i data-lucide="bell-off"></i></span>
+                  {% if rows %}
+                  <strong>No alerts match</strong>
+                  <p>Try a different search or filter.</p>
+                  {% else %}
+                  <strong>No alerts yet</strong>
+                  <p>Alerts from ALISTO devices in your barangay will show up here.</p>
+                  {% endif %}
+                </div>
+              </td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
+      <div class="table-footer">
+        <span class="text-muted table-showing"></span>
+        <nav class="pagination" aria-label="Alert pages"></nav>
+      </div>
+    </div>
+  </div>
+
+  <!-- DETAIL PANEL -->
+  <aside class="alert-detail admin-card {% if detail %}detail-{{ detail.status_class }}{% endif %}">
+    {% if detail %}
+    <div class="detail-head">
+      <span class="badge badge-{{ detail.status_class }}">{{ detail.status_label }}</span>
+    </div>
+    <div class="detail-person">
+      <span class="admin-avatar-xl avatar-elderly">{{ detail.initials }}</span>
+      <strong>{{ detail.name }}{% if detail.age %}, {{ detail.age }}{% endif %}</strong>
+      <span class="type-cell type-{{ detail.type_colour }}">
+        <i data-lucide="{{ detail.type_icon }}"></i> {{ detail.type_label }}
+      </span>
+    </div>
+
+    <dl class="detail-list">
+      <div>
+        <dt><i data-lucide="clock"></i> Time</dt>
+        <dd>{{ detail.full_time }}</dd>
+      </div>
+      <div>
+        <dt><i data-lucide="map-pin"></i> Location</dt>
+        <dd>
+          {{ detail.address }}
+          {% if detail.gps_verified %}<span class="gps-ok"><i data-lucide="circle-check"></i> GPS verified</span>{% endif %}
+        </dd>
+      </div>
+      <div>
+        <dt><i data-lucide="siren"></i> Alert Type</dt>
+        <dd>{{ detail.type_label }}</dd>
+      </div>
+      <div>
+        <dt><i data-lucide="smartphone"></i> Device</dt>
+        <dd>{{ detail.device }}</dd>
+      </div>
+      {% if detail.trigger_phrase %}
+      <div>
+        <dt><i data-lucide="mic"></i> Voice Trigger</dt>
+        <dd class="trigger-phrase">&ldquo;{{ detail.trigger_phrase }}&rdquo;</dd>
+      </div>
+      {% endif %}
+      <div>
+        <dt><i data-lucide="message-square-quote"></i> SMS Sent</dt>
+        <dd>{{ detail.sms_sent_count }} contact{{ '' if detail.sms_sent_count == 1 else 's' }}</dd>
+      </div>
+      {% if detail.notes %}
+      <div>
+        <dt><i data-lucide="file-text"></i> Notes</dt>
+        <dd>{{ detail.notes }}</dd>
+      </div>
+      {% endif %}
+      {% if detail.response_minutes is not none %}
+      <div>
+        <dt><i data-lucide="timer"></i> Response Time</dt>
+        <dd>{{ detail.response_minutes | round | int }} min</dd>
+      </div>
+      {% endif %}
+    </dl>
+
+    <div class="detail-actions">
+      {% if detail.status == 'active' %}
+      <form method="POST" action="{{ url_for('bhw.update_alert', alert_id=detail.id, action='acknowledge') }}">
+        <button type="submit" class="btn btn-primary btn-block">
+          <i data-lucide="circle-check"></i> Acknowledge Alert
+        </button>
+      </form>
+      {% elif detail.status == 'acknowledged' %}
+      <form method="POST" action="{{ url_for('bhw.update_alert', alert_id=detail.id, action='resolve') }}">
+        <button type="submit" class="btn btn-primary btn-block">
+          <i data-lucide="shield-check"></i> Mark as Resolved
+        </button>
+      </form>
+      {% endif %}
+
+      {% if detail.latitude and detail.longitude %}
+      <a href="{{ url_for('bhw.map_view', focus=detail.elder_id) }}" class="btn btn-outline btn-outline-primary btn-block">
+        <i data-lucide="map"></i> View on Map
+      </a>
+      {% endif %}
+
+      <a href="{{ url_for('bhw.elderly_users') }}" class="btn btn-outline btn-danger btn-block">
+        <i data-lucide="phone-call"></i> Contact Resident
+      </a>
+
+      {% if detail.is_open %}
+      <form method="POST" action="{{ url_for('bhw.update_alert', alert_id=detail.id, action='false-alarm') }}" class="js-confirm-false-alarm">
+        <button type="submit" class="link-btn detail-false-alarm">Mark as false alarm</button>
+      </form>
+      {% endif %}
+    </div>
+    {% else %}
+    <div class="empty-state">
+      <span class="empty-icon"><i data-lucide="bell-off"></i></span>
+      <strong>No alert selected</strong>
+      <p>Pick an alert from the list to see its details here.</p>
+    </div>
+    {% endif %}
+  </aside>
+</section>
+{% endblock %}

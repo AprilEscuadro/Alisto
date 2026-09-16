@@ -16,15 +16,16 @@
     {% block head %}{% endblock %}
   </head>
   <body class="admin-body">
-    {% set nav_items = [ ('dashboard', 'admin.dashboard', 'layout-grid',
-    'Dashboard'), ('users', 'admin.users', 'user', 'Users'), ('devices',
-    'admin.devices', 'tablet-smartphone', 'Devices'), ('map_view',
-    'admin.map_view', 'map-pin', 'Map View'), ('emergency_logs',
-    'admin.emergency_logs', 'bell', 'Emergency Logs'), ('reports',
-    'admin.reports', 'chart-column', 'Reports'), ('support',
-    'admin.support_tickets', 'life-buoy', 'Support'), ('subscriptions',
-    'admin.subscriptions', 'receipt-text', 'Subscriptions'), ('settings',
-    'admin.settings', 'settings', 'Settings'), ] %}
+    {% set nav_items = [
+      ('dashboard', 'admin.dashboard', 'layout-grid', 'Dashboard'),
+      ('users', 'admin.users', 'user', 'Users'),
+      ('devices', 'admin.devices', 'tablet-smartphone', 'Devices'),
+      ('map_view', 'admin.map_view', 'map-pin', 'Map View'),
+      ('emergency_logs', 'admin.emergency_logs', 'bell', 'Emergency Logs'),
+      ('reports', 'admin.reports', 'chart-column', 'Reports'),
+      ('subscriptions', 'admin.subscriptions', 'receipt-text', 'Subscriptions'),
+      ('settings', 'admin.settings', 'settings', 'Settings'),
+    ] %}
 
     <!-- SIDEBAR -->
     <aside class="admin-sidebar" id="adminSidebar">
@@ -45,9 +46,6 @@
         >
           <i data-lucide="{{ icon }}"></i>
           <span>{{ label }}</span>
-          {% if key == 'support' and open_ticket_count %}
-          <span class="admin-nav-count">{{ open_ticket_count }}</span>
-          {% endif %}
         </a>
         {% endfor %}
       </nav>
@@ -67,16 +65,59 @@
         </button>
 
         <div class="admin-topbar-right">
-          <a
-            href="{{ url_for('admin.users', status='pending') }}"
-            class="admin-bell"
-            title="{{ pending_count }} BHW registration(s) waiting for approval"
-          >
-            <i data-lucide="bell"></i>
-            {% if pending_count %}
-            <span class="admin-bell-badge">{{ pending_count }}</span>
-            {% endif %}
-          </a>
+          <div class="admin-notif" id="adminNotif">
+            <button
+              type="button"
+              class="admin-bell"
+              id="adminBellBtn"
+              aria-haspopup="true"
+              aria-expanded="false"
+              aria-label="{{ pending_count }} BHW registration(s) waiting for approval"
+            >
+              <i data-lucide="bell"></i>
+              {% if pending_count %}
+              <span class="admin-bell-badge">{{ pending_count }}</span>
+              {% endif %}
+            </button>
+
+            <div class="notif-panel" id="adminNotifPanel" role="menu">
+              <div class="notif-head">
+                <strong>Notifications</strong>
+                {% if pending_count %}
+                <span class="notif-count">{{ pending_count }} pending</span>
+                {% endif %}
+              </div>
+
+              {% if pending_bhws %}
+              <div class="notif-list">
+                {% for item in pending_bhws %}
+                <a href="{{ url_for('admin.users', status='pending') }}" class="notif-item" role="menuitem">
+                  <span class="admin-avatar-lg avatar-bhw">{{ item.initials }}</span>
+                  <span class="notif-body">
+                    <strong>{{ item.name }}</strong>
+                    <small>
+                      BHW registration waiting for approval{% if item.barangay %} · {{ item.barangay }}{% endif %}
+                    </small>
+                    <small class="text-muted">{{ item.when }}</small>
+                  </span>
+                  <i data-lucide="chevron-right"></i>
+                </a>
+                {% endfor %}
+              </div>
+
+              <a href="{{ url_for('admin.users', status='pending') }}" class="notif-footer">
+                Review all {{ pending_count }} pending registration{{ '' if pending_count == 1 else 's' }}
+                <i data-lucide="arrow-right"></i>
+              </a>
+              {% else %}
+              <div class="notif-empty">
+                <span class="empty-icon"><i data-lucide="bell-off"></i></span>
+                <strong>You're all caught up</strong>
+                <p>New BHW registrations will show up here.</p>
+              </div>
+              {% endif %}
+            </div>
+          </div>
 
           <div class="admin-profile" id="adminProfile">
             <button
@@ -111,10 +152,13 @@
       </header>
 
       <main class="admin-content">
-        {% with messages = get_flashed_messages(with_categories=true) %} {% for
-        category, message in messages %}
+        {% with messages = get_flashed_messages(with_categories=true) %}
+        {% for category, message in messages %}
         <div class="admin-alert admin-alert-{{ category }}">{{ message }}</div>
-        {% endfor %} {% endwith %} {% block content %}{% endblock %}
+        {% endfor %}
+        {% endwith %}
+
+        {% block content %}{% endblock %}
       </main>
     </div>
 

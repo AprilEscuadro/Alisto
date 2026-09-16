@@ -1,0 +1,189 @@
+{% extends 'bhw/base.html' %}
+{% block title %}Map View{% endblock %}
+
+{% block head %}
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+{% endblock %}
+
+{% block content %}
+<div class="admin-page-header">
+  <div>
+    <h1>Map View</h1>
+    <p>Live location of elderly devices in your community.</p>
+  </div>
+  <div class="map-header-actions">
+    <label class="labeled-select map-status-select">
+      <select id="mapStatusFilter" aria-label="Filter by status">
+        <option value="">All Status</option>
+        <option value="alert">Alert</option>
+        <option value="online">Active</option>
+        <option value="weak">Weak Signal</option>
+        <option value="offline">Offline</option>
+      </select>
+    </label>
+    <button type="button" class="btn btn-outline" onclick="window.location.reload()" title="Refresh">
+      <i data-lucide="refresh-cw"></i>
+    </button>
+  </div>
+</div>
+
+<section class="map-layout">
+  <div class="admin-card map-card">
+    <div class="map-frame">
+      <div id="bhwFullMap" class="map-full"></div>
+      <div class="map-legend">
+        <span><i class="dot dot-green"></i> Active</span>
+        <span><i class="dot dot-orange"></i> Weak Signal</span>
+        <span><i class="dot dot-red"></i> Alert</span>
+        <span><i class="dot dot-gray"></i> Offline</span>
+      </div>
+    </div>
+
+    {% if missing_location %}
+    <p class="map-note">
+      <i data-lucide="triangle-alert"></i>
+      {{ missing_location }} resident{{ '' if missing_location == 1 else 's' }} not shown — their device has not reported a location yet.
+    </p>
+    {% endif %}
+  </div>
+
+  <aside class="admin-card map-side">
+    <div class="admin-card-header">
+      <h2>Elderly Users ({{ rows|length }})</h2>
+      <a href="{{ url_for('bhw.elderly_users') }}" class="card-link">View All <i data-lucide="arrow-right"></i></a>
+    </div>
+
+    <label class="search-box">
+      <i data-lucide="search"></i>
+      <input type="search" id="mapSearch" placeholder="Search elderly..." aria-label="Search elderly" />
+    </label>
+
+    <div class="map-list" id="mapList">
+      {% for row in rows %}
+      {% set state = 'alert' if row.current_status == 'emergency' else row.device_status %}
+      <button
+        type="button"
+        class="map-list-item {% if state == 'alert' %}is-alert{% endif %}"
+        data-elder-id="{{ row.id }}"
+        data-status="{{ state }}"
+        data-name="{{ row.name }}"
+        {% if row.latitude and row.longitude %}data-has-location="1"{% endif %}
+      >
+        <span class="admin-avatar-lg avatar-elderly">{{ row.initials }}</span>
+        <span class="map-list-body">
+          <strong>{{ row.name }}{% if row.age %}, {{ row.age }}{% endif %}</strong>
+          <small>{{ row.short_address }}</small>
+          <small class="text-muted">{{ row.last_time }}</small>
+        </span>
+        <span class="badge badge-map-{{ state }}">
+          {% if state == 'alert' %}Alert{% elif state == 'online' %}Active{% elif state == 'weak' %}Weak Signal{% elif state == 'offline' %}Offline{% else %}No device{% endif %}
+        </span>
+        <i data-lucide="chevron-right"></i>
+      </button>
+      {% endfor %}
+      {% if not rows %}
+      <div class="empty-state">
+        <span class="empty-icon"><i data-lucide="users-round"></i></span>
+        <strong>No residents yet</strong>
+        <p>Residents in Barangay {{ bhw_barangay or 'your barangay' }} will appear here.</p>
+      </div>
+      {% endif %}
+    </div>
+
+    <a href="{{ url_for('bhw.elderly_users') }}" class="btn btn-outline btn-outline-primary btn-block">View All Elderly Users</a>
+  </aside>
+</section>
+{% endblock %}
+
+{% block scripts %}
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script id="mapPoints" type="application/json">{{ points | tojson }}</script>
+<script>
+  document.addEventListener('DOMContentLoaded', function () {
+    if (!window.L) return;
+
+    const points = JSON.parse(document.getElementById('mapPoints').textContent);
+    const colours = { alert: '#e53935', online: '#16a34a', weak: '#f59e0b', offline: '#94a3b8', none: '#94a3b8' };
+    const labels = { alert: 'Alert', online: 'Active', weak: 'Weak Signal', offline: 'Offline', none: 'No device' };
+
+    // Sudlon II, Cebu City, used until a device reports a location.
+    const map = L.map('bhwFullMap').setView([10.398, 123.86], 14);
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+      maxZoom: 19,
+      attribution: '&copy; OpenStreetMap contributors',
+    }).addTo(map);
+
+    const markers = {};
+    points.forEach(function (p) {
+      const colour = colours[p.status] || colours.offline;
+      const marker = L.marker([p.latitude, p.longitude], {
+        icon: L.divIcon({
+          className: 'map-pin-icon',
+          html: `<span class="map-pin" style="--pin:${colour}"><b>${p.initials}</b></span>`,
+          iconSize: [38, 46],
+          iconAnchor: [19, 46],
+          popupAnchor: [0, -44],
+        }),
+      }).addTo(map);
+
+      marker.bindPopup(`
+        <div class="map-popup">
+          <strong style="color:${colour}">${p.name}${p.age ? ', ' + p.age : ''}</strong>
+          <span><i class="pop-dot" style="background:${colour}"></i> ${p.alert_label || labels[p.status] || ''}</span>
+          <span>${p.address || ''}</span>
+          <span>${p.time || ''}</span>
+        </div>`);
+
+      markers[p.id] = marker;
+    });
+
+    if (points.length) {
+      map.fitBounds(points.map((p) => [p.latitude, p.longitude]), { padding: [50, 50], maxZoom: 16 });
+    }
+
+    function focusElder(id) {
+      const marker = markers[id];
+      if (!marker) return false;
+      map.setView(marker.getLatLng(), 17, { animate: true });
+      marker.openPopup();
+      return true;
+    }
+
+    // Clicking a name in the side list moves the map to that resident.
+    document.querySelectorAll('.map-list-item').forEach(function (item) {
+      item.addEventListener('click', function () {
+        if (!focusElder(item.dataset.elderId)) {
+          item.classList.add('shake');
+          setTimeout(() => item.classList.remove('shake'), 500);
+        }
+      });
+    });
+
+    // Search and status filter for the side list.
+    const search = document.getElementById('mapSearch');
+    const filter = document.getElementById('mapStatusFilter');
+    function applyFilters() {
+      const q = search.value.trim().toLowerCase();
+      const status = filter.value;
+      document.querySelectorAll('.map-list-item').forEach(function (item) {
+        const match = (!q || item.dataset.name.toLowerCase().includes(q)) &&
+                      (!status || item.dataset.status === status);
+        item.hidden = !match;
+      });
+      points.forEach(function (p) {
+        const shown = !status || p.status === status;
+        const marker = markers[p.id];
+        if (!marker) return;
+        if (shown) marker.addTo(map);
+        else map.removeLayer(marker);
+      });
+    }
+    search.addEventListener('input', applyFilters);
+    filter.addEventListener('change', applyFilters);
+
+    // Opened from an alert's "View on Map" button.
+    const focus = new URLSearchParams(window.location.search).get('focus');
+    if (focus) focusElder(focus);
+  });
+</script>
+{% endblock %}
