@@ -9,16 +9,24 @@ Every route lives under /admin and only works for accounts with role == 'admin'.
 Templates are in templates/admin/, styles in static/css/admin_css/admin.css,
 and the page behavior (menus, filters, pagination) in static/js/admin.js.
 """
+import csv
+import io
 import os
 import re
+from collections import Counter, defaultdict
+from datetime import datetime, timedelta
 from functools import wraps
 
-from datetime import datetime
-
 from flask import (Blueprint, render_template, session, redirect, url_for,
-                   flash, request, send_from_directory, current_app, abort)
+                   flash, request, send_from_directory, current_app, abort, Response)
 from firebase_admin import firestore
+from werkzeug.security import check_password_hash, generate_password_hash
 
+import alerts_common as ac
+# One source of truth for reading addresses and working out whether a device is
+# online. Both portals show the same thing, so they share the same helpers.
+from bhw_routes import (PASSWORD_RULES, _address_parts, _address_text,
+                        _device_state, _short_address)
 from database import db
 
 admin_bp = Blueprint('admin', __name__, url_prefix='/admin')
@@ -134,6 +142,176 @@ def _admin_layout_context():
 
 # ---------- DASHBOARD ----------
 
+
+# ---------- READING THE WHOLE SYSTEM (all barangays) ----------
+
+# Alert types the device can send, grouped by how urgent they are. A document may
+# set its own "severity" field, and that always wins over this table.
+SEVERITY_BY_TYPE = {
+    'emergency': 'high',
+    'fall': 'high',
+    'help': 'medium',
+    'health_check': 'low',
+    'medication': 'low',
+    'false_alarm': 'low',
+}
+SEVERITY_ORDER = ('high', 'medium', 'low')
+
+
+def _barangay_of(address):
+    """Best guess at the barangay from an address of either shape."""
+    if isinstance(address, dict):
+        return (address.get('barangay') or '').strip()
+    parts = _address_parts(address)
+    # "house, street, barangay, city, province, zip"
+    return parts[2] if len(parts) >= 4 else ''
+
+
+def _all_elders():
+    return {
+        doc.id: (doc.to_dict() or {})
+        for doc in db.collection('elder_profile').stream()
+        if not (doc.to_dict() or {}).get('deleted_at')
+    }
+
+
+def _devices_by_elder():
+    by_elder = {}
+    for doc in db.collection('device').stream():
+        device = doc.to_dict() or {}
+        if device.get('elder_id'):
+            by_elder.setdefault(device['elder_id'], []).append((doc.id, device))
+    return by_elder
+
+
+def _age(date_of_birth):
+    try:
+        born = datetime.strptime(date_of_birth or '', '%Y-%m-%d').date()
+    except ValueError:
+        return None
+    today = datetime.now().date()
+    return today.year - born.year - ((today.month, today.day) < (born.month, born.day))
+
+
+def _alert_code(doc_id, created_at):
+    """A short human-readable reference, e.g. AL-2026-3F9C."""
+    moment = ac.local(created_at)
+    year = moment.year if moment else datetime.now().year
+    return f'AL-{year}-{doc_id[-4:].upper()}'
+
+
+def _all_alert_rows(since=None):
+    """Every alert in the system, newest first, with the resident joined in."""
+    elders = _all_elders()
+    devices_by_elder = _devices_by_elder()
+    rows = []
+
+    for doc in db.collection(ac.ALERT_COLLECTION).stream():
+        alert = doc.to_dict() or {}
+        created = ac.local(alert.get('created_at'))
+        if since and created and created < since:
+            continue
+
+        elder = elders.get(alert.get('elder_id'), {})
+        name = elder.get('full_name') or 'Unknown resident'
+        type_key = alert.get('type') or 'emergency'
+        status = alert.get('status') or 'active'
+        severity = alert.get('severity') or SEVERITY_BY_TYPE.get(type_key, 'medium')
+        serial = alert.get('device_serial') or ''
+        if not serial:
+            owned = devices_by_elder.get(alert.get('elder_id'), [])
+            serial = owned[0][0] if owned else ''
+
+        rows.append({
+            'id': doc.id,
+            'code': _alert_code(doc.id, alert.get('created_at')),
+            'elder_id': alert.get('elder_id'),
+            'name': name,
+            'initials': _initials(name),
+            'age': _age(elder.get('date_of_birth')),
+            'device': serial or '—',
+            'barangay': _barangay_of(elder.get('address')),
+            'location': _short_address(elder.get('address')),
+            'type': type_key,
+            'type_label': ac.type_label(type_key),
+            'type_icon': ac.type_icon(type_key),
+            'type_colour': ac.type_colour(type_key),
+            'status': status,
+            'status_label': ac.status_label(status),
+            'status_class': ac.status_class(status),
+            'severity': severity,
+            'created_at': alert.get('created_at'),
+            'time': ac.fmt_time(alert.get('created_at')),
+            'full_time': ac.local(alert.get('created_at')).strftime('%b %d, %Y %I:%M %p')
+                         if ac.local(alert.get('created_at')) else '—',
+            'notes': alert.get('notes') or '',
+            'trigger_phrase': alert.get('trigger_phrase') or '',
+            'response_minutes': ac.response_minutes(alert),
+            'is_open': status in ac.OPEN_STATUSES,
+            'latitude': alert.get('latitude'),
+            'longitude': alert.get('longitude'),
+        })
+
+    oldest = datetime.min.replace(tzinfo=ac.PH_TIME)
+    rows.sort(key=lambda r: ac.local(r['created_at']) or oldest, reverse=True)
+    return rows
+
+
+def _resident_rows():
+    """Every elder with their device status and whether they have an open alert."""
+    elders = _all_elders()
+    devices_by_elder = _devices_by_elder()
+    open_by_elder = {r['elder_id']: r for r in reversed(_all_alert_rows()) if r['is_open']}
+    order = ('online', 'weak', 'offline')
+
+    rows = []
+    for elder_id, elder in elders.items():
+        devices = devices_by_elder.get(elder_id, [])
+        if devices:
+            (state, last_seen), device = min(
+                ((_device_state(d), d) for _, d in devices),
+                key=lambda pair: order.index(pair[0][0]),
+            )
+        else:
+            state, last_seen, device = 'none', None, {}
+
+        open_alert = open_by_elder.get(elder_id)
+        name = elder.get('full_name') or 'Unnamed'
+
+        rows.append({
+            'id': elder_id,
+            'name': name,
+            'initials': _initials(name),
+            'age': _age(elder.get('date_of_birth')),
+            'barangay': _barangay_of(elder.get('address')),
+            'address': _address_text(elder.get('address')),
+            'short_address': _short_address(elder.get('address')),
+            'device_status': state,
+            'device_ids': [d_id for d_id, _ in devices],
+            'last_seen': ac.fmt_time(last_seen),
+            'latitude': device.get('latitude'),
+            'longitude': device.get('longitude'),
+            'open_alert': open_alert,
+            'map_status': 'alert' if open_alert else state,
+        })
+
+    rows.sort(key=lambda r: (not r['open_alert'], r['name'].casefold()))
+    return rows
+
+
+def _avg_response(rows):
+    answered = [r['response_minutes'] for r in rows if r['response_minutes'] is not None]
+    return round(sum(answered) / len(answered)) if answered else None
+
+
+def _fmt_minutes(minutes):
+    if minutes is None:
+        return '—'
+    if minutes < 60:
+        return f'{int(minutes)}m'
+    return f'{int(minutes // 60)}h {int(minutes % 60)}m'
+
+
 @admin_bp.route('/')
 @admin_bp.route('/dashboard')
 @admin_required
@@ -141,24 +319,40 @@ def dashboard():
     users = _active_docs('user_account')
     elders = _active_docs('elder_profile')
     devices = list(db.collection('device').stream())
+    alerts = _all_alert_rows()
+    residents = _resident_rows()
 
     stats = {
-        # TODO: count from the emergency alert collection once its name/fields are settled.
-        'active_alerts': 0,
+        'active_alerts': sum(1 for a in alerts if a['is_open']),
         'total_elderly': len(elders),
         'total_bhws': sum(1 for _, u in users
                           if u.get('role') == 'bhw' and u.get('approval_status') == 'approved'),
         'total_devices': len(devices),
     }
 
-    # TODO: fill from the emergency alert collection.
-    recent_alerts = []
-    alert_summary = {'active': 0, 'acknowledged': 0, 'resolved': 0}
-    alert_summary['total'] = sum(alert_summary.values())
+    month_start = datetime.now(ac.PH_TIME).replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+    this_month = [a for a in alerts if (ac.local(a['created_at']) or month_start) >= month_start]
+    summary = {
+        'active': sum(1 for a in this_month if a['is_open']),
+        'acknowledged': sum(1 for a in this_month if a['status'] == 'acknowledged'),
+        'resolved': sum(1 for a in this_month if a['status'] in ac.RESOLVED_STATUSES),
+    }
+    summary['total'] = sum(summary.values())
+    total = summary['total'] or 1
 
     return render_template(
         'admin/dashboard.html', active_page='dashboard',
-        stats=stats, recent_alerts=recent_alerts, alert_summary=alert_summary,
+        stats=stats, recent_alerts=alerts[:3], alert_summary=summary,
+        donut={
+            'active_pct': summary['active'] / total * 100,
+            'ack_pct': (summary['active'] + summary['acknowledged']) / total * 100,
+            'empty': summary['total'] == 0,
+        },
+        map_points=[r for r in residents if r['latitude'] and r['longitude']],
+        system={
+            'devices_online': sum(1 for r in residents if r['device_status'] in ('online', 'weak')),
+            'barangays': len({r['barangay'] for r in residents if r['barangay']}),
+        },
     )
 
 
@@ -466,47 +660,489 @@ def _join_sample(items, limit=5):
     return head if len(items) <= limit else f'{head} and {len(items) - limit} more'
 
 
-# ---------- PAGES NOT BUILT YET ----------
-
-_COMING_SOON = {
-    'map_view': ('Map View', 'Monitor device and emergency status across the community.'),
-    'emergency_logs': ('Emergency Logs', 'View and manage all emergency alerts and incidents.'),
-    'reports': ('Reports', 'Analyze devices, alerts, and community activity.'),
-    'subscriptions': ('Subscriptions', 'Manage all subscription plans and user subscriptions.'),
-    'settings': ('Settings', 'Manage admin account and basic system preferences.'),
-}
-
-
-def _coming_soon(page):
-    title, subtitle = _COMING_SOON[page]
-    return render_template('admin/coming_soon.html', active_page=page, title=title, subtitle=subtitle)
-
+# ---------- MAP VIEW ----------
 
 @admin_bp.route('/map')
 @admin_required
 def map_view():
-    return _coming_soon('map_view')
+    residents = _resident_rows()
+    alerts = _all_alert_rows()
+    barangays = sorted({r['barangay'] for r in residents if r['barangay']})
+    located = [r for r in residents if r['latitude'] and r['longitude']]
+
+    stats = {
+        'active_alerts': sum(1 for a in alerts if a['is_open']),
+        'online': sum(1 for r in residents if r['device_status'] in ('online', 'weak')),
+        'offline': sum(1 for r in residents if r['device_status'] == 'offline'),
+        'areas': len(barangays),
+    }
+
+    points = [{
+        'id': r['id'], 'name': r['name'], 'initials': r['initials'], 'age': r['age'],
+        'address': r['short_address'], 'barangay': r['barangay'],
+        'latitude': r['latitude'], 'longitude': r['longitude'],
+        'status': r['map_status'], 'time': r['last_seen'],
+        'alert_label': r['open_alert']['type_label'] if r['open_alert'] else None,
+    } for r in located]
+
+    return render_template(
+        'admin/map_view.html', active_page='map_view',
+        residents=residents, points=points, barangays=barangays, stats=stats,
+        recent=alerts[:4], missing_location=len(residents) - len(located),
+    )
+
+
+# ---------- EMERGENCY LOGS ----------
+
+LOG_RANGES = {
+    'this_month': 'This Month',
+    'last_7': 'Last 7 Days',
+    'last_30': 'Last 30 Days',
+    'all': 'All Time',
+}
+
+
+def _range_start(key):
+    now = datetime.now(ac.PH_TIME)
+    if key == 'last_7':
+        return now - timedelta(days=7)
+    if key == 'last_30':
+        return now - timedelta(days=30)
+    if key == 'all':
+        return None
+    return now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
 
 
 @admin_bp.route('/emergency-logs')
 @admin_required
 def emergency_logs():
-    return _coming_soon('emergency_logs')
+    range_key = request.args.get('range', 'all')
+    if range_key not in LOG_RANGES:
+        range_key = 'all'
 
+    rows = _all_alert_rows(since=_range_start(range_key))
+    everything = _all_alert_rows()
+    month_start = datetime.now(ac.PH_TIME).replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+
+    stats = {
+        'total': len(everything),
+        'active': sum(1 for a in everything if a['is_open']),
+        'resolved': sum(1 for a in everything if a['status'] in ac.RESOLVED_STATUSES),
+        'avg_response': _fmt_minutes(_avg_response(everything)),
+        'this_month': sum(1 for a in everything
+                          if (ac.local(a['created_at']) or month_start) >= month_start),
+        'month_label': month_start.strftime('%B %Y'),
+    }
+
+    return render_template(
+        'admin/emergency_logs.html', active_page='emergency_logs',
+        rows=rows, stats=stats, ranges=LOG_RANGES, range_key=range_key,
+        barangays=sorted({r['barangay'] for r in rows if r['barangay']}),
+    )
+
+
+@admin_bp.route('/emergency-logs.csv')
+@admin_required
+def download_logs():
+    rows = _all_alert_rows(since=_range_start(request.args.get('range', 'all')))
+    buffer = io.StringIO()
+    writer = csv.writer(buffer)
+    writer.writerow(['Alert ID', 'Device', 'Resident', 'Age', 'Location', 'Barangay',
+                     'Type', 'Severity', 'Status', 'Date & Time', 'Response (minutes)', 'Notes'])
+    for r in rows:
+        writer.writerow([r['code'], r['device'], r['name'], r['age'] or '', r['location'],
+                         r['barangay'], r['type_label'], r['severity'].title(), r['status_label'],
+                         r['full_time'],
+                         '' if r['response_minutes'] is None else round(r['response_minutes']),
+                         r['notes']])
+    return _csv_response(buffer, 'emergency-logs')
+
+
+def _csv_response(buffer, name):
+    filename = f"alisto-{name}-{datetime.now(ac.PH_TIME).strftime('%Y-%m-%d')}.csv"
+    return Response(
+        '\ufeff' + buffer.getvalue(),
+        mimetype='text/csv; charset=utf-8',
+        headers={'Content-Disposition': f'attachment; filename={filename}'},
+    )
+
+
+# ---------- REPORTS ----------
 
 @admin_bp.route('/reports')
 @admin_required
 def reports():
-    return _coming_soon('reports')
+    range_key = request.args.get('range', 'last_30')
+    if range_key not in LOG_RANGES:
+        range_key = 'last_30'
+
+    start = _range_start(range_key)
+    rows = _all_alert_rows(since=start)
+    residents = _resident_rows()
+    devices = list(db.collection('device').stream())
+    users = _active_docs('user_account')
+
+    stats = {
+        'total_devices': len(devices),
+        'online_devices': sum(1 for r in residents if r['device_status'] in ('online', 'weak')),
+        'total_alerts': len(rows),
+        'resolved': sum(1 for r in rows if r['status'] in ac.RESOLVED_STATUSES),
+        'avg_response': _fmt_minutes(_avg_response(rows)),
+        'active_users': len(users),
+    }
+    stats['online_pct'] = round(stats['online_devices'] / (stats['total_devices'] or 1) * 100, 1)
+    stats['resolved_pct'] = round(stats['resolved'] / (len(rows) or 1) * 100, 1)
+
+    # Alerts per day across the range, for the line chart.
+    now = datetime.now(ac.PH_TIME)
+    window_start = start or (now - timedelta(days=30))
+    days = max((now - window_start).days, 1)
+    step = max(days // 12, 1)
+    buckets, labels = [], []
+    for i in range(0, days + 1, step):
+        day = (window_start + timedelta(days=i)).date()
+        buckets.append(day)
+        labels.append(day.strftime('%b %d'))
+
+    per_bucket = [0] * len(buckets)
+    resolved_bucket = [0] * len(buckets)
+    for row in rows:
+        moment = ac.local(row['created_at'])
+        if not moment:
+            continue
+        index = min(max((moment.date() - window_start.date()).days // step, 0), len(buckets) - 1)
+        per_bucket[index] += 1
+        if row['status'] in ac.RESOLVED_STATUSES:
+            resolved_bucket[index] += 1
+
+    by_type = Counter(r['type'] for r in rows)
+    type_breakdown = [{
+        'label': ac.type_label(key),
+        'count': count,
+        'pct': round(count / (len(rows) or 1) * 100, 1),
+        'colour': ac.type_colour(key),
+    } for key, count in by_type.most_common()]
+
+    by_place = Counter(r['barangay'] or 'Unknown' for r in rows)
+    top_places = [{
+        'name': place,
+        'count': count,
+        'pct': round(count / (len(rows) or 1) * 100, 1),
+    } for place, count in by_place.most_common(5)]
+
+    # One summary row per barangay.
+    summary = defaultdict(lambda: {'devices': 0, 'online': 0, 'alerts': 0,
+                                   'resolved': 0, 'residents': 0, 'minutes': []})
+    for r in residents:
+        place = summary[r['barangay'] or 'Unknown']
+        place['residents'] += 1
+        place['devices'] += len(r['device_ids'])
+        if r['device_status'] in ('online', 'weak'):
+            place['online'] += len(r['device_ids'])
+    for r in rows:
+        place = summary[r['barangay'] or 'Unknown']
+        place['alerts'] += 1
+        if r['status'] in ac.RESOLVED_STATUSES:
+            place['resolved'] += 1
+        if r['response_minutes'] is not None:
+            place['minutes'].append(r['response_minutes'])
+
+    barangay_rows = []
+    for name, data in sorted(summary.items(), key=lambda kv: -kv[1]['alerts']):
+        minutes = data['minutes']
+        barangay_rows.append({
+            'name': name,
+            'devices': data['devices'],
+            'online': data['online'],
+            'online_pct': round(data['online'] / (data['devices'] or 1) * 100, 1),
+            'alerts': data['alerts'],
+            'resolved': data['resolved'],
+            'resolved_pct': round(data['resolved'] / (data['alerts'] or 1) * 100, 1),
+            'residents': data['residents'],
+            'avg_response': _fmt_minutes(round(sum(minutes) / len(minutes)) if minutes else None),
+        })
+
+    peak = max(per_bucket + [1])
+    return render_template(
+        'admin/reports.html', active_page='reports',
+        stats=stats, ranges=LOG_RANGES, range_key=range_key,
+        chart={
+            'labels': labels,
+            'alerts': per_bucket,
+            'resolved': resolved_bucket,
+            'peak': peak,
+            'points': _spark_points(per_bucket, peak),
+            'resolved_points': _spark_points(resolved_bucket, peak),
+        },
+        type_breakdown=type_breakdown, top_places=top_places, barangay_rows=barangay_rows,
+    )
+
+
+def _spark_points(values, peak):
+    """Turn counts into 'x,y x,y ...' for an SVG polyline in a 100x100 box."""
+    if len(values) < 2:
+        values = values * 2 or [0, 0]
+    step = 100 / (len(values) - 1)
+    return ' '.join(f'{i * step:.2f},{100 - (v / peak * 100):.2f}' for i, v in enumerate(values))
+
+
+@admin_bp.route('/reports.csv')
+@admin_required
+def download_report():
+    rows = _all_alert_rows(since=_range_start(request.args.get('range', 'last_30')))
+    buffer = io.StringIO()
+    writer = csv.writer(buffer)
+    writer.writerow(['Alert ID', 'Resident', 'Barangay', 'Type', 'Severity', 'Status',
+                     'Date & Time', 'Response (minutes)'])
+    for r in rows:
+        writer.writerow([r['code'], r['name'], r['barangay'], r['type_label'],
+                         r['severity'].title(), r['status_label'], r['full_time'],
+                         '' if r['response_minutes'] is None else round(r['response_minutes'])])
+    return _csv_response(buffer, 'report')
+
+
+# ---------- SUBSCRIPTIONS ----------
+
+# Plans are defined here rather than in the database so the prices stay in one
+# place. A subscription document keeps the plan key, and the price is read back
+# from this table.
+PLANS = {
+    'basic': {'name': 'Basic Plan', 'price': 299, 'devices': 1, 'blurb': '1 Device'},
+    'premium': {'name': 'Premium Plan', 'price': 599, 'devices': 5, 'blurb': 'Up to 5 Devices'},
+}
+EXPIRING_SOON_DAYS = 30
+
+
+def _plan(key):
+    return PLANS.get(key or 'basic', PLANS['basic'])
+
+
+def _subscription_rows():
+    """Subscriptions joined to whoever they belong to.
+
+    A document in the `subscription` collection looks like:
+        elder_id | user_id   who it is for (one of the two)
+        plan                 'basic' or 'premium'
+        start_date           timestamp
+        expiry_date          timestamp
+        auto_renew           boolean
+        device_serials       list of strings, optional
+    """
+    elders = _all_elders()
+    accounts = dict(_active_docs('user_account'))
+    devices_by_elder = _devices_by_elder()
+    today = datetime.now(ac.PH_TIME).date()
+
+    rows = []
+    for doc in db.collection('subscription').stream():
+        sub = doc.to_dict() or {}
+        elder_id, user_id = sub.get('elder_id'), sub.get('user_id')
+
+        if elder_id and elder_id in elders:
+            owner, kind, prefix = elders[elder_id], 'elderly', 'ELD'
+            owner_id = elder_id
+            serials = sub.get('device_serials') or [d for d, _ in devices_by_elder.get(elder_id, [])]
+        elif user_id and user_id in accounts:
+            owner = accounts[user_id]
+            kind = owner.get('role') or 'family'
+            prefix = 'BHW' if kind == 'bhw' else 'FAM'
+            owner_id = user_id
+            serials = sub.get('device_serials') or []
+        else:
+            continue  # points at someone who no longer exists
+
+        expiry = ac.local(sub.get('expiry_date'))
+        days_left = (expiry.date() - today).days if expiry else None
+
+        if days_left is None:
+            status = 'active'
+        elif days_left < 0:
+            status = 'expired'
+        elif days_left <= EXPIRING_SOON_DAYS:
+            status = 'expiring'
+        else:
+            status = 'active'
+
+        plan = _plan(sub.get('plan'))
+        name = owner.get('full_name') or 'Unnamed'
+        rows.append({
+            'id': doc.id,
+            'name': name,
+            'initials': _initials(name),
+            'display_id': _short_id(prefix, owner_id),
+            'type': kind,
+            'type_label': 'BHW' if kind == 'bhw' else kind.title(),
+            'plan_key': sub.get('plan') or 'basic',
+            'plan': plan['name'],
+            'plan_blurb': plan['blurb'],
+            'price': plan['price'],
+            'devices': serials,
+            'start': _fmt_date(sub.get('start_date')),
+            'expiry': _fmt_date(sub.get('expiry_date')),
+            'days_left': days_left,
+            'status': status,
+            'auto_renew': bool(sub.get('auto_renew')),
+            'sort': _sort_key(sub.get('expiry_date')),
+        })
+
+    rows.sort(key=lambda r: (('expired', 'expiring', 'active').index(r['status']), r['name'].casefold()))
+    return rows
 
 
 @admin_bp.route('/subscriptions')
 @admin_required
 def subscriptions():
-    return _coming_soon('subscriptions')
+    rows = _subscription_rows()
+    active = [r for r in rows if r['status'] in ('active', 'expiring')]
+
+    stats = {
+        'total': len(rows),
+        'active': len(active),
+        'active_pct': round(len(active) / (len(rows) or 1) * 100, 1),
+        'expiring': sum(1 for r in rows if r['status'] == 'expiring'),
+        'expired': sum(1 for r in rows if r['status'] == 'expired'),
+        'revenue': sum(r['price'] for r in active),
+    }
+
+    return render_template(
+        'admin/subscriptions.html', active_page='subscriptions',
+        rows=rows, stats=stats, plans=PLANS, expiring_days=EXPIRING_SOON_DAYS,
+    )
+
+
+@admin_bp.route('/subscriptions.csv')
+@admin_required
+def download_subscriptions():
+    buffer = io.StringIO()
+    writer = csv.writer(buffer)
+    writer.writerow(['Subscriber', 'ID', 'User Type', 'Plan', 'Price (PHP/month)',
+                     'Devices', 'Status', 'Start Date', 'Expiry Date', 'Auto Renew'])
+    for r in _subscription_rows():
+        writer.writerow([r['name'], r['display_id'], r['type_label'], r['plan'], r['price'],
+                         ', '.join(r['devices']) or 'None', r['status'].title(),
+                         r['start'], r['expiry'], 'Yes' if r['auto_renew'] else 'No'])
+    return _csv_response(buffer, 'subscriptions')
+
+
+# ---------- SETTINGS (account settings) ----------
+
+NOTIFICATION_KEYS = ('emergency_alerts', 'registration_requests',
+                     'device_offline_alerts', 'subscription_expiry_alerts')
+TIMEZONES = ['Asia/Manila (GMT+08:00)', 'UTC (GMT+00:00)']
+DATE_FORMATS = ['MMM DD, YYYY', 'DD/MM/YYYY', 'YYYY-MM-DD']
+SYSTEM_DOC = 'system_settings'
+
+
+def _system_settings():
+    doc = db.collection('app_settings').document(SYSTEM_DOC).get()
+    saved = (doc.to_dict() or {}) if doc.exists else {}
+    return {
+        'timezone': saved.get('timezone') or TIMEZONES[0],
+        'date_format': saved.get('date_format') or DATE_FORMATS[0],
+        'auto_backup': bool(saved.get('auto_backup', True)),
+        'last_backup': _fmt_date(saved.get('last_backup_at')),
+    }
 
 
 @admin_bp.route('/settings')
 @admin_required
 def settings():
-    return _coming_soon('settings')
+    doc = db.collection('user_account').document(session['user_id']).get()
+    user = doc.to_dict() if doc.exists else {}
+    saved = user.get('notification_settings') or {}
+
+    return render_template(
+        'admin/settings.html', active_page='settings',
+        notifications={key: bool(saved.get(key, True)) for key in NOTIFICATION_KEYS},
+        email_notifications=bool(user.get('email_notifications', True)),
+        system=_system_settings(), timezones=TIMEZONES, date_formats=DATE_FORMATS,
+    )
+
+
+@admin_bp.route('/settings', methods=['POST'])
+@admin_required
+def save_settings():
+    timezone_choice = request.form.get('timezone')
+    date_choice = request.form.get('date_format')
+
+    db.collection('user_account').document(session['user_id']).update({
+        'notification_settings': {key: request.form.get(key) == 'on' for key in NOTIFICATION_KEYS},
+        'email_notifications': request.form.get('email_notifications') == 'on',
+        'settings_updated_at': firestore.SERVER_TIMESTAMP,
+    })
+    db.collection('app_settings').document(SYSTEM_DOC).set({
+        'timezone': timezone_choice if timezone_choice in TIMEZONES else TIMEZONES[0],
+        'date_format': date_choice if date_choice in DATE_FORMATS else DATE_FORMATS[0],
+        'auto_backup': request.form.get('auto_backup') == 'on',
+        'updated_at': firestore.SERVER_TIMESTAMP,
+        'updated_by': session['user_id'],
+    })
+
+    flash('Your settings have been saved.', 'success')
+    return redirect(url_for('admin.settings'))
+
+
+# ---------- MY PROFILE ----------
+
+@admin_bp.route('/profile')
+@admin_required
+def profile():
+    doc = db.collection('user_account').document(session['user_id']).get()
+    user = doc.to_dict() if doc.exists else {}
+    admins = sum(1 for _, u in _active_docs('user_account') if u.get('role') == 'admin')
+
+    return render_template(
+        'admin/profile.html', active_page='profile', user=user,
+        member_since=_fmt_date(user.get('created_at')),
+        last_login=session.get('previous_login') or 'First sign-in',
+        password_changed=_fmt_date(user.get('password_changed_at')),
+        admin_count=admins,
+    )
+
+
+@admin_bp.route('/profile/password', methods=['POST'])
+@admin_required
+def change_password():
+    doc = db.collection('user_account').document(session['user_id']).get()
+    user = doc.to_dict() if doc.exists else {}
+
+    current = request.form.get('current_password', '')
+    new = request.form.get('new_password', '')
+    confirm = request.form.get('confirm_password', '')
+
+    if not check_password_hash(user.get('password_hash', ''), current):
+        flash('Your current password is incorrect.', 'error')
+    elif new != confirm:
+        flash('New password and confirm password do not match.', 'error')
+    elif new == current:
+        flash('Your new password must be different from your current password.', 'error')
+    else:
+        missing = [label for rule, label in PASSWORD_RULES if not rule(new)]
+        if missing:
+            flash('New password needs ' + ', '.join(missing) + '.', 'error')
+        else:
+            db.collection('user_account').document(session['user_id']).update({
+                'password_hash': generate_password_hash(new),
+                'password_changed_at': firestore.SERVER_TIMESTAMP,
+            })
+            flash('Your password has been updated.', 'success')
+    return redirect(url_for('admin.profile'))
+
+
+@admin_bp.route('/profile/edit', methods=['POST'])
+@admin_required
+def edit_profile():
+    full_name = (request.form.get('full_name') or '').strip()
+    contact = (request.form.get('contact_number') or '').strip()
+
+    if not full_name:
+        flash('Please enter your full name.', 'error')
+        return redirect(url_for('admin.profile'))
+
+    db.collection('user_account').document(session['user_id']).update({
+        'full_name': full_name,
+        'contact_number': contact,
+    })
+    session['full_name'] = full_name
+    flash('Your profile has been updated.', 'success')
+    return redirect(url_for('admin.profile'))

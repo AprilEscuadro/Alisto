@@ -1,0 +1,254 @@
+{% extends 'admin/base.html' %}
+{% block title %}Map View{% endblock %}
+
+{% block head %}
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+{% endblock %}
+
+{% block content %}
+<div class="admin-page-header">
+  <div>
+    <h1>Map View</h1>
+    <p>Monitor device and emergency status across the community.</p>
+  </div>
+  <label class="search-box search-box-wide">
+    <i data-lucide="search"></i>
+    <input type="search" id="mapSearch" placeholder="Search residents or barangays..." aria-label="Search residents or barangays" />
+  </label>
+</div>
+
+<!-- STAT CARDS -->
+<section class="admin-stats admin-stats-4">
+  <div class="stat-card">
+    <span class="stat-icon tint-red"><i data-lucide="bell"></i></span>
+    <div class="stat-body">
+      <span class="stat-label">Active Alerts</span>
+      <strong class="stat-value text-red">{{ stats.active_alerts }}</strong>
+      <span class="stat-sub {% if stats.active_alerts %}text-red{% else %}text-muted{% endif %}">
+        {% if stats.active_alerts %}Requiring attention{% else %}All clear{% endif %}
+      </span>
+    </div>
+  </div>
+  <div class="stat-card">
+    <span class="stat-icon tint-green"><i data-lucide="wifi"></i></span>
+    <div class="stat-body">
+      <span class="stat-label">Online Devices</span>
+      <strong class="stat-value text-green">{{ stats.online }}</strong>
+    </div>
+  </div>
+  <div class="stat-card">
+    <span class="stat-icon tint-orange"><i data-lucide="wifi-off"></i></span>
+    <div class="stat-body">
+      <span class="stat-label">Offline Devices</span>
+      <strong class="stat-value text-orange">{{ stats.offline }}</strong>
+    </div>
+  </div>
+  <div class="stat-card">
+    <span class="stat-icon tint-blue"><i data-lucide="map"></i></span>
+    <div class="stat-body">
+      <span class="stat-label">Monitored Areas</span>
+      <strong class="stat-value text-blue">{{ stats.areas }}</strong>
+      <span class="stat-sub text-muted">Barangay{{ '' if stats.areas == 1 else 's' }} covered</span>
+    </div>
+  </div>
+</section>
+
+<!-- FILTERS -->
+<section class="admin-card map-filter-card">
+  <label class="labeled-select">
+    <span>Barangay</span>
+    <select id="mapBarangayFilter">
+      <option value="">All Barangays</option>
+      {% for place in barangays %}<option value="{{ place }}">{{ place }}</option>{% endfor %}
+    </select>
+  </label>
+  <label class="labeled-select">
+    <span>Status</span>
+    <select id="mapStatusFilter">
+      <option value="">All Statuses</option>
+      <option value="alert">Active Alert</option>
+      <option value="online">Online</option>
+      <option value="weak">Weak Signal</option>
+      <option value="offline">Offline</option>
+      <option value="none">No device</option>
+    </select>
+  </label>
+  <div class="map-legend-inline">
+    <strong>Legend</strong>
+    <span><i class="dot dot-red"></i> Active Alert</span>
+    <span><i class="dot dot-green"></i> Online</span>
+    <span><i class="dot dot-orange"></i> Weak Signal</span>
+    <span><i class="dot dot-gray"></i> Offline</span>
+  </div>
+</section>
+
+<section class="map-layout">
+  <div class="admin-card map-card">
+    <div class="map-frame">
+      <div id="adminMap" class="map-full"></div>
+    </div>
+    {% if missing_location %}
+    <p class="map-note">
+      <i data-lucide="triangle-alert"></i>
+      {{ missing_location }} resident{{ '' if missing_location == 1 else 's' }} not shown — their device has not reported a location yet.
+    </p>
+    {% endif %}
+  </div>
+
+  <aside class="admin-card map-side">
+    <div class="admin-card-header">
+      <h2>Recent Map Alerts</h2>
+      <a href="{{ url_for('admin.emergency_logs') }}" class="card-link">View all <i data-lucide="arrow-right"></i></a>
+    </div>
+
+    {% if recent %}
+    <div class="map-list">
+      {% for alert in recent %}
+      <a href="{{ url_for('admin.emergency_logs') }}" class="map-list-item {% if alert.is_open %}is-alert{% endif %}">
+        <span class="admin-avatar-lg avatar-elderly">{{ alert.initials }}</span>
+        <span class="map-list-body">
+          <strong>{{ alert.name }}{% if alert.age %}, {{ alert.age }}{% endif %}</strong>
+          <small>{{ alert.location }}</small>
+          <small class="text-muted">{{ alert.time }}</small>
+        </span>
+        <span class="badge badge-{{ alert.status_class }}">{{ alert.status_label }}</span>
+        <i data-lucide="chevron-right"></i>
+      </a>
+      {% endfor %}
+    </div>
+    {% else %}
+    <div class="empty-state">
+      <span class="empty-icon"><i data-lucide="bell-off"></i></span>
+      <strong>No alerts yet</strong>
+      <p>Emergency alerts will appear here as they come in.</p>
+    </div>
+    {% endif %}
+
+    <div class="admin-card-header map-side-split">
+      <h2>Residents ({{ residents|length }})</h2>
+    </div>
+    <div class="map-list" id="mapResidents">
+      {% for row in residents %}
+      <button
+        type="button"
+        class="map-list-item"
+        data-elder-id="{{ row.id }}"
+        data-status="{{ row.map_status }}"
+        data-barangay="{{ row.barangay }}"
+        data-name="{{ row.name }}"
+      >
+        <span class="admin-avatar-lg avatar-elderly">{{ row.initials }}</span>
+        <span class="map-list-body">
+          <strong>{{ row.name }}{% if row.age %}, {{ row.age }}{% endif %}</strong>
+          <small>{{ row.short_address }}</small>
+          <small class="text-muted">{{ row.last_seen }}</small>
+        </span>
+        <span class="badge badge-map-{{ row.map_status }}">
+          {% if row.map_status == 'alert' %}Alert{% elif row.map_status == 'online' %}Online{% elif row.map_status == 'weak' %}Weak{% elif row.map_status == 'offline' %}Offline{% else %}No device{% endif %}
+        </span>
+      </button>
+      {% endfor %}
+      {% if not residents %}
+      <div class="empty-state">
+        <span class="empty-icon"><i data-lucide="users-round"></i></span>
+        <strong>No residents yet</strong>
+        <p>Elderly residents will appear here once they are registered.</p>
+      </div>
+      {% endif %}
+    </div>
+  </aside>
+</section>
+{% endblock %}
+
+{% block scripts %}
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script id="mapPoints" type="application/json">{{ points | tojson }}</script>
+<script>
+  document.addEventListener('DOMContentLoaded', function () {
+    if (!window.L) return;
+
+    const points = JSON.parse(document.getElementById('mapPoints').textContent);
+    const colours = { alert: '#e53935', online: '#16a34a', weak: '#f59e0b', offline: '#94a3b8', none: '#94a3b8' };
+    const labels = { alert: 'Active alert', online: 'Online', weak: 'Weak signal', offline: 'Offline', none: 'No device' };
+
+    // Starts on Cebu City, then zooms to fit the devices that have a location.
+    const map = L.map('adminMap').setView([10.32, 123.9], 12);
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+      maxZoom: 19,
+      attribution: '&copy; OpenStreetMap contributors',
+    }).addTo(map);
+
+    const markers = {};
+    points.forEach(function (p) {
+      const colour = colours[p.status] || colours.offline;
+      const marker = L.marker([p.latitude, p.longitude], {
+        icon: L.divIcon({
+          className: 'map-pin-icon',
+          html: `<span class="map-pin" style="--pin:${colour}"><b>${p.initials}</b></span>`,
+          iconSize: [38, 46], iconAnchor: [19, 46], popupAnchor: [0, -44],
+        }),
+      }).addTo(map);
+
+      marker.bindPopup(`
+        <div class="map-popup">
+          <strong style="color:${colour}">${p.name}${p.age ? ', ' + p.age : ''}</strong>
+          <span><i class="pop-dot" style="background:${colour}"></i> ${p.alert_label || labels[p.status] || ''}</span>
+          <span>${p.address || ''}</span>
+          <span>${p.time || ''}</span>
+        </div>`);
+      markers[p.id] = marker;
+    });
+
+    if (points.length) {
+      map.fitBounds(points.map((p) => [p.latitude, p.longitude]), { padding: [50, 50], maxZoom: 15 });
+    }
+
+    // Clicking a resident in the side list moves the map to them.
+    document.querySelectorAll('#mapResidents .map-list-item').forEach(function (item) {
+      item.addEventListener('click', function () {
+        const marker = markers[item.dataset.elderId];
+        if (!marker) {
+          item.classList.add('shake');
+          setTimeout(() => item.classList.remove('shake'), 500);
+          return;
+        }
+        map.setView(marker.getLatLng(), 17, { animate: true });
+        marker.openPopup();
+      });
+    });
+
+    // Search and the two dropdowns filter both the list and the pins.
+    const search = document.getElementById('mapSearch');
+    const barangay = document.getElementById('mapBarangayFilter');
+    const status = document.getElementById('mapStatusFilter');
+
+    function applyFilters() {
+      const q = search.value.trim().toLowerCase();
+      const place = barangay.value;
+      const state = status.value;
+
+      document.querySelectorAll('#mapResidents .map-list-item').forEach(function (item) {
+        const text = `${item.dataset.name} ${item.dataset.barangay}`.toLowerCase();
+        item.hidden = !((!q || text.includes(q)) &&
+                        (!place || item.dataset.barangay === place) &&
+                        (!state || item.dataset.status === state));
+      });
+
+      points.forEach(function (p) {
+        const marker = markers[p.id];
+        if (!marker) return;
+        const text = `${p.name} ${p.barangay || ''}`.toLowerCase();
+        const shown = (!q || text.includes(q)) &&
+                      (!place || p.barangay === place) &&
+                      (!state || p.status === state);
+        if (shown) marker.addTo(map);
+        else map.removeLayer(marker);
+      });
+    }
+
+    search.addEventListener('input', applyFilters);
+    barangay.addEventListener('change', applyFilters);
+    status.addEventListener('change', applyFilters);
+  });
+</script>
+{% endblock %}

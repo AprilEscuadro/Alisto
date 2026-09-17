@@ -129,7 +129,12 @@
     const box = modal();
     if (!box) return;
 
-    $('#userModalAvatar').textContent = $('.admin-avatar-lg', row).textContent;
+    // Some tables (the emergency log) have no avatar in the row, so fall back
+    // to initials worked out from the name.
+    const avatar = $('.admin-avatar-lg', row);
+    $('#userModalAvatar').textContent = avatar
+      ? avatar.textContent.trim()
+      : (row.dataset.name || '?').split(/\s+/).slice(0, 2).map((w) => w[0] || '').join('').toUpperCase();
     $('#userModalAvatar').className = `admin-avatar-lg avatar-${row.dataset.type}`;
     $('#userModalTitle').textContent = row.dataset.name;
     $('#userModalSub').textContent =
@@ -212,6 +217,16 @@
     {
       table: '#alertsTable', search: '#alertSearch', noun: 'alerts',
       filters: { group: '#alertGroupFilter' },
+    },
+    {
+      table: '#logsTable', search: '#logSearch', noun: 'alerts',
+      filters: { status: '#logStatusFilter', severity: '#logSeverityFilter' },
+      clearButton: '#logClearFilters',
+    },
+    {
+      table: '#subsTable', search: '#subSearch', noun: 'subscriptions',
+      filters: { status: '#subStatusFilter', plan: '#subPlanFilter' },
+      clearButton: '#subClearFilters',
     },
     {
       table: '#devicesTable', search: '#deviceSearch', noun: 'serial numbers',
@@ -416,6 +431,25 @@
     });
   }
 
+  // ---------- Edit profile (swap the details list for a form) ----------
+  function setupProfileEdit() {
+    const edit = $('#editProfileBtn');
+    const form = $('#profileForm');
+    const view = $('#profileView');
+    const cancel = $('#cancelEditBtn');
+    if (!edit || !form || !view) return;
+
+    const toggle = (editing) => {
+      form.hidden = !editing;
+      view.hidden = editing;
+      edit.hidden = editing;
+      if (editing) form.querySelector('input').focus();
+    };
+
+    edit.addEventListener('click', () => toggle(true));
+    if (cancel) cancel.addEventListener('click', () => toggle(false));
+  }
+
   // ---------- Show/hide password buttons ----------
   function setupPasswordToggles() {
     document.addEventListener('click', (e) => {
@@ -456,6 +490,7 @@
     setupAlertFilters();   // creates the hidden select the alerts table filters on
     FILTER_TABLES.forEach(setupFilterTable);
     setupAddDevices();
+    setupProfileEdit();
     setupPasswordToggles();
     setupPasswordChecklist();
     icons();

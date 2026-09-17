@@ -1,0 +1,110 @@
+{% extends 'admin/base.html' %}
+{% block title %}Settings{% endblock %}
+
+{% block content %}
+<form method="POST" action="{{ url_for('admin.save_settings') }}">
+  <div class="admin-page-header">
+    <div>
+      <h1>Settings</h1>
+      <p>Manage admin account and basic system preferences.</p>
+    </div>
+    <button type="submit" class="btn btn-primary btn-lg">
+      <i data-lucide="save"></i> Save Changes
+    </button>
+  </div>
+
+  <section class="admin-card settings-card">
+    <h2 class="settings-group">Notification Settings</h2>
+
+    {% set toggles = [
+      ('emergency_alerts', 'bell', 'red', 'Emergency Alerts', 'Receive notifications for new emergency cases.'),
+      ('registration_requests', 'user-plus', 'blue', 'New User Registration Requests', 'Get notified when new BHW registrations are submitted.'),
+      ('device_offline_alerts', 'smartphone', 'orange', 'Device Offline Alerts', 'Receive alerts when devices go offline.'),
+      ('subscription_expiry_alerts', 'credit-card', 'purple', 'Subscription Expiry Alerts', 'Get notified before a subscription expires.'),
+    ] %}
+    {% for key, icon, tint, title, description in toggles %}
+    <label class="setting-row">
+      <span class="setting-icon tint-{{ tint }}"><i data-lucide="{{ icon }}"></i></span>
+      <span class="setting-text">
+        <strong>{{ title }}</strong>
+        <small>{{ description }}</small>
+      </span>
+      <input type="checkbox" name="{{ key }}" class="switch-input" {% if notifications[key] %}checked{% endif %} />
+      <span class="switch" aria-hidden="true"></span>
+    </label>
+    {% endfor %}
+  </section>
+
+  <section class="admin-card settings-card">
+    <h2 class="settings-group">System Preferences</h2>
+
+    <div class="setting-row">
+      <span class="setting-icon tint-blue"><i data-lucide="globe"></i></span>
+      <span class="setting-text">
+        <strong>Timezone</strong>
+        <small>Select your local timezone.</small>
+      </span>
+      <select name="timezone" class="setting-select">
+        {% for zone in timezones %}
+        <option value="{{ zone }}" {% if zone == system.timezone %}selected{% endif %}>{{ zone }}</option>
+        {% endfor %}
+      </select>
+    </div>
+
+    <div class="setting-row">
+      <span class="setting-icon tint-green"><i data-lucide="calendar"></i></span>
+      <span class="setting-text">
+        <strong>Date Format</strong>
+        <small>Choose your preferred date format.</small>
+      </span>
+      <select name="date_format" class="setting-select">
+        {% for fmt in date_formats %}
+        <option value="{{ fmt }}" {% if fmt == system.date_format %}selected{% endif %}>{{ fmt }}</option>
+        {% endfor %}
+      </select>
+    </div>
+
+    <label class="setting-row">
+      <span class="setting-icon tint-blue"><i data-lucide="cloud-upload"></i></span>
+      <span class="setting-text">
+        <strong>Auto Backup</strong>
+        <small>
+          Automatically back up system data.
+          {% if system.last_backup != '—' %}Last backup: {{ system.last_backup }}.{% endif %}
+        </small>
+      </span>
+      <input type="checkbox" name="auto_backup" class="switch-input" {% if system.auto_backup %}checked{% endif %} />
+      <span class="switch" aria-hidden="true"></span>
+    </label>
+  </section>
+
+  <section class="admin-card settings-card">
+    <h2 class="settings-group">Security</h2>
+
+    <a href="{{ url_for('admin.profile') }}" class="setting-row setting-link">
+      <span class="setting-icon tint-blue"><i data-lucide="lock"></i></span>
+      <span class="setting-text">
+        <strong>Change Password</strong>
+        <small>Update your admin account password.</small>
+      </span>
+      <i data-lucide="chevron-right"></i>
+    </a>
+
+    <label class="setting-row">
+      <span class="setting-icon tint-orange"><i data-lucide="mail"></i></span>
+      <span class="setting-text">
+        <strong>Admin Email Notifications</strong>
+        <small>Receive important system updates and security notifications via email.</small>
+      </span>
+      <input type="checkbox" name="email_notifications" class="switch-input" {% if email_notifications %}checked{% endif %} />
+      <span class="switch" aria-hidden="true"></span>
+    </label>
+  </section>
+
+  <p class="settings-note">
+    <i data-lucide="info"></i>
+    Toggles are saved to your account. Auto Backup and the email notifications are stored as
+    preferences — the jobs that act on them are not built yet.
+  </p>
+</form>
+{% endblock %}

@@ -1,0 +1,219 @@
+{% extends 'admin/base.html' %}
+{% block title %}Reports{% endblock %}
+
+{% block content %}
+<div class="admin-page-header">
+  <div>
+    <h1>Reports</h1>
+    <p>Analyze devices, alerts, and community activity.</p>
+  </div>
+  <div class="map-header-actions">
+    <label class="labeled-select">
+      <select onchange="window.location = this.value" aria-label="Date range">
+        {% for key, label in ranges.items() %}
+        <option value="{{ url_for('admin.reports', range=key) }}" {% if key == range_key %}selected{% endif %}>{{ label }}</option>
+        {% endfor %}
+      </select>
+    </label>
+    <a href="{{ url_for('admin.download_report', range=range_key) }}" class="btn btn-primary">
+      <i data-lucide="download"></i> Export Report
+    </a>
+  </div>
+</div>
+
+<!-- STAT CARDS -->
+<section class="admin-stats admin-stats-6">
+  <div class="stat-card stat-card-compact">
+    <span class="stat-icon tint-blue"><i data-lucide="smartphone"></i></span>
+    <div class="stat-body">
+      <span class="stat-label">Total Devices</span>
+      <strong class="stat-value">{{ stats.total_devices }}</strong>
+    </div>
+  </div>
+  <div class="stat-card stat-card-compact">
+    <span class="stat-icon tint-green"><i data-lucide="wifi"></i></span>
+    <div class="stat-body">
+      <span class="stat-label">Online Devices</span>
+      <strong class="stat-value">{{ stats.online_devices }}</strong>
+      <span class="stat-sub text-muted">{{ stats.online_pct }}% of total</span>
+    </div>
+  </div>
+  <div class="stat-card stat-card-compact">
+    <span class="stat-icon tint-red"><i data-lucide="bell"></i></span>
+    <div class="stat-body">
+      <span class="stat-label">Total Alerts</span>
+      <strong class="stat-value">{{ stats.total_alerts }}</strong>
+    </div>
+  </div>
+  <div class="stat-card stat-card-compact">
+    <span class="stat-icon tint-orange"><i data-lucide="circle-check"></i></span>
+    <div class="stat-body">
+      <span class="stat-label">Resolved Alerts</span>
+      <strong class="stat-value">{{ stats.resolved }}</strong>
+      <span class="stat-sub text-muted">{{ stats.resolved_pct }}% resolution rate</span>
+    </div>
+  </div>
+  <div class="stat-card stat-card-compact">
+    <span class="stat-icon tint-purple"><i data-lucide="timer"></i></span>
+    <div class="stat-body">
+      <span class="stat-label">Avg. Response Time</span>
+      <strong class="stat-value">{{ stats.avg_response }}</strong>
+    </div>
+  </div>
+  <div class="stat-card stat-card-compact">
+    <span class="stat-icon tint-blue"><i data-lucide="users-round"></i></span>
+    <div class="stat-body">
+      <span class="stat-label">Active Users</span>
+      <strong class="stat-value">{{ stats.active_users }}</strong>
+    </div>
+  </div>
+</section>
+
+<section class="report-grid">
+  <!-- ALERTS OVER TIME -->
+  <div class="admin-card">
+    <div class="admin-card-header">
+      <h2>Alerts Over Time</h2>
+      <span class="chart-key">
+        <span><i class="dot dot-red"></i> Alerts</span>
+        <span><i class="dot dot-green"></i> Resolved</span>
+      </span>
+    </div>
+
+    {% if stats.total_alerts %}
+    <div class="line-chart">
+      <div class="line-axis">
+        <span>{{ chart.peak }}</span>
+        <span>{{ (chart.peak / 2) | round | int }}</span>
+        <span>0</span>
+      </div>
+      <svg viewBox="0 0 100 100" preserveAspectRatio="none" role="img"
+           aria-label="Alerts and resolved alerts over the selected period">
+        <line x1="0" y1="0" x2="100" y2="0" class="grid-line" />
+        <line x1="0" y1="50" x2="100" y2="50" class="grid-line" />
+        <line x1="0" y1="100" x2="100" y2="100" class="grid-line" />
+        <polyline points="{{ chart.points }}" class="line line-alerts" />
+        <polyline points="{{ chart.resolved_points }}" class="line line-resolved" />
+      </svg>
+    </div>
+    <div class="line-labels">
+      {% for label in chart.labels %}
+      {% if loop.index0 % 2 == 0 or chart.labels|length < 7 %}<span>{{ label }}</span>{% endif %}
+      {% endfor %}
+    </div>
+    {% else %}
+    <div class="empty-state">
+      <span class="empty-icon"><i data-lucide="chart-column"></i></span>
+      <strong>No alerts in this period</strong>
+      <p>Pick a wider date range to see activity.</p>
+    </div>
+    {% endif %}
+  </div>
+
+  <!-- ALERTS BY TYPE -->
+  <div class="admin-card">
+    <div class="admin-card-header"><h2>Alerts by Type</h2></div>
+
+    {% if type_breakdown %}
+    <div class="alert-summary">
+      {% set ns = namespace(stop=0) %}
+      <div
+        class="type-donut"
+        style="background: conic-gradient({% for item in type_breakdown %}{% set start = ns.stop %}{% set ns.stop = ns.stop + item.pct %}var(--chart-{{ item.colour }}) {{ start }}% {{ ns.stop }}%{{ ', ' if not loop.last }}{% endfor %});"
+        role="img"
+        aria-label="Breakdown of alerts by type"
+      >
+        <span class="donut-hole">
+          <strong>{{ stats.total_alerts }}</strong>
+          <small>Total</small>
+        </span>
+      </div>
+      <ul class="summary-list">
+        {% for item in type_breakdown %}
+        <li>
+          <i class="dot dot-chart-{{ item.colour }}"></i> {{ item.label }}
+          <strong>{{ item.count }} <small class="text-muted">({{ item.pct }}%)</small></strong>
+        </li>
+        {% endfor %}
+      </ul>
+    </div>
+    {% else %}
+    <div class="empty-state">
+      <span class="empty-icon"><i data-lucide="chart-pie"></i></span>
+      <strong>Nothing to break down yet</strong>
+      <p>Alert types will appear here once alerts come in.</p>
+    </div>
+    {% endif %}
+  </div>
+
+  <!-- ALERTS BY LOCATION -->
+  <div class="admin-card">
+    <div class="admin-card-header">
+      <h2>Alerts by Location</h2>
+      <a href="{{ url_for('admin.map_view') }}" class="card-link">View Map <i data-lucide="arrow-right"></i></a>
+    </div>
+
+    {% if top_places %}
+    <ul class="place-list">
+      {% for place in top_places %}
+      <li>
+        <span class="place-name">{{ place.name }}</span>
+        <span class="place-bar"><span style="width: {{ place.pct }}%"></span></span>
+        <span class="place-count">{{ place.count }} <small class="text-muted">({{ place.pct }}%)</small></span>
+      </li>
+      {% endfor %}
+    </ul>
+    {% else %}
+    <div class="empty-state">
+      <span class="empty-icon"><i data-lucide="map-pin"></i></span>
+      <strong>No locations yet</strong>
+      <p>Alerts grouped by barangay will show here.</p>
+    </div>
+    {% endif %}
+  </div>
+</section>
+
+<!-- BARANGAY SUMMARY -->
+<section class="admin-card admin-table-card">
+  <div class="admin-card-header report-head"><h2>Barangay Summary</h2></div>
+  <div class="table-scroll">
+    <table class="admin-table">
+      <thead>
+        <tr>
+          <th>Barangay</th>
+          <th>Residents</th>
+          <th>Total Devices</th>
+          <th>Online Devices</th>
+          <th>Total Alerts</th>
+          <th>Resolved Alerts</th>
+          <th>Avg. Response Time</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for row in barangay_rows %}
+        <tr>
+          <td><strong class="cell-strong">{{ row.name }}</strong></td>
+          <td>{{ row.residents }}</td>
+          <td>{{ row.devices }}</td>
+          <td class="text-green">{{ row.online }} <small class="text-muted">({{ row.online_pct }}%)</small></td>
+          <td>{{ row.alerts }}</td>
+          <td class="text-green">{{ row.resolved }} <small class="text-muted">({{ row.resolved_pct }}%)</small></td>
+          <td class="nowrap">{{ row.avg_response }}</td>
+        </tr>
+        {% endfor %}
+        {% if not barangay_rows %}
+        <tr>
+          <td colspan="7">
+            <div class="empty-state">
+              <span class="empty-icon"><i data-lucide="map"></i></span>
+              <strong>No barangay data yet</strong>
+              <p>This fills in once residents are registered with an address.</p>
+            </div>
+          </td>
+        </tr>
+        {% endif %}
+      </tbody>
+    </table>
+  </div>
+</section>
+{% endblock %}

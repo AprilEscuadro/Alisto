@@ -136,7 +136,8 @@
             </button>
 
             <div class="admin-dropdown" id="adminDropdown" role="menu">
-              <a href="{{ url_for('admin.settings') }}" role="menuitem">
+              <a href="{{ url_for('admin.profile') }}" role="menuitem"
+                 class="{% if active_page == 'profile' %}active{% endif %}">
                 <i data-lucide="user"></i> My Profile
               </a>
               <a href="{{ url_for('admin.settings') }}" role="menuitem">

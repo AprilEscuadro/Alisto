@@ -7,14 +7,9 @@
     <h1>Emergency Logs</h1>
     <p>View and manage all emergency alerts and incidents.</p>
   </div>
-  <div class="toolbar-actions">
-    <button type="button" class="btn btn-outline" id="openLogIncident">
-      <i data-lucide="plus"></i> Log Incident
-    </button>
-    <button type="button" class="btn btn-outline" id="exportAlerts">
-      <i data-lucide="download"></i> Export
-    </button>
-  </div>
+  <a href="{{ url_for('admin.download_logs', range=range_key) }}" class="btn btn-outline">
+    <i data-lucide="download"></i> Export
+  </a>
 </div>
 
 <!-- STAT CARDS -->
@@ -24,7 +19,7 @@
     <div class="stat-body">
       <span class="stat-label">Total Alerts</span>
       <strong class="stat-value">{{ stats.total }}</strong>
-      <span class="stat-note">All time</span>
+      <span class="stat-sub text-muted">All time</span>
     </div>
   </div>
   <div class="stat-card stat-card-compact">
@@ -32,7 +27,7 @@
     <div class="stat-body">
       <span class="stat-label">Active Alerts</span>
       <strong class="stat-value">{{ stats.active }}</strong>
-      <span class="stat-note">Currently ongoing</span>
+      <span class="stat-sub text-muted">Currently ongoing</span>
     </div>
   </div>
   <div class="stat-card stat-card-compact">
@@ -40,15 +35,15 @@
     <div class="stat-body">
       <span class="stat-label">Resolved Alerts</span>
       <strong class="stat-value">{{ stats.resolved }}</strong>
-      <span class="stat-note">All time</span>
+      <span class="stat-sub text-muted">All time</span>
     </div>
   </div>
   <div class="stat-card stat-card-compact">
-    <span class="stat-icon tint-purple"><i data-lucide="clock"></i></span>
+    <span class="stat-icon tint-purple"><i data-lucide="timer"></i></span>
     <div class="stat-body">
       <span class="stat-label">Avg. Response Time</span>
       <strong class="stat-value">{{ stats.avg_response }}</strong>
-      <span class="stat-note">This month</span>
+      <span class="stat-sub text-muted">All time</span>
     </div>
   </div>
   <div class="stat-card stat-card-compact">
@@ -56,62 +51,60 @@
     <div class="stat-body">
       <span class="stat-label">This Month</span>
       <strong class="stat-value">{{ stats.this_month }}</strong>
-      <span class="stat-note">{{ stats.month_label }}</span>
+      <span class="stat-sub text-muted">{{ stats.month_label }}</span>
     </div>
   </div>
 </section>
 
 <!-- FILTERS -->
-<section class="admin-card filter-card">
-  <label class="search-box filter-search">
+<section class="admin-card filter-bar">
+  <label class="search-box">
     <i data-lucide="search"></i>
-    <input type="search" id="alertSearch" placeholder="Search by name, location, or device ID..." aria-label="Search alerts" />
+    <input type="search" id="logSearch" placeholder="Search by name, location, or device ID..." aria-label="Search alerts" />
   </label>
-
-  <label class="filter-field">
+  <label class="labeled-select">
     <span>Status</span>
-    <select id="alertStatusFilter">
+    <select id="logStatusFilter">
       <option value="">All Statuses</option>
-      {% for key, label in statuses.items() %}
-      <option value="{{ key }}">{{ label }}</option>
-      {% endfor %}
+      <option value="active">Active</option>
+      <option value="acknowledged">Responded</option>
+      <option value="resolved">Resolved</option>
+      <option value="closed">Closed</option>
+      <option value="delivered">Delivered</option>
+      <option value="false_alarm">False Alarm</option>
     </select>
   </label>
-
-  <label class="filter-field">
+  <label class="labeled-select">
     <span>Severity</span>
-    <select id="alertSeverityFilter">
+    <select id="logSeverityFilter">
       <option value="">All Severities</option>
-      {% for key, label in severities.items() %}
-      <option value="{{ key }}">{{ label }}</option>
+      <option value="high">High</option>
+      <option value="medium">Medium</option>
+      <option value="low">Low</option>
+    </select>
+  </label>
+  <label class="labeled-select">
+    <span>Date Range</span>
+    <select onchange="window.location = this.value">
+      {% for key, label in ranges.items() %}
+      <option value="{{ url_for('admin.emergency_logs', range=key) }}" {% if key == range_key %}selected{% endif %}>{{ label }}</option>
       {% endfor %}
     </select>
   </label>
-
-  <div class="filter-field">
-    <span>Date Range</span>
-    <div class="date-range">
-      <input type="date" id="alertDateFrom" aria-label="From date" />
-      <span class="text-muted">–</span>
-      <input type="date" id="alertDateTo" aria-label="To date" />
-    </div>
-  </div>
-
-  <button type="button" class="filter-clear" id="alertClearFilters">
-    <i data-lucide="rotate-cw"></i> Clear Filters
+  <button type="button" class="btn btn-outline" id="logClearFilters">
+    <i data-lucide="refresh-cw"></i> Clear Filters
   </button>
 </section>
 
 <!-- TABLE -->
 <section class="admin-card admin-table-card">
   <div class="table-scroll">
-    <table class="admin-table" id="alertsTable">
+    <table class="admin-table" id="logsTable">
       <thead>
         <tr>
-          <th class="col-icon"></th>
           <th>Alert ID</th>
           <th>Device</th>
-          <th>User / Patient</th>
+          <th>Resident</th>
           <th>Location</th>
           <th>Type</th>
           <th>Severity</th>
@@ -125,89 +118,72 @@
         <tr
           data-status="{{ row.status }}"
           data-severity="{{ row.severity }}"
-          data-date="{{ row.date }}"
-          data-alert='{{ row.details|tojson }}'
+          data-name="{{ row.name }}"
+          data-display-id="{{ row.code }}"
+          data-type="elderly"
+          data-type-label="Alert"
+          data-subtitle="{{ row.code }} · {{ row.type_label }}"
+          data-skip-meta="1"
+          data-details='{{ [
+            ["Resident", row.name],
+            ["Age", row.age if row.age else "—"],
+            ["Alert Type", row.type_label],
+            ["Severity", row.severity|capitalize],
+            ["Status", row.status_label],
+            ["Date & Time", row.full_time],
+            ["Location", row.location],
+            ["Barangay", row.barangay or "—"],
+            ["Device", row.device],
+            ["Voice Trigger", row.trigger_phrase or "—"],
+            ["Response Time", (row.response_minutes|round|int|string + " min") if row.response_minutes is not none else "Not yet answered"],
+            ["Notes", row.notes or "—"]
+          ]|tojson }}'
         >
-          <td class="col-icon"><i data-lucide="bell" class="text-red"></i></td>
-          <td><strong class="cell-strong nowrap">{{ row.alert_no }}</strong></td>
           <td>
-            <div class="stack-cell">
-              <strong class="serial-cell">{{ row.device_id }}</strong>
-              {% if row.device_place %}<small>{{ row.device_place }}</small>{% endif %}
+            <span class="log-id">
+              <i data-lucide="{{ row.type_icon }}" class="type-{{ row.type_colour }}"></i>
+              {{ row.code }}
+            </span>
+          </td>
+          <td class="serial-cell">{{ row.device }}</td>
+          <td>
+            <div class="stacked-cell">
+              <strong>{{ row.name }}</strong>
+              <small>{% if row.age %}Age: {{ row.age }}{% else %}Age unknown{% endif %}</small>
             </div>
           </td>
           <td>
-            <div class="stack-cell">
-              <strong>{{ row.elder_name }}</strong>
-              {% if row.age is not none %}<small>Age: {{ row.age }}</small>{% endif %}
+            <div class="stacked-cell">
+              <strong>{{ row.barangay or '—' }}</strong>
+              <small>{{ row.location }}</small>
             </div>
           </td>
           <td>
-            <div class="stack-cell">
-              <span>{{ row.loc_main }}</span>
-              {% if row.loc_sub %}<small>{{ row.loc_sub }}</small>{% endif %}
+            <div class="stacked-cell">
+              <strong class="type-{{ row.type_colour }}">{{ row.type_label }}</strong>
+              {% if row.trigger_phrase %}<small class="trigger-quote">&ldquo;{{ row.trigger_phrase }}&rdquo;</small>{% endif %}
             </div>
           </td>
-          <td>
-            <div class="stack-cell">
-              <strong>{{ row.type_label }}</strong>
-              <small>{{ row.type_sub }}</small>
-            </div>
-          </td>
-          <td><span class="badge {{ row.severity_badge }}">{{ row.severity_label }}</span></td>
-          <td><span class="badge badge-dot {{ row.status_badge }}">{{ row.status_label }}</span></td>
-          <td>
-            <div class="stack-cell nowrap">
-              <span>{{ row.date_label }}</span>
-              <small>{{ row.time_label }}</small>
-            </div>
-          </td>
+          <td><span class="badge badge-sev-{{ row.severity }}">{{ row.severity|capitalize }}</span></td>
+          <td><span class="badge badge-{{ row.status_class }}">{{ row.status_label }}</span></td>
+          <td class="nowrap">{{ row.time }}</td>
           <td class="col-actions">
-            <div class="row-menu">
-              <button type="button" class="row-menu-btn" aria-label="Actions for {{ row.alert_no }}" aria-haspopup="true" aria-expanded="false">
-                <i data-lucide="more-vertical"></i>
-              </button>
-              <div class="row-menu-list" role="menu">
-                <button type="button" class="js-alert-view" role="menuitem">
-                  <i data-lucide="eye"></i> View Details
-                </button>
-                <button type="button" class="js-alert-edit" role="menuitem">
-                  <i data-lucide="pencil"></i> Update Status
-                </button>
-                {% if row.status == 'active' %}
-                <form method="POST" action="{{ url_for('admin.update_emergency_log', alert_id=row.id) }}">
-                  <input type="hidden" name="status" value="acknowledged" />
-                  <input type="hidden" name="severity" value="{{ row.severity }}" />
-                  <input type="hidden" name="admin_notes" value="{{ row.details.admin_notes }}" />
-                  <button type="submit" class="text-orange" role="menuitem"><i data-lucide="hand"></i> Acknowledge</button>
-                </form>
-                {% endif %}
-                {% if row.status in ('active', 'acknowledged') %}
-                <form method="POST" action="{{ url_for('admin.update_emergency_log', alert_id=row.id) }}">
-                  <input type="hidden" name="status" value="resolved" />
-                  <input type="hidden" name="severity" value="{{ row.severity }}" />
-                  <input type="hidden" name="admin_notes" value="{{ row.details.admin_notes }}" />
-                  <button type="submit" class="text-green" role="menuitem"><i data-lucide="check"></i> Mark Resolved</button>
-                </form>
-                {% endif %}
-                <form method="POST" action="{{ url_for('admin.delete_emergency_log', alert_id=row.id) }}" class="js-confirm-delete-alert">
-                  <button type="submit" class="text-red" role="menuitem"><i data-lucide="trash-2"></i> Delete</button>
-                </form>
-              </div>
-            </div>
+            <button type="button" class="link-btn js-view-details" title="View details" aria-label="View details for {{ row.code }}">
+              <i data-lucide="eye"></i>
+            </button>
           </td>
         </tr>
         {% endfor %}
         <tr class="table-empty" {% if rows %}hidden{% endif %}>
-          <td colspan="10">
+          <td colspan="9">
             <div class="empty-state">
               <span class="empty-icon"><i data-lucide="bell-off"></i></span>
               {% if rows %}
               <strong>No alerts match</strong>
-              <p>Try a different search or clear the filters.</p>
+              <p>Try a different search, filter, or date range.</p>
               {% else %}
-              <strong>No emergency alerts yet</strong>
-              <p>Alerts from ALISTO devices and incidents you log will show up here.</p>
+              <strong>No alerts in this period</strong>
+              <p>Pick a wider date range, or wait for the first alert to come in.</p>
               {% endif %}
             </div>
           </td>
@@ -218,234 +194,31 @@
 
   <div class="table-footer">
     <span class="text-muted table-showing"></span>
-    <nav class="pagination" aria-label="Alert log pages"></nav>
+    <nav class="pagination" aria-label="Log pages"></nav>
   </div>
 </section>
 
-<!-- ALERT DETAILS / UPDATE -->
-<div class="admin-modal" id="alertModal" hidden>
-  <div class="admin-modal-backdrop" data-close-alert></div>
-  <div class="admin-modal-card alert-modal-card" role="dialog" aria-modal="true" aria-labelledby="alertModalTitle">
+<!-- DETAILS WINDOW (opened by admin.js) -->
+<div class="admin-modal" id="userModal" hidden>
+  <div class="admin-modal-backdrop" data-close-modal></div>
+  <div class="admin-modal-card" role="dialog" aria-modal="true" aria-labelledby="userModalTitle">
     <div class="admin-modal-header">
-      <div>
-        <strong id="alertModalTitle">Alert</strong>
-        <small class="text-muted" id="alertModalSub"></small>
+      <div class="user-cell">
+        <span class="admin-avatar-lg" id="userModalAvatar"></span>
+        <div>
+          <strong id="userModalTitle"></strong>
+          <small id="userModalSub"></small>
+        </div>
       </div>
-      <button type="button" class="admin-modal-close" data-close-alert aria-label="Close">
+      <button type="button" class="admin-modal-close" data-close-modal aria-label="Close">
         <i data-lucide="x"></i>
       </button>
     </div>
-
-    <dl class="details-list" id="alertModalDetails"></dl>
-    <a class="card-link" id="alertModalMap" href="#" target="_blank" rel="noopener" hidden>
-      Open location in Google Maps <i data-lucide="arrow-up-right"></i>
-    </a>
-
-    <h3 class="modal-section-title">Status Timeline</h3>
-    <ul class="alert-timeline" id="alertModalTimeline"></ul>
-
-    <form method="POST" id="alertUpdateForm" class="alert-update-form">
-      <h3 class="modal-section-title">Update Alert</h3>
-      <div class="field-row">
-        <label class="field">
-          <span>Status</span>
-          <select name="status" id="alertUpdateStatus">
-            {% for key, label in statuses.items() %}
-            <option value="{{ key }}">{{ label }}</option>
-            {% endfor %}
-          </select>
-        </label>
-        <label class="field">
-          <span>Severity</span>
-          <select name="severity" id="alertUpdateSeverity">
-            {% for key, label in severities.items() %}
-            <option value="{{ key }}">{{ label }}</option>
-            {% endfor %}
-          </select>
-        </label>
-      </div>
-      <label class="field">
-        <span>Admin Notes <span class="optional-tag">(optional)</span></span>
-        <textarea name="admin_notes" id="alertUpdateNotes" rows="3" maxlength="1000" placeholder="What was done, who responded, outcome..."></textarea>
-      </label>
-      <div class="admin-modal-footer">
-        <button type="button" class="btn btn-outline" data-close-alert>Cancel</button>
-        <button type="submit" class="btn btn-primary">Save Changes</button>
-      </div>
-    </form>
-  </div>
-</div>
-
-<!-- LOG INCIDENT -->
-<div class="admin-modal" id="logIncidentModal" hidden>
-  <div class="admin-modal-backdrop" data-close-incident></div>
-  <div class="admin-modal-card" role="dialog" aria-modal="true" aria-labelledby="logIncidentTitle">
-    <div class="admin-modal-header">
-      <div>
-        <strong id="logIncidentTitle">Log Incident</strong>
-        <small class="text-muted">For emergencies reported by phone or in person.</small>
-      </div>
-      <button type="button" class="admin-modal-close" data-close-incident aria-label="Close">
-        <i data-lucide="x"></i>
-      </button>
+    <dl class="details-list" id="userModalDetails"></dl>
+    <div class="admin-modal-footer" id="userModalApproval" hidden>
+      <form method="POST" id="userModalReject"></form>
+      <form method="POST" id="userModalApprove"></form>
     </div>
-
-    <form method="POST" action="{{ url_for('admin.create_emergency_log') }}">
-      <label class="field">
-        <span>Elder</span>
-        <select name="elder_id" id="incidentElder" required>
-          <option value="">Choose an elder</option>
-          {% for e in elder_options %}
-          <option value="{{ e.id }}" data-address="{{ e.address }}">{{ e.name }}</option>
-          {% endfor %}
-        </select>
-      </label>
-      <div class="field-row">
-        <label class="field">
-          <span>Type</span>
-          <select name="alert_type" required>
-            {% for key, label in alert_types.items() %}
-            <option value="{{ key }}" {{ 'selected' if key == 'medical' }}>{{ label }}</option>
-            {% endfor %}
-          </select>
-        </label>
-        <label class="field">
-          <span>Severity</span>
-          <select name="severity" required>
-            {% for key, label in severities.items() %}
-            <option value="{{ key }}">{{ label }}</option>
-            {% endfor %}
-          </select>
-        </label>
-      </div>
-      <label class="field">
-        <span>Status</span>
-        <select name="status" required>
-          {% for key, label in statuses.items() if key != 'cancelled' %}
-          <option value="{{ key }}">{{ label }}</option>
-          {% endfor %}
-        </select>
-      </label>
-      <label class="field">
-        <span>Description</span>
-        <input type="text" name="description" maxlength="300" placeholder="e.g. Shortness of breath" required />
-      </label>
-      <label class="field">
-        <span>Location <span class="optional-tag">(defaults to the elder's address)</span></span>
-        <input type="text" name="location_address" id="incidentLocation" maxlength="200" />
-      </label>
-      <div class="admin-modal-footer">
-        <button type="button" class="btn btn-outline" data-close-incident>Cancel</button>
-        <button type="submit" class="btn btn-primary">Save Incident</button>
-      </div>
-    </form>
   </div>
 </div>
-{% endblock %}
-
-{% block scripts %}
-<script>
-  (function () {
-    const $ = (sel, root = document) => root.querySelector(sel);
-    const updateUrl = "{{ url_for('admin.update_emergency_log', alert_id='__ID__') }}";
-
-    // ---- Details / update modal ----
-    const modal = $("#alertModal");
-
-    function addDetail(label, value) {
-      const wrap = document.createElement("div");
-      const dt = document.createElement("dt");
-      const dd = document.createElement("dd");
-      dt.textContent = label;
-      dd.textContent = value;
-      wrap.append(dt, dd);
-      $("#alertModalDetails").append(wrap);
-    }
-
-    function openAlert(row, focusForm) {
-      const a = JSON.parse(row.dataset.alert);
-      $("#alertModalTitle").textContent = a.alert_no;
-      $("#alertModalSub").textContent = row.querySelector(".badge-dot").textContent;
-
-      $("#alertModalDetails").innerHTML = "";
-      a.rows.forEach(([label, value]) => addDetail(label, value));
-      if (a.admin_notes) addDetail("Admin notes", a.admin_notes);
-
-      const map = $("#alertModalMap");
-      map.hidden = !a.map_url;
-      map.href = a.map_url || "#";
-
-      const timeline = $("#alertModalTimeline");
-      timeline.innerHTML = "";
-      if (!a.timeline.length) {
-        const li = document.createElement("li");
-        li.className = "text-muted";
-        li.textContent = "No status changes recorded yet.";
-        timeline.append(li);
-      }
-      a.timeline.forEach((t) => {
-        const li = document.createElement("li");
-        const head = document.createElement("strong");
-        head.textContent = `${t.status} · ${t.by}`;
-        const when = document.createElement("small");
-        when.textContent = t.when + (t.notes ? ` — ${t.notes}` : "");
-        li.append(head, when);
-        timeline.append(li);
-      });
-
-      const form = $("#alertUpdateForm");
-      form.action = updateUrl.replace("__ID__", encodeURIComponent(a.id));
-      $("#alertUpdateStatus").value = a.status;
-      $("#alertUpdateSeverity").value = a.severity;
-      $("#alertUpdateNotes").value = a.admin_notes;
-
-      modal.hidden = false;
-      if (window.lucide) lucide.createIcons();
-      if (focusForm) {
-        form.scrollIntoView({ block: "nearest" });
-        $("#alertUpdateStatus").focus();
-      } else {
-        $(".admin-modal-close", modal).focus();
-      }
-    }
-
-    document.addEventListener("click", (e) => {
-      const view = e.target.closest(".js-alert-view");
-      const edit = e.target.closest(".js-alert-edit");
-      if (view || edit) {
-        document.querySelectorAll(".row-menu.open").forEach((m) => m.classList.remove("open"));
-        openAlert((view || edit).closest("tr"), Boolean(edit));
-      }
-      if (e.target.closest("[data-close-alert]")) modal.hidden = true;
-    });
-
-    // ---- Log incident modal ----
-    const incident = $("#logIncidentModal");
-    $("#openLogIncident").addEventListener("click", () => {
-      incident.hidden = false;
-      $("#incidentElder").focus();
-    });
-    incident.addEventListener("click", (e) => {
-      if (e.target.closest("[data-close-incident]")) incident.hidden = true;
-    });
-    $("#incidentElder").addEventListener("change", (e) => {
-      const address = e.target.selectedOptions[0]?.dataset.address || "";
-      $("#incidentLocation").placeholder = address || "Location";
-    });
-
-    // ---- Close with Escape, confirm delete ----
-    document.addEventListener("keydown", (e) => {
-      if (e.key !== "Escape") return;
-      modal.hidden = true;
-      incident.hidden = true;
-    });
-    document.addEventListener("submit", (e) => {
-      if (!e.target.classList.contains("js-confirm-delete-alert")) return;
-      const no = e.target.closest("tr").querySelector(".cell-strong").textContent;
-      if (!confirm(`Remove ${no} from the logs? Families will no longer see it.`)) {
-        e.preventDefault();
-      }
-    });
-  })();
-</script>
 {% endblock %}

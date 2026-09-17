@@ -1,371 +1,201 @@
-{% extends "admin/base.html" %} {% block content %}
-<style>
-  .sub-page {
-    padding: 24px;
-    font-family: "Inter", sans-serif;
-  }
-  .sub-header {
-    margin-bottom: 20px;
-  }
-  .sub-header h1 {
-    margin: 0 0 4px;
-    font-size: 22px;
-    font-weight: 800;
-  }
-  .sub-header p {
-    margin: 0;
-    color: #64748b;
-    font-size: 13.5px;
-  }
+{% extends 'admin/base.html' %}
+{% block title %}Subscriptions{% endblock %}
 
-  .sub-stats {
-    display: flex;
-    gap: 12px;
-    margin-bottom: 20px;
-    flex-wrap: wrap;
-  }
-  .sub-stat {
-    background: #fff;
-    border: 1px solid #e6e9ef;
-    border-radius: 12px;
-    padding: 14px 18px;
-    min-width: 140px;
-  }
-  .sub-stat .label {
-    font-size: 12px;
-    color: #64748b;
-  }
-  .sub-stat .value {
-    font-size: 24px;
-    font-weight: 800;
-    margin-top: 2px;
-  }
-
-  .sub-tabs {
-    display: flex;
-    gap: 8px;
-    margin-bottom: 16px;
-  }
-  .sub-tab {
-    padding: 8px 16px;
-    border-radius: 999px;
-    border: 1px solid #e6e9ef;
-    background: #fff;
-    color: #64748b;
-    font-size: 13px;
-    font-weight: 600;
-    text-decoration: none;
-  }
-  .sub-tab.active {
-    background: #2f6feb;
-    border-color: #2f6feb;
-    color: #fff;
-  }
-
-  .sub-table-wrap {
-    background: #fff;
-    border: 1px solid #e6e9ef;
-    border-radius: 14px;
-    overflow-x: auto;
-    margin-bottom: 24px;
-  }
-  table.sub-table {
-    width: 100%;
-    border-collapse: collapse;
-    font-size: 13px;
-  }
-  .sub-table th {
-    text-align: left;
-    padding: 12px 14px;
-    background: #fafbfc;
-    border-bottom: 1px solid #e6e9ef;
-    font-size: 11px;
-    text-transform: uppercase;
-    color: #64748b;
-    letter-spacing: 0.04em;
-  }
-  .sub-table td {
-    padding: 12px 14px;
-    border-bottom: 1px solid #e6e9ef;
-    vertical-align: middle;
-  }
-  .sub-table tr:last-child td {
-    border-bottom: none;
-  }
-
-  .badge {
-    display: inline-block;
-    padding: 3px 10px;
-    border-radius: 999px;
-    font-size: 11px;
-    font-weight: 700;
-  }
-  .badge-pending {
-    background: #fef3dd;
-    color: #b45309;
-  }
-  .badge-active {
-    background: #e3f8ea;
-    color: #16a34a;
-  }
-  .badge-rejected {
-    background: #fdecea;
-    color: #dc2626;
-  }
-
-  .row-actions button {
-    padding: 6px 12px;
-    border-radius: 8px;
-    border: none;
-    font-size: 12px;
-    font-weight: 700;
-    cursor: pointer;
-    margin-right: 6px;
-  }
-  .btn-approve {
-    background: #16a34a;
-    color: #fff;
-  }
-  .btn-reject {
-    background: #dc2626;
-    color: #fff;
-  }
-
-  .qr-section {
-    background: #fff;
-    border: 1px solid #e6e9ef;
-    border-radius: 14px;
-    padding: 20px;
-  }
-  .qr-section h2 {
-    font-size: 16px;
-    margin: 0 0 14px;
-  }
-  .qr-form-grid {
-    display: grid;
-    grid-template-columns: repeat(3, 1fr);
-    gap: 16px;
-  }
-  .qr-form-card {
-    border: 1px solid #e6e9ef;
-    border-radius: 12px;
-    padding: 14px;
-  }
-  .qr-form-card h3 {
-    margin: 0 0 10px;
-    font-size: 14px;
-  }
-  .qr-form-card label {
-    display: block;
-    font-size: 12px;
-    font-weight: 600;
-    margin: 8px 0 4px;
-  }
-  .qr-form-card input {
-    width: 100%;
-    padding: 8px 10px;
-    border: 1px solid #dfe3ea;
-    border-radius: 8px;
-    font-size: 13px;
-    box-sizing: border-box;
-  }
-  .qr-form-card img {
-    max-width: 100%;
-    margin-top: 8px;
-    border-radius: 8px;
-  }
-  .qr-save-btn {
-    margin-top: 10px;
-    width: 100%;
-    padding: 8px;
-    border: none;
-    border-radius: 8px;
-    background: #2f6feb;
-    color: #fff;
-    font-weight: 700;
-    cursor: pointer;
-  }
-</style>
-
-<div class="sub-page">
-  <div class="sub-header">
-    <h1>Care Plan Payments</h1>
-    <p>Review GCash payment submissions and manage per-plan QR codes.</p>
+{% block content %}
+<div class="admin-page-header">
+  <div>
+    <h1>Subscriptions</h1>
+    <p>Manage all subscription plans and user subscriptions.</p>
   </div>
+  <a href="{{ url_for('admin.download_subscriptions') }}" class="btn btn-outline">
+    <i data-lucide="download"></i> Export
+  </a>
+</div>
 
-  <div class="sub-stats">
-    <div class="sub-stat">
-      <div class="label">Pending</div>
-      <div class="value">{{ stats.pending }}</div>
-    </div>
-    <div class="sub-stat">
-      <div class="label">Approved</div>
-      <div class="value">{{ stats.approved }}</div>
-    </div>
-    <div class="sub-stat">
-      <div class="label">Rejected</div>
-      <div class="value">{{ stats.rejected }}</div>
-    </div>
-    <div class="sub-stat">
-      <div class="label">Total</div>
-      <div class="value">{{ stats.total }}</div>
+<!-- STAT CARDS -->
+<section class="admin-stats admin-stats-5">
+  <div class="stat-card stat-card-compact">
+    <span class="stat-icon tint-blue"><i data-lucide="credit-card"></i></span>
+    <div class="stat-body">
+      <span class="stat-label">Total Subscriptions</span>
+      <strong class="stat-value">{{ stats.total }}</strong>
+      <span class="stat-sub text-muted">All subscriptions</span>
     </div>
   </div>
-
-  <div class="sub-tabs">
-    <a
-      href="{{ url_for('admin.subscriptions', status='pending') }}"
-      class="sub-tab {{ 'active' if status_filter == 'pending' }}"
-      >Pending</a
-    >
-    <a
-      href="{{ url_for('admin.subscriptions', status='approved') }}"
-      class="sub-tab {{ 'active' if status_filter == 'approved' }}"
-      >Approved</a
-    >
-    <a
-      href="{{ url_for('admin.subscriptions', status='rejected') }}"
-      class="sub-tab {{ 'active' if status_filter == 'rejected' }}"
-      >Rejected</a
-    >
-    <a
-      href="{{ url_for('admin.subscriptions', status='all') }}"
-      class="sub-tab {{ 'active' if status_filter == 'all' }}"
-      >All</a
-    >
+  <div class="stat-card stat-card-compact">
+    <span class="stat-icon tint-green"><i data-lucide="circle-check"></i></span>
+    <div class="stat-body">
+      <span class="stat-label">Active Subscriptions</span>
+      <strong class="stat-value">{{ stats.active }}</strong>
+      <span class="stat-sub text-muted">{{ stats.active_pct }}% of total</span>
+    </div>
   </div>
+  <div class="stat-card stat-card-compact">
+    <span class="stat-icon tint-orange"><i data-lucide="clock"></i></span>
+    <div class="stat-body">
+      <span class="stat-label">Expiring Soon</span>
+      <strong class="stat-value">{{ stats.expiring }}</strong>
+      <span class="stat-sub text-muted">Within {{ expiring_days }} days</span>
+    </div>
+  </div>
+  <div class="stat-card stat-card-compact">
+    <span class="stat-icon tint-red"><i data-lucide="triangle-alert"></i></span>
+    <div class="stat-body">
+      <span class="stat-label">Expired</span>
+      <strong class="stat-value">{{ stats.expired }}</strong>
+      <span class="stat-sub text-muted">Requires attention</span>
+    </div>
+  </div>
+  <div class="stat-card stat-card-compact">
+    <span class="stat-icon tint-purple"><i data-lucide="philippine-peso"></i></span>
+    <div class="stat-body">
+      <span class="stat-label">Monthly Revenue</span>
+      <strong class="stat-value">&#8369;{{ '{:,}'.format(stats.revenue) }}</strong>
+      <span class="stat-sub text-muted">From active plans</span>
+    </div>
+  </div>
+</section>
 
-  <div class="sub-table-wrap">
-    <table class="sub-table">
+<!-- FILTERS -->
+<section class="admin-card filter-bar">
+  <label class="search-box">
+    <i data-lucide="search"></i>
+    <input type="search" id="subSearch" placeholder="Search subscriptions..." aria-label="Search subscriptions" />
+  </label>
+  <label class="labeled-select">
+    <span>Plan</span>
+    <select id="subPlanFilter">
+      <option value="">All</option>
+      {% for key, plan in plans.items() %}<option value="{{ key }}">{{ plan.name }}</option>{% endfor %}
+    </select>
+  </label>
+  <label class="labeled-select">
+    <span>Status</span>
+    <select id="subStatusFilter">
+      <option value="">All</option>
+      <option value="active">Active</option>
+      <option value="expiring">Expiring Soon</option>
+      <option value="expired">Expired</option>
+    </select>
+  </label>
+  <button type="button" class="btn btn-outline" id="subClearFilters">
+    <i data-lucide="refresh-cw"></i> Clear Filters
+  </button>
+</section>
+
+<!-- TABLE -->
+<section class="admin-card admin-table-card">
+  <div class="table-scroll">
+    <table class="admin-table" id="subsTable">
       <thead>
         <tr>
-          <th>Payment #</th>
-          <th>Elder</th>
-          <th>Device</th>
+          <th>Subscriber</th>
+          <th>User Type</th>
+          <th>Device(s)</th>
           <th>Plan</th>
-          <th>Amount</th>
-          <th>Reference #</th>
-          <th>Payer</th>
+          <th>Price</th>
           <th>Status</th>
-          <th>Submitted</th>
-          <th>Action</th>
+          <th>Start Date</th>
+          <th>Expiry Date</th>
+          <th>Auto Renew</th>
         </tr>
       </thead>
       <tbody>
-        {% for p in rows %}
-        <tr id="row-{{ p.id }}">
-          <td>{{ p.payment_no }}</td>
-          <td>{{ p.elder_name }}</td>
-          <td>{{ p.device_id }}</td>
-          <td>{{ p.months }} month{{ 's' if p.months != 1 else '' }}</td>
-          <td>₱{{ p.amount }}</td>
-          <td>{{ p.reference_no }}</td>
-          <td>{{ p.payer_name }}</td>
-          <td><span class="badge {{ p.badge }}">{{ p.status_label }}</span></td>
-          <td>{{ p.created }}</td>
-          <td class="row-actions">
-            {% if p.status == 'pending' %}
-            <button
-              class="btn-approve"
-              onclick="reviewPayment('{{ p.id }}', 'approve')"
-            >
-              Approve
-            </button>
-            <button
-              class="btn-reject"
-              onclick="reviewPayment('{{ p.id }}', 'reject')"
-            >
-              Reject
-            </button>
+        {% for row in rows %}
+        <tr data-status="{{ row.status }}" data-plan="{{ row.plan_key }}">
+          <td>
+            <div class="user-cell">
+              <span class="admin-avatar-lg avatar-{{ row.type }}">{{ row.initials }}</span>
+              <div>
+                <strong>{{ row.name }}</strong>
+                <small>ID: {{ row.display_id }}</small>
+              </div>
+            </div>
+          </td>
+          <td><span class="badge badge-{{ row.type }}">{{ row.type_label }}</span></td>
+          <td>
+            {% if row.devices %}
+            <div class="stacked-cell">
+              <strong>{{ row.devices|length }} Device{{ '' if row.devices|length == 1 else 's' }}</strong>
+              <small class="device-chips">
+                {% for serial in row.devices[:2] %}<span class="chip">{{ serial }}</span>{% endfor %}
+                {% if row.devices|length > 2 %}<span class="chip">+{{ row.devices|length - 2 }}</span>{% endif %}
+              </small>
+            </div>
             {% else %}
-            <span style="color: #94a3b8; font-size: 12px">
-              {{ p.admin_note or '—' }}{% if p.reviewed_by_name %} · {{
-              p.reviewed_by_name }}{% endif %}
-            </span>
+            <span class="text-muted">No device</span>
+            {% endif %}
+          </td>
+          <td>
+            <div class="stacked-cell">
+              <strong>{{ row.plan }}</strong>
+              <small>{{ row.plan_blurb }}</small>
+            </div>
+          </td>
+          <td class="nowrap"><strong class="cell-strong">&#8369;{{ row.price }}</strong> <small class="text-muted">/ month</small></td>
+          <td>
+            {% if row.status == 'active' %}
+            <span class="badge badge-active">Active</span>
+            {% elif row.status == 'expiring' %}
+            <span class="badge badge-pending">Expiring Soon</span>
+            {% else %}
+            <span class="badge badge-rejected">Expired</span>
+            {% endif %}
+          </td>
+          <td class="nowrap">{{ row.start }}</td>
+          <td class="nowrap">
+            {{ row.expiry }}
+            {% if row.days_left is not none %}
+              {% if row.status == 'expiring' %}
+              <small class="text-orange">{{ row.days_left }} days left</small>
+              {% elif row.status == 'expired' %}
+              <small class="text-red">Expired {{ -row.days_left }} days ago</small>
+              {% endif %}
+            {% endif %}
+          </td>
+          <td>
+            {% if row.auto_renew %}
+            <span class="renew-yes"><i data-lucide="circle-check"></i> Yes</span>
+            {% else %}
+            <span class="renew-no"><i data-lucide="circle-x"></i> No</span>
             {% endif %}
           </td>
         </tr>
-        {% else %}
-        <tr>
-          <td
-            colspan="10"
-            style="text-align: center; padding: 32px; color: #94a3b8"
-          >
-            No payments found.
+        {% endfor %}
+        <tr class="table-empty" {% if rows %}hidden{% endif %}>
+          <td colspan="9">
+            <div class="empty-state">
+              <span class="empty-icon"><i data-lucide="credit-card"></i></span>
+              {% if rows %}
+              <strong>No subscriptions match</strong>
+              <p>Try a different search or clear the filters.</p>
+              {% else %}
+              <strong>No subscriptions yet</strong>
+              <p>Add documents to the <code>subscription</code> collection, or run <code>seed_subscriptions.py</code> to try this page out.</p>
+              {% endif %}
+            </div>
           </td>
         </tr>
-        {% endfor %}
       </tbody>
     </table>
   </div>
 
-  <div class="qr-section">
-    <h2>GCash QR per Plan Length</h2>
-    <div class="qr-form-grid">
-      {% for months in month_options %}
-      <div class="qr-form-card">
-        <h3>{{ months }} Month{{ 's' if months != 1 else '' }}</h3>
-        <form method="POST" action="{{ url_for('admin.save_plan_qr_codes') }}">
-          <input type="hidden" name="months" value="{{ months }}" />
-          <label>GCash Name</label>
-          <input
-            type="text"
-            name="gcash_name"
-            value="{{ plan_qr_codes[months].gcash_name }}"
-            placeholder="e.g. ALISTO CHUCHU"
-          />
-          <label>GCash Number</label>
-          <input
-            type="text"
-            name="gcash_number"
-            value="{{ plan_qr_codes[months].gcash_number }}"
-            placeholder="09XX-XXX-XXXX"
-          />
-          <label>QR Image URL</label>
-          <input
-            type="text"
-            name="qr_image_url"
-            value="{{ plan_qr_codes[months].qr_image_url }}"
-            placeholder="/static/images/alisto_qr.jpg"
-          />
-          {% if plan_qr_codes[months].qr_image_url %}
-          <img
-            src="{{ plan_qr_codes[months].qr_image_url }}"
-            alt="QR preview"
-          />
-          {% endif %}
-          <button type="submit" class="qr-save-btn">Save</button>
-        </form>
-      </div>
-      {% endfor %}
-    </div>
+  <div class="table-footer">
+    <span class="text-muted table-showing"></span>
+    <nav class="pagination" aria-label="Subscription pages"></nav>
   </div>
-</div>
+</section>
 
-<script>
-  async function reviewPayment(id, action) {
-    let note = "";
-    if (action === "reject") {
-      note = prompt("Reason for rejecting this payment:");
-      if (!note) return;
-    } else {
-      note = prompt("Optional note (leave blank if none):") || "";
-    }
-
-    const form = new FormData();
-    form.append("admin_note", note);
-
-    try {
-      const res = await fetch(`/admin/subscriptions/${id}/${action}`, {
-        method: "POST",
-        body: form,
-      });
-      const data = await res.json();
-      alert(data.message);
-      if (data.success) location.reload();
-    } catch (err) {
-      alert("Network error. Please try again.");
-    }
-  }
-</script>
+<!-- PLAN REFERENCE -->
+<section class="plan-cards">
+  {% for key, plan in plans.items() %}
+  <div class="admin-card plan-card">
+    <div class="plan-head">
+      <strong>{{ plan.name }}</strong>
+      <span class="plan-price">&#8369;{{ plan.price }}<small>/ month</small></span>
+    </div>
+    <p class="text-muted">{{ plan.blurb }} · {{ rows | selectattr('plan_key', 'equalto', key) | list | length }} subscriber(s)</p>
+  </div>
+  {% endfor %}
+</section>
 {% endblock %}
