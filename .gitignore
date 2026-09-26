@@ -2,3 +2,9 @@ serviceAccountKey.json
 uploads/
 __pycache__/
 .env
+backups/
+install.sh
+patch_check_headers.py
+patch_install_sh.py
+alisto_full_text.txt
+alisto-iot/alisto-iot-pi.zip

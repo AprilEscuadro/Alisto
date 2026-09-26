@@ -56,6 +56,61 @@
   </div>
 </section>
 
+<!-- PENDING PAYMENTS -->
+{% if pending_payments %}
+<section class="admin-card">
+  <div class="admin-card-header admin-card-header-stack">
+    <h2>Pending Payments <span class="badge badge-pending">{{ pending_payments|length }}</span></h2>
+    <p>GCash reference numbers families have submitted, waiting for review.</p>
+  </div>
+  <div class="table-scroll">
+    <table class="admin-table">
+      <thead>
+        <tr>
+          <th>Payment #</th>
+          <th>Resident</th>
+          <th>Payer</th>
+          <th>Method</th>
+          <th>Reference #</th>
+          <th>Plan</th>
+          <th>Amount</th>
+          <th>Submitted</th>
+          <th></th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for p in pending_payments %}
+        <tr>
+          <td>{{ p.payment_no }}</td>
+          <td>{{ p.elder_name }}</td>
+          <td>{{ p.payer_name }}</td>
+          <td>{{ p.method }}</td>
+          <td>{{ p.reference_no }}</td>
+          <td>{{ p.months }} month{{ 's' if p.months != 1 else '' }}</td>
+          <td>&#8369;{{ '{:,.2f}'.format(p.amount) }}</td>
+          <td>{{ p.submitted }}</td>
+          <td>
+            <div style="display:flex; gap:8px;">
+              <form method="POST" action="{{ url_for('admin.update_payment', payment_id=p.id, action='approve') }}">
+                <button type="submit" class="btn btn-sm btn-primary">
+                  <i data-lucide="check"></i> Approve
+                </button>
+              </form>
+              <form method="POST" action="{{ url_for('admin.update_payment', payment_id=p.id, action='reject') }}">
+                <button type="submit" class="btn btn-sm btn-outline">
+                  <i data-lucide="x"></i> Reject
+                </button>
+              </form>
+            </div>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</section>
+{% endif %}
+
 <!-- FILTERS -->
 <section class="admin-card filter-bar">
   <label class="search-box">

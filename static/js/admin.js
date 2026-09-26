@@ -43,10 +43,10 @@
 
   // ---------- Row action menus (⋮) ----------
   function closeRowMenus(except) {
-    $$('.row-menu.open').forEach((menu) => {
+    $$('.row-menu.open, .export-menu.open').forEach((menu) => {
       if (menu !== except) {
         menu.classList.remove('open');
-        $('.row-menu-btn', menu).setAttribute('aria-expanded', 'false');
+        $('.row-menu-btn, .export-menu-btn', menu).setAttribute('aria-expanded', 'false');
       }
     });
   }
@@ -68,16 +68,16 @@
     window.addEventListener('resize', () => closeRowMenus());
 
     document.addEventListener('click', (e) => {
-      const button = e.target.closest('.row-menu-btn');
+      const button = e.target.closest('.row-menu-btn, .export-menu-btn');
       if (button) {
-        const menu = button.closest('.row-menu');
+        const menu = button.closest('.row-menu, .export-menu');
         closeRowMenus(menu);
         const open = menu.classList.toggle('open');
         button.setAttribute('aria-expanded', String(open));
-        if (open) placeMenu(button, $('.row-menu-list', menu));
+        if (open) placeMenu(button, $('.row-menu-list, .export-menu-list', menu));
         return;
       }
-      if (!e.target.closest('.row-menu-list')) closeRowMenus();
+      if (!e.target.closest('.row-menu-list, .export-menu-list')) closeRowMenus();
 
       const profile = $('#adminProfile');
       if (profile && !e.target.closest('#adminProfile')) profile.classList.remove('open');
@@ -95,30 +95,119 @@
       closeModal();
     });
 
-    // Ask before rejecting a BHW or removing a serial number
+    // Ask before rejecting a BHW, removing/adding a serial number, marking
+    // a false alarm, or unregistering a device -- via the floating
+    // confirmDialog() below instead of the browser's native confirm(),
+    // which looks jarring next to the rest of this UI (and the family
+    // side already has its own floating version of the same thing, see
+    // dashboard.css's .confirm-overlay). confirmDialog() is async, so
+    // this always prevents the FIRST submit and, if confirmed, resubmits
+    // the form directly with form.submit() -- which (unlike a "submit"
+    // click) never re-fires this same listener, so there's no loop.
     document.addEventListener('submit', (e) => {
-      if (e.target.classList.contains('js-confirm-reject') &&
-          !confirm('Reject this BHW registration? They will not be able to sign in.')) {
-        e.preventDefault();
-      }
-      if (e.target.classList.contains('js-confirm-delete-device')) {
-        const serial = e.target.closest('tr').dataset.serial;
-        if (!confirm(`Remove serial number ${serial}? It will no longer work for registration.`)) {
-          e.preventDefault();
-        }
-      }
-      if (e.target.classList.contains('js-confirm-false-alarm') &&
-          !confirm('Mark this alert as a false alarm? It will stop showing as active.')) {
-        e.preventDefault();
-      }
-      if (e.target.classList.contains('js-confirm-unregister')) {
-        const serial = e.target.closest('tr').dataset.serial;
-        const elder = e.target.dataset.elder;
+      const form = e.target;
+      let request = null;
+
+      if (form.classList.contains('js-confirm-reject')) {
+        request = {
+          title: 'Reject this BHW?',
+          message: 'They will not be able to sign in.',
+          okLabel: 'Reject', danger: true,
+        };
+      } else if (form.classList.contains('js-confirm-delete-device')) {
+        const serial = form.closest('tr').dataset.serial;
+        request = {
+          title: `Remove ${serial}?`,
+          message: 'It will no longer work for registration.',
+          okLabel: 'Remove', danger: true,
+        };
+      } else if (form.classList.contains('js-confirm-false-alarm')) {
+        request = {
+          title: 'Mark as false alarm?',
+          message: 'It will stop showing as active.',
+          okLabel: 'Mark False Alarm', danger: true,
+        };
+      } else if (form.classList.contains('js-confirm-add-devices')) {
+        const lines = $('#serial_numbers', form).value.split('\n').map((l) => l.trim()).filter(Boolean);
+        const n = lines.length;
+        const preview = lines.slice(0, 5).join(', ') + (n > 5 ? `, +${n - 5} more` : '');
+        request = {
+          title: `Register ${n} serial number${n === 1 ? '' : 's'}?`,
+          message: preview, okLabel: 'Register', danger: false,
+        };
+      } else if (form.classList.contains('js-confirm-unregister')) {
+        const serial = form.closest('tr').dataset.serial;
+        const elder = form.dataset.elder;
         const who = elder ? `${elder} will no longer have a device linked` : 'the linked elder will no longer have a device';
-        if (!confirm(`Unregister ${serial}? ${who}, and the serial becomes available for someone else.`)) {
-          e.preventDefault();
-        }
+        request = {
+          title: `Unregister ${serial}?`,
+          message: `${who}, and the serial becomes available for someone else.`,
+          okLabel: 'Unregister', danger: true,
+        };
+      } else if (form.classList.contains('js-confirm-archive')) {
+        request = {
+          title: `Archive ${form.dataset.name}?`,
+          message: 'They’ll be hidden from the default Users list, but nothing is deleted -- their alerts, subscriptions, and links stay intact, and you can restore them anytime.',
+          okLabel: 'Archive', danger: true,
+        };
       }
+
+      if (!request) return;
+      e.preventDefault();
+      confirmDialog(request).then((ok) => { if (ok) form.submit(); });
+    });
+
+    // Same floating confirm, for a plain link instead of a form -- e.g.
+    // Logout, which just navigates rather than submitting anything.
+    document.addEventListener('click', (e) => {
+      const link = e.target.closest('.js-confirm-link');
+      if (!link) return;
+      e.preventDefault();
+      confirmDialog({
+        title: link.dataset.confirmTitle || 'Are you sure?',
+        message: link.dataset.confirmMessage || '',
+        okLabel: link.dataset.confirmOk || 'Confirm',
+        danger: link.dataset.confirmDanger === 'true',
+      }).then((ok) => { if (ok) window.location.href = link.href; });
+    });
+  }
+
+  // ---------- Floating confirm dialog (replaces window.confirm()) ----------
+  function confirmDialog({ title, message, okLabel = 'Confirm', danger = false }) {
+    const overlay = $('#adminConfirm');
+    if (!overlay) return Promise.resolve(true); // page has no dialog markup -- fail open rather than block the action
+
+    $('#adminConfirmTitle', overlay).textContent = title;
+    $('#adminConfirmText', overlay).textContent = message;
+    $('#adminConfirmIcon', overlay).className = `confirm-icon${danger ? ' confirm-icon-danger' : ''}`;
+
+    const okBtn = $('#adminConfirmOk', overlay);
+    const cancelBtn = $('#adminConfirmCancel', overlay);
+    okBtn.textContent = okLabel;
+    okBtn.className = `btn ${danger ? 'btn-danger-solid' : 'btn-primary'}`;
+
+    overlay.classList.add('open');
+    overlay.setAttribute('aria-hidden', 'false');
+
+    return new Promise((resolve) => {
+      function done(result) {
+        overlay.classList.remove('open');
+        overlay.setAttribute('aria-hidden', 'true');
+        okBtn.removeEventListener('click', onOk);
+        cancelBtn.removeEventListener('click', onCancel);
+        overlay.removeEventListener('click', onBackdrop);
+        document.removeEventListener('keydown', onKey);
+        resolve(result);
+      }
+      function onOk() { done(true); }
+      function onCancel() { done(false); }
+      function onBackdrop(e) { if (e.target === overlay) done(false); }
+      function onKey(e) { if (e.key === 'Escape') done(false); }
+
+      okBtn.addEventListener('click', onOk);
+      cancelBtn.addEventListener('click', onCancel);
+      overlay.addEventListener('click', onBackdrop);
+      document.addEventListener('keydown', onKey);
     });
   }
 
@@ -220,8 +309,8 @@
     },
     {
       table: '#logsTable', search: '#logSearch', noun: 'alerts',
-      filters: { status: '#logStatusFilter', severity: '#logSeverityFilter' },
-      clearButton: '#logClearFilters',
+      filters: { status: '#logStatusFilter' },
+      clearButton: '#logClearFilters', exportButton: '#exportLogs',
     },
     {
       table: '#subsTable', search: '#subSearch', noun: 'subscriptions',
@@ -330,28 +419,92 @@
       icons();
     }
 
-    function exportCsv() {
-      // Read the table as shown, so any table can be exported.
+    // Reads the table as shown (filtered, but not paginated), so any table
+    // can be exported regardless of which columns/format it needs.
+    function tableData() {
       const header = $$('thead th', table).map((th) => th.textContent.trim()).filter((t) => t !== 'Actions');
-      const quote = (v) => `"${String(v ?? '').replace(/"/g, '""')}"`;
-      const lines = [header.map(quote).join(',')];
-      matches.forEach((row) => {
-        const cells = $$('td', row)
+      const rows = matches.map((row) =>
+        $$('td', row)
           .filter((td) => !td.classList.contains('col-actions'))
-          .map((td) => td.textContent.replace(/\s+/g, ' ').trim());
-        lines.push(cells.map(quote).join(','));
-      });
-      const blob = new Blob(['\ufeff' + lines.join('\r\n')], { type: 'text/csv;charset=utf-8' });
+          .map((td) => td.textContent.replace(/\s+/g, ' ').trim())
+      );
+      return { header, rows };
+    }
+
+    function downloadBlob(blob, ext) {
       const link = document.createElement('a');
       link.href = URL.createObjectURL(blob);
-      link.download = `alisto-${config.noun}-${new Date().toISOString().slice(0, 10)}.csv`;
+      link.download = `alisto-${config.noun}-${new Date().toISOString().slice(0, 10)}.${ext}`;
       link.click();
       URL.revokeObjectURL(link.href);
     }
 
+    function escapeHtml(v) {
+      return String(v ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+    }
+
+    function exportCsv() {
+      const { header, rows } = tableData();
+      const quote = (v) => `"${String(v ?? '').replace(/"/g, '""')}"`;
+      const lines = [header, ...rows].map((r) => r.map(quote).join(','));
+      downloadBlob(new Blob(['\ufeff' + lines.join('\r\n')], { type: 'text/csv;charset=utf-8' }), 'csv');
+    }
+
+    function exportExcel() {
+      // An .xls file that's really just an HTML table -- Excel opens this
+      // natively, so no spreadsheet library is needed for this to work.
+      const { header, rows } = tableData();
+      const thead = `<tr>${header.map((h) => `<th>${escapeHtml(h)}</th>`).join('')}</tr>`;
+      const tbody = rows.map((r) => `<tr>${r.map((c) => `<td>${escapeHtml(c)}</td>`).join('')}</tr>`).join('');
+      const html = `<html><head><meta charset="UTF-8"></head><body><table border="1">${thead}${tbody}</table></body></html>`;
+      downloadBlob(new Blob(['\ufeff' + html], { type: 'application/vnd.ms-excel' }), 'xls');
+    }
+
+    function exportJson() {
+      const { header, rows } = tableData();
+      const records = rows.map((r) => Object.fromEntries(header.map((h, i) => [h, r[i]])));
+      downloadBlob(new Blob([JSON.stringify(records, null, 2)], { type: 'application/json' }), 'json');
+    }
+
+    function exportPdf() {
+      // No PDF library on this page either -- open a print-formatted table
+      // in a new tab and let the browser's own "Save as PDF" print
+      // destination produce the file.
+      const { header, rows } = tableData();
+      const thead = `<tr>${header.map((h) => `<th>${escapeHtml(h)}</th>`).join('')}</tr>`;
+      const tbody = rows.map((r) => `<tr>${r.map((c) => `<td>${escapeHtml(c)}</td>`).join('')}</tr>`).join('');
+      const win = window.open('', '_blank');
+      if (!win) return;
+      win.document.write(`<html><head><title>Alisto ${escapeHtml(config.noun)}</title><style>
+        body { font-family: Arial, sans-serif; padding: 24px; }
+        table { width: 100%; border-collapse: collapse; font-size: 12px; }
+        th, td { border: 1px solid #ccc; padding: 6px 8px; text-align: left; }
+        th { background: #f1f5f9; }
+        h1 { font-size: 16px; margin-bottom: 4px; }
+        p { font-size: 12px; color: #666; margin: 0 0 16px; }
+      </style></head><body>
+        <h1>Alisto &mdash; ${escapeHtml(config.noun)}</h1>
+        <p>Exported ${escapeHtml(new Date().toLocaleString())}</p>
+        <table>${thead}${tbody}</table>
+      </body></html>`);
+      win.document.close();
+      win.focus();
+      win.print();
+    }
+
+    const EXPORTERS = { csv: exportCsv, excel: exportExcel, json: exportJson, pdf: exportPdf };
+
     if (search) search.addEventListener('input', applyFilters);
     filters.forEach(([, el]) => el.addEventListener('change', applyFilters));
-    if (config.exportButton && $(config.exportButton)) $(config.exportButton).addEventListener('click', exportCsv);
+    if (config.exportButton && $(config.exportButton)) {
+      $$('[data-format]', $(config.exportButton)).forEach((btn) => {
+        btn.addEventListener('click', () => {
+          const run = EXPORTERS[btn.dataset.format];
+          if (run) run();
+          $(config.exportButton).classList.remove('open');
+        });
+      });
+    }
     if (config.clearButton && $(config.clearButton)) {
       $(config.clearButton).addEventListener('click', () => {
         if (search) search.value = '';
@@ -431,6 +584,58 @@
     });
   }
 
+  // ---------- Add User (BHW) window ----------
+  function setupAddUser() {
+    const modal = $('#addUserModal');
+    const open = $('#openAddUser');
+    const form = $('#addUserForm');
+    const errorBox = $('#addUserError');
+    if (!modal || !open || !form) return;
+
+    open.addEventListener('click', () => {
+      modal.hidden = false;
+      $('input[name="full_name"]', modal).focus();
+    });
+    modal.addEventListener('click', (e) => {
+      if (e.target.closest('[data-close-modal]')) modal.hidden = true;
+    });
+    document.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape') modal.hidden = true;
+    });
+
+    // Submitted via fetch() instead of a plain POST so a validation error
+    // (e.g. duplicate email) shows up right inside the still-open modal --
+    // a plain form submit would redirect to a fresh page with the error
+    // only as a flash banner at the very top, easy to miss while scrolled
+    // down filling a long form (real testing: looked like the button just
+    // did nothing).
+    form.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      errorBox.hidden = true;
+      const button = $('button[type="submit"]', form);
+      const originalText = button.textContent;
+      button.disabled = true;
+      button.textContent = 'Adding...';
+
+      try {
+        const res = await fetch(form.action, { method: 'POST', body: new FormData(form) });
+        const data = await res.json().catch(() => ({ success: false, message: 'Something went wrong on the server. Please try again.' }));
+        if (data.success) {
+          window.location.reload();
+          return; // leave the button disabled -- the page is about to reload anyway
+        }
+        errorBox.textContent = data.message || 'Could not add this user. Please check the form.';
+        errorBox.hidden = false;
+        errorBox.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      } catch (err) {
+        errorBox.textContent = 'Could not reach the server. Check your connection and try again.';
+        errorBox.hidden = false;
+      }
+      button.disabled = false;
+      button.textContent = originalText;
+    });
+  }
+
   // ---------- Edit profile (swap the details list for a form) ----------
   function setupProfileEdit() {
     const edit = $('#editProfileBtn');
@@ -490,6 +695,7 @@
     setupAlertFilters();   // creates the hidden select the alerts table filters on
     FILTER_TABLES.forEach(setupFilterTable);
     setupAddDevices();
+    setupAddUser();
     setupProfileEdit();
     setupPasswordToggles();
     setupPasswordChecklist();

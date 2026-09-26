@@ -178,6 +178,28 @@ body {
     background: #3d6fe0;
 }
 
+.btn-submit:disabled {
+    cursor: default;
+    opacity: 0.85;
+}
+
+.btn-submit.is-loading {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 10px;
+}
+
+.btn-submit.is-loading::before {
+    content: '';
+    width: 18px;
+    height: 18px;
+    border: 2.5px solid rgba(255, 255, 255, 0.45);
+    border-top-color: #fff;
+    border-radius: 50%;
+    animation: spin 0.6s linear infinite;
+}
+
 .field-error {
     color: #e53e3e;
     font-size: 0.8rem;

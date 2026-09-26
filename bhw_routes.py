@@ -197,25 +197,36 @@ def _alerts_for(elder_ids, since=None):
         alert = doc.to_dict() or {}
         if alert.get('elder_id') not in elder_ids:
             continue
-        created = ac.local(alert.get('created_at'))
+        created = ac.local(alert.get('date_triggered'))
         if since and created and created < since:
             continue
         alert['id'] = doc.id
         out.append(alert)
 
     oldest = datetime.min.replace(tzinfo=ac.PH_TIME)
-    out.sort(key=lambda a: ac.local(a.get('created_at')) or oldest, reverse=True)
+    out.sort(key=lambda a: ac.local(a.get('date_triggered')) or oldest, reverse=True)
     return out
 
 
 def _alert_rows(alerts, elders):
-    """Turn raw alert documents into what the templates need."""
+    """Turn raw alert documents into what the templates need. Batches the
+    location/phrase/sms-count lookups once for the whole list instead of
+    3 Firestore round trips PER alert -- that N+1 pattern was clearly
+    noticeable once there was more than a handful of alerts."""
+    locations = ac.alert_locations_bulk(db, (a.get('location_id') for a in alerts))
+    phrases = ac.alert_phrases_bulk(db, (a.get('phrase_id') for a in alerts))
+    sms_counts = ac.sms_sent_counts_bulk(db, (a.get('id') for a in alerts))
+
     rows = []
     for alert in alerts:
         elder = elders.get(alert.get('elder_id'), {})
         name = elder.get('full_name') or 'Unknown resident'
-        status = alert.get('status') or 'active'
-        type_key = alert.get('type') or 'emergency'
+        status = ac.row_status(alert)
+        # The device only ever writes real emergencies -- the paper's
+        # EMERGENCY_ALERT table has no per-category type column at all.
+        type_key = 'emergency'
+        lat, lng, _address = locations.get(alert.get('location_id'), (None, None, None))
+        trigger = (alert.get('trigger_type') or 'VOICE').lower()
 
         rows.append({
             'id': alert['id'],
@@ -230,22 +241,24 @@ def _alert_rows(alerts, elders):
             'status': status,
             'status_label': ac.status_label(status),
             'status_class': ac.status_class(status),
-            'created_at': alert.get('created_at'),
-            'time': ac.fmt_time(alert.get('created_at')),
-            'full_time': _fmt_datetime(alert.get('created_at')),
+            'created_at': alert.get('date_triggered'),
+            'time': ac.fmt_time(alert.get('date_triggered')),
+            'full_time': _fmt_datetime(alert.get('date_triggered')),
             'address': _short_address(elder.get('address')),
             # Shorter form for the alerts table, where the column is narrow.
             'location': _short_address(elder.get('address'), parts_wanted=2),
-            'device': alert.get('device_serial') or '—',
-            'trigger': alert.get('trigger') or '',
-            'trigger_phrase': alert.get('trigger_phrase') or '',
-            'gps_verified': bool(alert.get('gps_verified')),
-            'sms_sent_count': alert.get('sms_sent_count') or 0,
-            'notes': alert.get('notes') or '',
+            'device': alert.get('device_id') or '—',
+            'trigger': trigger,
+            'trigger_phrase': phrases.get(alert.get('phrase_id'), ''),
+            'gps_verified': lat is not None,
+            'sms_sent_count': sms_counts.get(alert.get('id'), 0),
+            'notes': alert.get('resolution_note') or '',
             'response_minutes': ac.response_minutes(alert),
             'is_open': status in ac.OPEN_STATUSES,
-            'latitude': alert.get('latitude'),
-            'longitude': alert.get('longitude'),
+            'latitude': lat,
+            'longitude': lng,
+            'admin_flagged': bool(alert.get('admin_flagged')),
+            'admin_flagged_by': alert.get('admin_flagged_by') or '',
         })
     return rows
 
@@ -253,7 +266,7 @@ def _alert_rows(alerts, elders):
 def _open_alerts_by_elder(elders):
     """{elder_id: alert row} for alerts that still need attention."""
     open_alerts = [a for a in _alerts_for(set(elders))
-                   if (a.get('status') or 'active') in ac.OPEN_STATUSES]
+                   if ac.row_status(a) in ac.OPEN_STATUSES]
     # Reversed so the newest open alert wins when a resident has more than one.
     return {r['elder_id']: r for r in reversed(_alert_rows(open_alerts, elders))}
 
@@ -324,7 +337,7 @@ def _bhw_layout_context():
         return {}
     elders = _elders_in_barangay(g.barangay)
     open_count = sum(1 for a in _alerts_for(set(elders))
-                     if (a.get('status') or 'active') in ac.OPEN_STATUSES)
+                     if ac.row_status(a) in ac.OPEN_STATUSES)
     return {
         'bhw_name': user.get('full_name') or 'BHW',
         'bhw_initials': _initials(user.get('full_name')),
@@ -411,27 +424,16 @@ def update_alert(alert_id, action):
         return redirect(url_for('bhw.alerts'))
 
     if action == 'acknowledge':
-        if alert.get('status') != 'active':
+        if not ac.acknowledge(db, ref, alert_id, session['user_id']):
             flash('That alert was already handled.', 'info')
             return redirect(url_for('bhw.alerts', alert=alert_id))
-        ref.update({
-            'status': 'acknowledged',
-            'acknowledged_at': firestore.SERVER_TIMESTAMP,
-            'acknowledged_by': session['user_id'],
-        })
         flash('Alert acknowledged. You can now contact the resident.', 'success')
     else:
-        updates = {
-            'status': 'false_alarm' if action == 'false-alarm' else 'resolved',
-            'resolved_at': firestore.SERVER_TIMESTAMP,
-            'resolved_by': session['user_id'],
-            'resolution_note': (request.form.get('resolution_note') or '').strip(),
-        }
-        # Keep a response time even if nobody pressed Acknowledge first.
-        if not alert.get('acknowledged_at'):
-            updates['acknowledged_at'] = firestore.SERVER_TIMESTAMP
-            updates['acknowledged_by'] = session['user_id']
-        ref.update(updates)
+        ac.resolve(
+            db, ref, alert_id, session['user_id'],
+            false_alarm=(action == 'false-alarm'),
+            notes=request.form.get('resolution_note'),
+        )
         flash('Alert marked as a false alarm.' if action == 'false-alarm' else 'Alert resolved.', 'success')
 
     return redirect(url_for('bhw.alerts', alert=alert_id))

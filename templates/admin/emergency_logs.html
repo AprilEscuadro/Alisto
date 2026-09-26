@@ -7,9 +7,17 @@
     <h1>Emergency Logs</h1>
     <p>View and manage all emergency alerts and incidents.</p>
   </div>
-  <a href="{{ url_for('admin.download_logs', range=range_key) }}" class="btn btn-outline">
-    <i data-lucide="download"></i> Export
-  </a>
+  <div class="export-menu" id="exportLogs">
+    <button type="button" class="btn btn-outline export-menu-btn" aria-haspopup="true" aria-expanded="false">
+      <i data-lucide="download"></i> Export <i data-lucide="chevron-down"></i>
+    </button>
+    <div class="export-menu-list" role="menu">
+      <button type="button" data-format="csv" role="menuitem"><i data-lucide="file-text"></i> CSV (.csv)</button>
+      <button type="button" data-format="excel" role="menuitem"><i data-lucide="file-spreadsheet"></i> Excel (.xls)</button>
+      <button type="button" data-format="json" role="menuitem"><i data-lucide="braces"></i> JSON (.json)</button>
+      <button type="button" data-format="pdf" role="menuitem"><i data-lucide="printer"></i> PDF (print)</button>
+    </div>
+  </div>
 </div>
 
 <!-- STAT CARDS -->
@@ -69,18 +77,7 @@
       <option value="active">Active</option>
       <option value="acknowledged">Responded</option>
       <option value="resolved">Resolved</option>
-      <option value="closed">Closed</option>
-      <option value="delivered">Delivered</option>
       <option value="false_alarm">False Alarm</option>
-    </select>
-  </label>
-  <label class="labeled-select">
-    <span>Severity</span>
-    <select id="logSeverityFilter">
-      <option value="">All Severities</option>
-      <option value="high">High</option>
-      <option value="medium">Medium</option>
-      <option value="low">Low</option>
     </select>
   </label>
   <label class="labeled-select">

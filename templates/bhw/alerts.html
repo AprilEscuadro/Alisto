@@ -87,6 +87,11 @@
                 <div class="user-cell">
                   <span class="admin-avatar-lg avatar-elderly">{{ row.initials }}</span>
                   <strong>{{ row.name }}{% if row.age %}, {{ row.age }}{% endif %}</strong>
+                  {% if row.admin_flagged %}
+                  <span class="badge badge-alert-active" title="Flagged by {{ row.admin_flagged_by }}">
+                    <i data-lucide="bell-ring"></i> Flagged
+                  </span>
+                  {% endif %}
                 </div>
               </td>
               <td>
@@ -132,6 +137,12 @@
   <!-- DETAIL PANEL -->
   <aside class="alert-detail admin-card {% if detail %}detail-{{ detail.status_class }}{% endif %}">
     {% if detail %}
+    {% if detail.admin_flagged %}
+    <div class="admin-alert admin-alert-error">
+      <i data-lucide="bell-ring"></i>
+      Flagged by {{ detail.admin_flagged_by or 'an admin' }} for your attention.
+    </div>
+    {% endif %}
     <div class="detail-head">
       <span class="badge badge-{{ detail.status_class }}">{{ detail.status_label }}</span>
     </div>

@@ -1,0 +1,20 @@
+[Unit]
+Description=ALISTO automatic WiFi setup fallback (starts hotspot if no known network is found)
+After=network.target NetworkManager.service
+Wants=NetworkManager.service
+
+[Service]
+Type=simple
+User=root
+# Needs root for nmcli hotspot/connect operations, same as
+# wifi_setup_server.py itself.
+ExecStart=/usr/bin/python3 -u /home/alisto/wifi_auto_fallback.py
+# Runs once per boot on purpose -- either finds internet already there
+# (normal case) and exits immediately, or starts the hotspot+server and
+# stays running only as long as that's needed. Restart=no: this must NOT
+# re-trigger on a later transient WiFi drop during normal operation, only
+# at boot when the device genuinely has no network at all.
+Restart=no
+
+[Install]
+WantedBy=multi-user.target

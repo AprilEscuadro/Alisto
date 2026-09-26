@@ -11,18 +11,22 @@ and the page behavior (menus, filters, pagination) in static/js/admin.js.
 """
 import csv
 import io
+import json
 import os
 import re
+import time
 from collections import Counter, defaultdict
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from functools import wraps
 
 from flask import (Blueprint, render_template, session, redirect, url_for,
-                   flash, request, send_from_directory, current_app, abort, Response)
-from firebase_admin import firestore
+                   flash, request, send_from_directory, current_app, abort, Response,
+                   jsonify, g)
+from firebase_admin import firestore, messaging
 from werkzeug.security import check_password_hash, generate_password_hash
 
 import alerts_common as ac
+import care_plan_service as cps
 # One source of truth for reading addresses and working out whether a device is
 # online. Both portals show the same thing, so they share the same helpers.
 from bhw_routes import (PASSWORD_RULES, _address_parts, _address_text,
@@ -59,8 +63,38 @@ def _active_docs(collection):
     return docs
 
 
+DATE_FORMAT_STRFTIME = {
+    'MMM DD, YYYY': '%b %d, %Y',
+    'DD/MM/YYYY': '%d/%m/%Y',
+    'YYYY-MM-DD': '%Y-%m-%d',
+}
+
+
+def _display_settings():
+    """The saved Timezone/Date Format from Settings > System Preferences,
+    cached on Flask's request-scoped `g` -- _fmt_date() below is called
+    once per row on pages with dozens of rows, and re-reading
+    app_settings/system_settings from Firestore that many times per page
+    load would be wasteful for a value that can't change mid-request."""
+    if not hasattr(g, '_alisto_display_settings'):
+        g._alisto_display_settings = _system_settings()
+    return g._alisto_display_settings
+
+
 def _fmt_date(value):
-    return value.strftime('%b %d, %Y') if hasattr(value, 'strftime') else '—'
+    """Renders a Firestore timestamp using whatever Timezone/Date Format
+    the admin picked in Settings -- previously always '%b %d, %Y' in
+    Asia/Manila regardless of what those two dropdowns said, making them
+    pure decoration. Alert timestamps (ac.fmt_time()'s "Today"/"Yesterday"
+    relative wording) are intentionally NOT touched here -- a raw
+    strftime format doesn't apply cleanly to relative phrasing, so that
+    one stays fixed to Philippine time everywhere in the app."""
+    if not hasattr(value, 'strftime'):
+        return '—'
+    settings = _display_settings()
+    tz = timezone.utc if settings['timezone'].startswith('UTC') else ac.PH_TIME
+    moment = value.astimezone(tz) if value.tzinfo else value
+    return moment.strftime(DATE_FORMAT_STRFTIME.get(settings['date_format'], '%b %d, %Y'))
 
 
 def _sort_key(value):
@@ -125,18 +159,138 @@ def _pending_bhws():
     return pending
 
 
+# kind -> (lucide icon, .tint-* class) for the bell's icon bubble.
+NOTIF_STYLE = {
+    'bhw': ('user-plus', 'tint-purple'),
+    'emergency': ('siren', 'tint-red'),
+    'device': ('wifi-off', 'tint-orange'),
+    'subscription': ('credit-card', 'tint-blue'),
+}
+# Emergencies come first regardless of how recent everything else is --
+# an active emergency always outranks a pending registration or an
+# expiring subscription.
+NOTIF_PRIORITY = {'emergency': 0, 'bhw': 1, 'device': 2, 'subscription': 3}
+
+# The bell's context_processor runs on EVERY admin page load, and each of
+# its 4 categories scans a whole collection -- real testing found that
+# just clicking through Users -> Devices -> Settings re-ran all 4 scans
+# each time, and burned through the project's Firestore free-tier quota
+# in one session. A short cache means normal navigation only actually
+# hits Firestore once per _NOTIF_CACHE_TTL_SECONDS, no matter how many
+# admin pages get loaded (by one admin or several) in that window. Pages
+# that actually WORK with this data (Users, Emergency Logs, Subscriptions,
+# Devices) call the same underlying functions directly, uncached, so
+# nothing there is ever stale -- only the bell's opportunistic preview is.
+_notif_cache = {}
+_NOTIF_CACHE_TTL_SECONDS = 60
+
+
+def _cached(key, builder):
+    now = time.time()
+    hit = _notif_cache.get(key)
+    if hit and now - hit[0] < _NOTIF_CACHE_TTL_SECONDS:
+        return hit[1]
+    value = builder()
+    _notif_cache[key] = (now, value)
+    return value
+
+
+def _offline_devices_raw():
+    elders = dict(_active_docs('elder_profile'))
+    out = []
+    for doc in db.collection('device').stream():
+        device = doc.to_dict() or {}
+        if not device.get('is_registered') or not device.get('elder_id'):
+            continue
+        state, last_seen = _device_state(device)
+        if state != 'offline':
+            continue
+        name = (elders.get(device['elder_id']) or {}).get('full_name') or 'Unnamed resident'
+        out.append({'doc_id': doc.id, 'name': name, 'last_seen': last_seen})
+    return out
+
+
+def _notif_items(prefs):
+    """Builds the admin bell's combined feed, honoring each toggle under
+    Settings > Notification Settings -- previously the bell always showed
+    pending BHWs no matter what "New User Registration Requests" said,
+    and the other three toggles (Emergency Alerts, Device Offline Alerts,
+    Subscription Expiry Alerts) had no notification feed behind them at
+    all, so turning them on or off changed nothing. `prefs` is the
+    admin's own saved notification_settings dict; a missing key defaults
+    to True, matching settings()'s own default."""
+    items = []
+
+    if prefs.get('registration_requests', True):
+        for p in _cached('pending_bhws', _pending_bhws):
+            items.append({
+                'kind': 'bhw', 'title': p['name'],
+                'subtitle': 'BHW registration waiting for approval' + (f" · {p['barangay']}" if p['barangay'] else ''),
+                'when': p['when'], 'sort': p['sort'],
+                'href': url_for('admin.users', status='pending'),
+            })
+
+    if prefs.get('emergency_alerts', True):
+        open_alerts = _cached('open_alerts', lambda: [a for a in _all_alert_rows() if a['is_open']])
+        for a in open_alerts:
+            items.append({
+                'kind': 'emergency', 'title': a['name'],
+                'subtitle': f"{a['type_label']} -- still active",
+                'when': a['time'], 'sort': _sort_key(a['created_at']),
+                'href': url_for('admin.emergency_logs'),
+            })
+
+    if prefs.get('device_offline_alerts', True):
+        for d in _cached('offline_devices', _offline_devices_raw):
+            items.append({
+                'kind': 'device', 'title': d['name'],
+                'subtitle': f"Device {d['doc_id']} is offline",
+                'when': _fmt_when(d['last_seen']), 'sort': _sort_key(d['last_seen']),
+                'href': url_for('admin.devices'),
+            })
+
+    if prefs.get('subscription_expiry_alerts', True):
+        expiring = _cached('expiring_subs', lambda: [s for s in _subscription_rows() if s['status'] == 'expiring'])
+        for s in expiring:
+            days = s['days_left']
+            items.append({
+                'kind': 'subscription', 'title': s['name'],
+                'subtitle': f"{s['plan']} plan expires in {days} day{'' if days == 1 else 's'}",
+                # Soonest-expiring first within this kind -- see the
+                # final sort below for why this can use a different
+                # scale than the timestamp-based `sort` values above.
+                'when': s['expiry'], 'sort': -days if days is not None else 0,
+                'href': url_for('admin.subscriptions'),
+            })
+
+    for item in items:
+        item['icon'], item['tint'] = NOTIF_STYLE[item['kind']]
+
+    # Sorts by kind first (NOTIF_PRIORITY), then most-urgent-within-that-
+    # kind second. `sort` only ever gets compared against other items of
+    # the SAME kind (ties on the primary key), so mixing what it measures
+    # across kinds -- a timestamp here, `-days_left` there -- is safe.
+    items.sort(key=lambda it: (NOTIF_PRIORITY[it['kind']], -it['sort']))
+    return items
+
+
 @admin_bp.context_processor
 def _admin_layout_context():
     """Values every admin page needs for the sidebar and top bar."""
     if session.get('role') != 'admin':
         return {}
-    pending = _pending_bhws()
+    user_id = session['user_id']
+    prefs = _cached(f'prefs:{user_id}', lambda: (
+        (db.collection('user_account').document(user_id).get().to_dict() or {}).get('notification_settings') or {}
+    ))
+    items = _notif_items(prefs)
     return {
         'admin_name': session.get('full_name', 'Administrator'),
         'admin_initial': _initials(session.get('full_name', 'Administrator'))[:1],
-        'pending_count': len(pending),
-        # The bell shows the five newest; the rest are one click away.
-        'pending_bhws': pending[:5],
+        'pending_count': len(items),
+        # The bell shows the eight most urgent; the rest are one click
+        # away on each item's own page (Users, Emergency Logs, etc.).
+        'notif_items': items[:8],
     }
 
 
@@ -165,6 +319,31 @@ def _barangay_of(address):
     parts = _address_parts(address)
     # "house, street, barangay, city, province, zip"
     return parts[2] if len(parts) >= 4 else ''
+
+
+def _bhw_by_barangay():
+    """{barangay: {'id':..., 'name':...}} for every APPROVED BHW -- a BHW
+    covers a whole barangay (see bhw_routes.py's _elders_in_barangay()),
+    not one elder each, so "the BHW for this resident" really means
+    "whoever is approved for their barangay". A barangay with more than
+    one approved BHW just keeps the first one found -- good enough to
+    show a name on the map pin, not meant as the authoritative roster."""
+    out = {}
+    try:
+        profiles = {p.get('user_id'): p for p in
+                    (d.to_dict() or {} for d in db.collection('bhw_profile').stream())}
+        docs = (db.collection('user_account')
+                .where('role', '==', 'bhw')
+                .where('approval_status', '==', 'approved')
+                .stream())
+    except Exception:
+        return out
+    for doc in docs:
+        user = doc.to_dict() or {}
+        barangay = (profiles.get(doc.id, {}).get('barangay_assigned') or '').strip()
+        if barangay and barangay not in out:
+            out[barangay] = {'id': doc.id, 'name': user.get('full_name') or 'Unnamed BHW'}
+    return out
 
 
 def _all_elders():
@@ -204,27 +383,37 @@ def _all_alert_rows(since=None):
     """Every alert in the system, newest first, with the resident joined in."""
     elders = _all_elders()
     devices_by_elder = _devices_by_elder()
+
+    docs = list(db.collection(ac.ALERT_COLLECTION).stream())
+    alerts = [(doc.id, doc.to_dict() or {}) for doc in docs]
+    if since:
+        alerts = [(i, a) for i, a in alerts
+                  if not (ac.local(a.get('date_triggered')) and ac.local(a.get('date_triggered')) < since)]
+
+    # Batched once for the whole page instead of 3 Firestore round trips
+    # PER alert -- that N+1 pattern was clearly noticeable once there was
+    # more than a handful of alerts.
+    locations = ac.alert_locations_bulk(db, (a.get('location_id') for _, a in alerts))
+    phrases = ac.alert_phrases_bulk(db, (a.get('phrase_id') for _, a in alerts))
+
     rows = []
-
-    for doc in db.collection(ac.ALERT_COLLECTION).stream():
-        alert = doc.to_dict() or {}
-        created = ac.local(alert.get('created_at'))
-        if since and created and created < since:
-            continue
-
+    for alert_id, alert in alerts:
         elder = elders.get(alert.get('elder_id'), {})
         name = elder.get('full_name') or 'Unknown resident'
-        type_key = alert.get('type') or 'emergency'
-        status = alert.get('status') or 'active'
-        severity = alert.get('severity') or SEVERITY_BY_TYPE.get(type_key, 'medium')
-        serial = alert.get('device_serial') or ''
+        # The device only ever writes real emergencies -- the paper's
+        # EMERGENCY_ALERT table has no per-category type column at all.
+        type_key = 'emergency'
+        status = ac.row_status(alert)
+        severity = SEVERITY_BY_TYPE.get(type_key, 'medium')
+        serial = alert.get('device_id') or ''
         if not serial:
             owned = devices_by_elder.get(alert.get('elder_id'), [])
             serial = owned[0][0] if owned else ''
+        lat, lng, _address = locations.get(alert.get('location_id'), (None, None, None))
 
         rows.append({
-            'id': doc.id,
-            'code': _alert_code(doc.id, alert.get('created_at')),
+            'id': alert_id,
+            'code': _alert_code(alert_id, alert.get('date_triggered')),
             'elder_id': alert.get('elder_id'),
             'name': name,
             'initials': _initials(name),
@@ -240,16 +429,16 @@ def _all_alert_rows(since=None):
             'status_label': ac.status_label(status),
             'status_class': ac.status_class(status),
             'severity': severity,
-            'created_at': alert.get('created_at'),
-            'time': ac.fmt_time(alert.get('created_at')),
-            'full_time': ac.local(alert.get('created_at')).strftime('%b %d, %Y %I:%M %p')
-                         if ac.local(alert.get('created_at')) else '—',
-            'notes': alert.get('notes') or '',
-            'trigger_phrase': alert.get('trigger_phrase') or '',
+            'created_at': alert.get('date_triggered'),
+            'time': ac.fmt_time(alert.get('date_triggered')),
+            'full_time': ac.local(alert.get('date_triggered')).strftime('%b %d, %Y %I:%M %p')
+                         if ac.local(alert.get('date_triggered')) else '—',
+            'notes': alert.get('resolution_note') or '',
+            'trigger_phrase': phrases.get(alert.get('phrase_id'), ''),
             'response_minutes': ac.response_minutes(alert),
             'is_open': status in ac.OPEN_STATUSES,
-            'latitude': alert.get('latitude'),
-            'longitude': alert.get('longitude'),
+            'latitude': lat,
+            'longitude': lng,
         })
 
     oldest = datetime.min.replace(tzinfo=ac.PH_TIME)
@@ -268,12 +457,17 @@ def _resident_rows():
     for elder_id, elder in elders.items():
         devices = devices_by_elder.get(elder_id, [])
         if devices:
-            (state, last_seen), device = min(
-                ((_device_state(d), d) for _, d in devices),
-                key=lambda pair: order.index(pair[0][0]),
+            (state, last_seen), serial, device = min(
+                ((_device_state(d), d_id, d) for d_id, d in devices),
+                key=lambda triple: order.index(triple[0][0]),
             )
         else:
-            state, last_seen, device = 'none', None, {}
+            state, last_seen, serial, device = 'none', None, None, {}
+
+        # The device's own doc never carries its location -- write_location()
+        # on the Pi only ever appends to device_location. See
+        # alerts_common.latest_device_location()'s doc comment.
+        lat, lng, _address, _recorded_at = ac.latest_device_location(db, serial)
 
         open_alert = open_by_elder.get(elder_id)
         name = elder.get('full_name') or 'Unnamed'
@@ -289,8 +483,8 @@ def _resident_rows():
             'device_status': state,
             'device_ids': [d_id for d_id, _ in devices],
             'last_seen': ac.fmt_time(last_seen),
-            'latitude': device.get('latitude'),
-            'longitude': device.get('longitude'),
+            'latitude': lat,
+            'longitude': lng,
             'open_alert': open_alert,
             'map_status': 'alert' if open_alert else state,
         })
@@ -348,7 +542,7 @@ def dashboard():
             'ack_pct': (summary['active'] + summary['acknowledged']) / total * 100,
             'empty': summary['total'] == 0,
         },
-        map_points=[r for r in residents if r['latitude'] and r['longitude']],
+        map_points=_map_points(residents),
         system={
             'devices_online': sum(1 for r in residents if r['device_status'] in ('online', 'weak')),
             'barangays': len({r['barangay'] for r in residents if r['barangay']}),
@@ -425,7 +619,10 @@ def users():
             profile = bhw_profiles.get(user_id, {})
             row['display_id'] = _short_id('BHW', user_id)
             row['devices'] = 0
-            row['status'] = {'approved': 'active', 'rejected': 'rejected'}.get(approval, 'pending')
+            if user.get('is_archived'):
+                row['status'] = 'archived'
+            else:
+                row['status'] = {'approved': 'active', 'rejected': 'rejected'}.get(approval, 'pending')
             row['details'] += [
                 ['Date of Birth', profile.get('date_of_birth') or '—'],
                 ['Barangay', profile.get('barangay_assigned') or '—'],
@@ -451,7 +648,11 @@ def users():
         'total_devices': sum(devices_per_elder.values()),
     }
 
-    return render_template('admin/users.html', active_page='users', rows=rows, stats=stats)
+    return render_template(
+        'admin/users.html', active_page='users', rows=rows, stats=stats,
+        years_of_service_options=YEARS_OF_SERVICE_OPTIONS,
+        cebu_city_barangays=CEBU_CITY_BARANGAYS,
+    )
 
 
 @admin_bp.route('/users/<user_id>/approval', methods=['POST'])
@@ -483,6 +684,38 @@ def update_bhw_approval(user_id):
     return redirect(url_for('admin.users'))
 
 
+@admin_bp.route('/users/<user_id>/archive', methods=['POST'])
+@admin_required
+def archive_user(user_id):
+    """Toggles is_archived for a family/BHW account (user_account) or an
+    elder profile (elder_profile) -- soft-hide only, matching this app's
+    existing convention everywhere else (unregister_device(), the various
+    _active_docs() filters): a user's alerts, subscriptions, and links all
+    stay attributed to their real ID rather than being orphaned the way a
+    hard delete would leave them, since Emergency Logs/Reports/Subscriptions
+    all still reference these IDs directly. Archiving just hides them from
+    the default Users view and tags them 'Archived' (already a status
+    filter option); calling this again restores them. `type` (from the row
+    the button was on) says which collection actually owns this ID."""
+    collection = 'elder_profile' if request.form.get('type') == 'elderly' else 'user_account'
+    ref = db.collection(collection).document(user_id)
+    doc = ref.get()
+    if not doc.exists:
+        flash('That user could not be found.', 'error')
+        return redirect(url_for('admin.users'))
+
+    data = doc.to_dict() or {}
+    name = data.get('full_name') or 'This user'
+    now_archived = not data.get('is_archived')
+    ref.update({
+        'is_archived': now_archived,
+        'archived_at': firestore.SERVER_TIMESTAMP if now_archived else None,
+        'archived_by': session['user_id'] if now_archived else None,
+    })
+    flash(f"{name} was {'archived' if now_archived else 'restored'}.", 'success')
+    return redirect(url_for('admin.users'))
+
+
 @admin_bp.route('/users/<user_id>/valid-id')
 @admin_required
 def bhw_valid_id(user_id):
@@ -495,11 +728,120 @@ def bhw_valid_id(user_id):
     return send_from_directory(folder, stored)
 
 
-@admin_bp.route('/users/new')
+# Mirrors app.py's own BHW_REGISTRATION_SETTINGS -- kept as a separate copy
+# rather than importing from app.py, which would be a circular import
+# (app.py is what imports admin_bp from this module in the first place).
+HEALTH_CENTERS = ['Sudlon II Health Center']
+YEARS_OF_SERVICE_OPTIONS = [
+    'Less than 1 year', '1-3 years', '4-6 years', '7-10 years', 'More than 10 years'
+]
+
+# All 80 Cebu City barangays (Cebu City proper only -- no other Cebu
+# province municipality), extracted from the same boundary data the Pi's
+# own reverse_geocode.py uses for GPS-to-barangay lookups
+# (alisto-iot/pi/data/cebu_city_barangays.json, ADM4_EN field, "(Pob.)"
+# suffix stripped the same way that module does) -- kept as a plain list
+# here rather than reading that file at request time so this page never
+# depends on the Pi's bundled data folder existing on the web server.
+CEBU_CITY_BARANGAYS = [
+    'Adlaon', 'Agsungot', 'Apas', 'Babag', 'Bacayan', 'Banilad', 'Basak Pardo',
+    'Basak San Nicolas', 'Binaliw', 'Bonbon', 'Budla-an', 'Buhisan', 'Bulacao',
+    'Buot-Taup Pardo', 'Busay', 'Calamba', 'Cambinocot', 'Camputhaw', 'Capitol Site',
+    'Carreta', 'Central', 'Cogon Pardo', 'Cogon Ramos', 'Day-as', 'Duljo', 'Ermita',
+    'Guadalupe', 'Guba', 'Hippodromo', 'Inayawan', 'Kalubihan', 'Kalunasan',
+    'Kamagayan', 'Kasambagan', 'Kinasang-an Pardo', 'Labangon', 'Lahug',
+    'Lorega (Lorega San Miguel)', 'Lusaran', 'Luz', 'Mabini', 'Mabolo', 'Malubog',
+    'Mambaling', 'Pahina Central', 'Pahina San Nicolas', 'Pamutan', 'Pardo',
+    'Pari-an', 'Paril', 'Pasil', 'Pit-os', 'Pulangbato', 'Pung-ol-Sibugay',
+    'Punta Princesa', 'Quiot Pardo', 'Sambag I', 'Sambag II', 'San Antonio',
+    'San Jose', 'San Nicolas Central', 'San Roque (Ciudad)', 'Santa Cruz',
+    'Sapangdaku', 'Sawang Calero', 'Sinsin', 'Sirao', 'Suba Pob. (Suba San Nicolas)',
+    'Sudlon I', 'Sudlon II', 'T. Padilla', 'Tabunan', 'Tagbao', 'Talamban', 'Taptap',
+    'Tejero (Villa Gonzalo)', 'Tinago', 'Tisa', 'To-ong Pardo', 'Zapatera',
+]
+
+
+@admin_bp.route('/users/new', methods=['GET', 'POST'])
 @admin_required
 def add_user():
-    flash('Add User is not implemented yet.', 'info')
-    return redirect(url_for('admin.users'))
+    """Creates a BHW account directly, already approved -- skips the
+    self-signup + review flow a real BHW goes through (see app.py's
+    _register_bhw()), for when an admin is onboarding someone they've
+    already vetted in person. Family and Elderly accounts still only ever
+    come from the app/website's own self-service registration (which also
+    needs a device to claim or join) -- this route doesn't touch that.
+
+    POSTed via fetch() (see setupAddUser() in admin.js), not a plain form
+    submit -- a validation error used to only ever show up as a flash
+    banner at the top of the page after the modal had already closed on
+    redirect, easy to miss while scrolled down filling a long form (real
+    testing: an admin's duplicate-email submission looked like it had
+    silently done nothing). Errors are returned as JSON instead, so the
+    modal can show the message inline and keep what was typed. Success
+    still flashes (shown after the page reload the client does next)."""
+    if request.method == 'GET':
+        return redirect(url_for('admin.users'))
+
+    full_name = request.form.get('full_name', '').strip()
+    email = request.form.get('email', '').strip().lower()
+    contact_number = request.form.get('contact_number', '').strip()
+    password = request.form.get('password', '')
+    confirm_password = request.form.get('confirm_password', '')
+    dob = request.form.get('bhw_dob', '').strip()
+    barangay_assigned = request.form.get('barangay_assigned', '').strip()
+    # Only one health center exists system-wide (HEALTH_CENTERS), so there's
+    # nothing for the admin to actually choose -- assigned automatically
+    # instead of showing a single-option dropdown.
+    health_center = HEALTH_CENTERS[0]
+    years_of_service = request.form.get('years_of_service', '').strip()
+    bhw_id_number = request.form.get('bhw_id_number', '').strip()
+
+    if not all([full_name, email, password, dob, barangay_assigned, years_of_service, bhw_id_number]):
+        return jsonify(success=False, message='Please fill up all required fields.'), 400
+    if password != confirm_password:
+        return jsonify(success=False, message='Password and confirm password do not match.'), 400
+    missing = [label for rule, label in PASSWORD_RULES if not rule(password)]
+    if missing:
+        return jsonify(success=False, message='Password needs ' + ', '.join(missing) + '.'), 400
+    if barangay_assigned not in CEBU_CITY_BARANGAYS:
+        return jsonify(success=False, message='Please select a valid barangay.'), 400
+    if years_of_service not in YEARS_OF_SERVICE_OPTIONS:
+        return jsonify(success=False, message='Please select a valid years of service option.'), 400
+    try:
+        if datetime.strptime(dob, '%Y-%m-%d').date() > datetime.now().date():
+            return jsonify(success=False, message='Date of birth cannot be in the future.'), 400
+    except ValueError:
+        return jsonify(success=False, message='Please enter a valid date of birth.'), 400
+
+    if list(db.collection('user_account').where('email', '==', email).limit(1).stream()):
+        return jsonify(success=False, message='An account with this email already exists.'), 400
+    if list(db.collection('bhw_profile').where('bhw_id_number', '==', bhw_id_number).limit(1).stream()):
+        return jsonify(success=False, message='This BHW ID number is already registered.'), 400
+
+    user_ref = db.collection('user_account').document()
+    user_ref.set({
+        'full_name': full_name, 'email': email,
+        'password_hash': generate_password_hash(password),
+        'role': 'bhw', 'contact_number': contact_number,
+        'approval_status': 'approved',
+        'approval_reviewed_at': firestore.SERVER_TIMESTAMP,
+        'approval_reviewed_by': session['user_id'],
+        'created_at': firestore.SERVER_TIMESTAMP, 'deleted_at': None, 'is_archived': 0,
+    })
+    db.collection('bhw_profile').add({
+        'user_id': user_ref.id,
+        'barangay_assigned': barangay_assigned,
+        'date_of_birth': dob,
+        'health_center': health_center,
+        'years_of_service': years_of_service,
+        'bhw_id_number': bhw_id_number,
+        'valid_id_filename': None,
+        'valid_id_stored_as': None,
+        'created_at': firestore.SERVER_TIMESTAMP,
+    })
+
+    flash(f'{full_name} was added as a BHW and can sign in immediately.', 'success')
+    return jsonify(success=True, message='BHW added.')
 
 
 # ---------- DEVICES ----------
@@ -598,6 +940,58 @@ def add_devices():
     return redirect(url_for('admin.devices'))
 
 
+def _notify_family_device_unregistered(elder_id, elder_name):
+    """Pushes a normal (non-emergency) notification to every family account
+    linked to this elder when their device gets unregistered -- otherwise
+    this is completely silent: no SMS/email gateway exists on the website,
+    and the family app would only ever surface it passively (a "No Device"
+    status the family has to happen to notice), while emergency-trigger
+    capability is gone for that elder in the meantime.
+
+    Sent WITH a `notification` payload (unlike
+    firestore_backend.send_emergency_push()'s deliberately data-only
+    emergency pushes) so Android auto-displays it in the system tray while
+    the app is backgrounded/killed -- the common case -- without needing
+    the app's own alarm machinery. Best-effort per-token, mirrors
+    get_family_fcm_tokens()'s dedup (same phone can be linked more than
+    once)."""
+    try:
+        links = db.collection('family_elder_link').where('elder_id', '==', elder_id).stream()
+        seen = set()
+        tokens = []
+        for link in links:
+            family_user_id = (link.to_dict() or {}).get('family_user_id')
+            if not family_user_id:
+                continue
+            user_doc = db.collection('user_account').document(family_user_id).get()
+            token = (user_doc.to_dict() or {}).get('fcm_token') if user_doc.exists else None
+            if token and token not in seen:
+                seen.add(token)
+                tokens.append(token)
+    except Exception as e:
+        print(f'[admin_routes] failed to read family FCM tokens: {e}')
+        return
+
+    if not tokens:
+        return
+
+    title = 'ALISTO Device Unregistered'
+    body = (
+        f"{elder_name}'s ALISTO device was unregistered and no longer sends emergency alerts. "
+        'Please set up a new device to keep protection active.'
+    )
+    for token in tokens:
+        try:
+            messaging.send(messaging.Message(
+                token=token,
+                notification=messaging.Notification(title=title, body=body),
+                data={'type': 'device_unregistered', 'elder_id': elder_id},
+                android=messaging.AndroidConfig(priority='high'),
+            ))
+        except Exception as e:
+            print(f'[admin_routes] failed to push device-unregistered notice to a token: {e}')
+
+
 @admin_bp.route('/devices/<serial>/unregister', methods=['POST'])
 @admin_required
 def unregister_device(serial):
@@ -631,6 +1025,9 @@ def unregister_device(serial):
         'unregistered_by': session['user_id'],
     })
 
+    if elder_id and elder_name:
+        _notify_family_device_unregistered(elder_id, elder_name)
+
     flash(
         f"{serial} is unregistered and available again."
         + (f" {elder_name} no longer has a device linked." if elder_name else ''),
@@ -662,6 +1059,61 @@ def _join_sample(items, limit=5):
 
 # ---------- MAP VIEW ----------
 
+MAP_ALERT_FRESH_MINUTES = 120  # see _is_fresh_alert()'s doc comment
+
+
+def _is_fresh_alert(alert):
+    """Whether an open alert happened recently enough to still count as
+    "an emergency is happening right now" for the LIVE map specifically --
+    an alert nobody ever got around to marking Resolved stays 'is_open'
+    (by design, elsewhere in this app that's exactly what should keep
+    showing it to a BHW) but that's different from "this elder's pin
+    should be pulsing red on the live map days later." Real testing found
+    an alert from over a week earlier still rendering as an in-progress
+    emergency for exactly that reason. Unlike is_open, this is only ever
+    used to decide the map's own coloring/pulsing -- it doesn't change
+    whether the alert shows up anywhere else (Alerts pages, dashboard
+    counts, reports)."""
+    when = ac.local(alert.get('created_at'))
+    if not when:
+        return False
+    return (datetime.now(ac.PH_TIME) - when) <= timedelta(minutes=MAP_ALERT_FRESH_MINUTES)
+
+
+def _map_points(residents):
+    """One dict per resident CURRENTLY in a fresh, unacknowledged
+    emergency -- shared by the page's first render and the auto-refresh
+    polling endpoint below, so the two can never drift apart in what they
+    consider "fresh". Only plotting active emergencies (not every
+    resident with a known location) is deliberate: with enough registered
+    devices, a marker for every online/offline one buries the ones that
+    actually need attention in visual noise. A resident's marker
+    disappears again the moment their alert is acknowledged (open_alert
+    already becomes None then -- see ac.row_status()/OPEN_STATUSES) or
+    goes stale (_is_fresh_alert()) -- there's nothing to plot for someone
+    who hasn't pressed anything. The side list and its search/barangay/
+    status filters still show everyone, for when an admin wants that."""
+    bhw_by_barangay = _bhw_by_barangay()
+    points = []
+    for r in residents:
+        if not (r['latitude'] and r['longitude']):
+            continue
+        if not (r['open_alert'] and _is_fresh_alert(r['open_alert'])):
+            continue
+        live_alert = r['open_alert']
+        points.append({
+            'id': r['id'], 'name': r['name'], 'initials': r['initials'], 'age': r['age'],
+            'address': r['short_address'], 'barangay': r['barangay'],
+            'latitude': r['latitude'], 'longitude': r['longitude'],
+            'status': 'alert',
+            'time': r['last_seen'],
+            'alert_label': live_alert['type_label'],
+            'alert_id': live_alert['id'],
+            'bhw_name': (bhw_by_barangay.get(r['barangay']) or {}).get('name'),
+        })
+    return points
+
+
 @admin_bp.route('/map')
 @admin_required
 def map_view():
@@ -677,19 +1129,44 @@ def map_view():
         'areas': len(barangays),
     }
 
-    points = [{
-        'id': r['id'], 'name': r['name'], 'initials': r['initials'], 'age': r['age'],
-        'address': r['short_address'], 'barangay': r['barangay'],
-        'latitude': r['latitude'], 'longitude': r['longitude'],
-        'status': r['map_status'], 'time': r['last_seen'],
-        'alert_label': r['open_alert']['type_label'] if r['open_alert'] else None,
-    } for r in located]
-
     return render_template(
         'admin/map_view.html', active_page='map_view',
-        residents=residents, points=points, barangays=barangays, stats=stats,
+        residents=residents, points=_map_points(residents), barangays=barangays, stats=stats,
         recent=alerts[:4], missing_location=len(residents) - len(located),
     )
+
+
+@admin_bp.route('/map/points')
+@admin_required
+def map_points():
+    """Polled every few seconds by the map page's own JS so a fresh
+    emergency (or one going stale/resolved) appears without the admin
+    manually reloading the browser -- see MAP_POLL_MS in map_view.html."""
+    return jsonify(success=True, points=_map_points(_resident_rows()))
+
+
+@admin_bp.route('/map/flag/<alert_id>', methods=['POST'])
+@admin_required
+def flag_alert_for_bhw(alert_id):
+    """Admin escalates an alert from the map's popup -- there's no SMS/email
+    gateway on this website (only the Pi's own GSM modem can send SMS), so
+    this can't push anything to a phone. What it CAN do: mark the alert so
+    the BHW portal (which the assigned BHW is already expected to be
+    watching) shows it prominently the next time they load it -- see
+    bhw_routes.py's alert rows reading admin_flagged."""
+    ref = db.collection(ac.ALERT_COLLECTION).document(alert_id)
+    doc = ref.get()
+    if not doc.exists:
+        return jsonify(success=False, message='Alert not found.'), 404
+
+    ref.update({
+        'admin_flagged': True,
+        'admin_flagged_by': session.get('full_name'),
+        'admin_flagged_at': firestore.SERVER_TIMESTAMP,
+    })
+    ac.write_status_history(db, alert_id, 'FLAGGED', session['user_id'],
+                            remarks='Flagged by admin for BHW attention')
+    return jsonify(success=True, message='BHW will see this flagged on their portal.')
 
 
 # ---------- EMERGENCY LOGS ----------
@@ -989,6 +1466,39 @@ def _subscription_rows():
     return rows
 
 
+def _pending_payments():
+    """Every payment a family submitted a GCash reference number for but
+    that hasn't been reviewed yet -- see app.py's /care-plan/pay (writes
+    these as status='pending') and care_plan_service.apply_approved_payment()
+    (what actually applies one, called from update_payment() below).
+    Nothing wired these together before now, so a submitted payment sat in
+    Firestore forever with no admin-facing way to see or act on it."""
+    rows = []
+    try:
+        docs = (db.collection('payment')
+                .where('status', '==', 'pending').stream())
+    except Exception as e:
+        print(f'[subscriptions] could not read pending payments: {e}')
+        return rows
+    for doc in docs:
+        p = doc.to_dict() or {}
+        rows.append({
+            'id': doc.id,
+            'payment_no': p.get('payment_no') or doc.id[:6].upper(),
+            'elder_name': p.get('elder_name') or 'Unknown',
+            'payer_name': p.get('payer_name') or '—',
+            'reference_no': p.get('reference_no') or '—',
+            'method': (p.get('method') or 'gcash').upper(),
+            'months': p.get('months') or 1,
+            'amount': p.get('amount') or 0,
+            'currency': p.get('currency') or 'PHP',
+            'submitted': ac.fmt_time(p.get('created_at')),
+            'sort': _sort_key(p.get('created_at')),
+        })
+    rows.sort(key=lambda r: r['sort'], reverse=True)
+    return rows
+
+
 @admin_bp.route('/subscriptions')
 @admin_required
 def subscriptions():
@@ -1007,7 +1517,44 @@ def subscriptions():
     return render_template(
         'admin/subscriptions.html', active_page='subscriptions',
         rows=rows, stats=stats, plans=PLANS, expiring_days=EXPIRING_SOON_DAYS,
+        pending_payments=_pending_payments(),
     )
+
+
+@admin_bp.route('/subscriptions/payments/<payment_id>/<action>', methods=['POST'])
+@admin_required
+def update_payment(payment_id, action):
+    if action not in ('approve', 'reject'):
+        flash('Invalid action.', 'error')
+        return redirect(url_for('admin.subscriptions'))
+
+    ref = db.collection('payment').document(payment_id)
+    doc = ref.get()
+    payment = doc.to_dict() if doc.exists else None
+    if not payment or payment.get('status') != 'pending':
+        flash('That payment is no longer pending.', 'error')
+        return redirect(url_for('admin.subscriptions'))
+
+    if action == 'reject':
+        ref.update({
+            'status': 'rejected',
+            'reviewed_by': session['user_id'],
+            'reviewed_by_name': session.get('full_name'),
+            'reviewed_at': firestore.SERVER_TIMESTAMP,
+        })
+        flash(f"Payment {payment.get('payment_no') or payment_id[:6].upper()} rejected.", 'success')
+        return redirect(url_for('admin.subscriptions'))
+
+    try:
+        cps.apply_approved_payment(
+            ref, payment, session['user_id'], session.get('full_name'))
+        flash(
+            f"Payment {payment.get('payment_no') or payment_id[:6].upper()} "
+            f"approved -- {payment.get('elder_name') or 'the resident'}'s "
+            f"plan has been extended.", 'success')
+    except Exception as e:
+        flash(f'Could not apply this payment: {e}', 'error')
+    return redirect(url_for('admin.subscriptions'))
 
 
 @admin_bp.route('/subscriptions.csv')
@@ -1036,12 +1583,75 @@ SYSTEM_DOC = 'system_settings'
 def _system_settings():
     doc = db.collection('app_settings').document(SYSTEM_DOC).get()
     saved = (doc.to_dict() or {}) if doc.exists else {}
+    last_backup_at = saved.get('last_backup_at')
     return {
         'timezone': saved.get('timezone') or TIMEZONES[0],
         'date_format': saved.get('date_format') or DATE_FORMATS[0],
         'auto_backup': bool(saved.get('auto_backup', True)),
-        'last_backup': _fmt_date(saved.get('last_backup_at')),
+        # Deliberately NOT _fmt_date() -- that reads these very settings
+        # (via _display_settings()'s g-cache) to know how to format a
+        # date, which would make this call recurse into itself. This one
+        # field stays a plain fixed format, and also needs to work when
+        # called from the auto-backup loop in app.py, which runs on a
+        # background thread with no Flask request/g to cache onto at all.
+        'last_backup': last_backup_at.strftime('%b %d, %Y %I:%M %p') if hasattr(last_backup_at, 'strftime') else '—',
     }
+
+
+# Core collections a restore would actually need -- device_location and the
+# various log/history collections are left out (high write volume, low
+# value to restore from a snapshot) to keep each backup file a reasonable
+# size.
+BACKUP_DIR = os.path.join(os.path.dirname(__file__), 'backups')
+BACKUP_COLLECTIONS = [
+    'user_account', 'elder_profile', 'device', 'bhw_profile',
+    'family_elder_link', 'emergency_alert', 'subscription',
+]
+
+
+def _json_default(value):
+    """json.dump()'s fallback for anything it can't serialize natively --
+    Firestore timestamps mainly, which come back as DatetimeWithNanoseconds
+    objects."""
+    return value.isoformat() if hasattr(value, 'isoformat') else str(value)
+
+
+def _run_backup():
+    """The actual job behind the 'Auto Backup' toggle -- previously that
+    toggle just saved a preference with nothing reading it, so 'Last
+    backup' never had a real date to show. Dumps BACKUP_COLLECTIONS to one
+    timestamped JSON file on disk and records when/where. Best-effort
+    is deliberately NOT used here -- if this fails, the caller (the manual
+    "Backup Now" button, or the periodic auto-backup loop in app.py) needs
+    to know, so it's allowed to raise. Returns (filename, total_doc_count)."""
+    os.makedirs(BACKUP_DIR, exist_ok=True)
+    snapshot = {}
+    total = 0
+    for name in BACKUP_COLLECTIONS:
+        docs = {doc.id: doc.to_dict() for doc in db.collection(name).stream()}
+        snapshot[name] = docs
+        total += len(docs)
+
+    filename = f"backup_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json"
+    with open(os.path.join(BACKUP_DIR, filename), 'w', encoding='utf-8') as f:
+        json.dump(snapshot, f, default=_json_default, indent=2)
+
+    db.collection('app_settings').document(SYSTEM_DOC).set({
+        'last_backup_at': firestore.SERVER_TIMESTAMP,
+        'last_backup_file': filename,
+    }, merge=True)
+    return filename, total
+
+
+@admin_bp.route('/settings/backup-now', methods=['POST'])
+@admin_required
+def backup_now():
+    try:
+        filename, total = _run_backup()
+        flash(f'Backup created: {filename} ({total} records).', 'success')
+    except Exception as e:
+        flash(f'Backup failed: {e}', 'error')
+    return redirect(url_for('admin.settings'))
 
 
 @admin_bp.route('/settings')
@@ -1054,7 +1664,6 @@ def settings():
     return render_template(
         'admin/settings.html', active_page='settings',
         notifications={key: bool(saved.get(key, True)) for key in NOTIFICATION_KEYS},
-        email_notifications=bool(user.get('email_notifications', True)),
         system=_system_settings(), timezones=TIMEZONES, date_formats=DATE_FORMATS,
     )
 
@@ -1067,7 +1676,6 @@ def save_settings():
 
     db.collection('user_account').document(session['user_id']).update({
         'notification_settings': {key: request.form.get(key) == 'on' for key in NOTIFICATION_KEYS},
-        'email_notifications': request.form.get('email_notifications') == 'on',
         'settings_updated_at': firestore.SERVER_TIMESTAMP,
     })
     db.collection('app_settings').document(SYSTEM_DOC).set({
@@ -1076,7 +1684,9 @@ def save_settings():
         'auto_backup': request.form.get('auto_backup') == 'on',
         'updated_at': firestore.SERVER_TIMESTAMP,
         'updated_by': session['user_id'],
-    })
+    }, merge=True)  # merge, not overwrite -- this doc also carries
+    # last_backup_at/last_backup_file (see _run_backup()), which a plain
+    # .set() here would silently wipe out on every ordinary Save Changes.
 
     flash('Your settings have been saved.', 'success')
     return redirect(url_for('admin.settings'))

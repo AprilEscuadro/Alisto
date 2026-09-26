@@ -157,7 +157,9 @@
   document.addEventListener('DOMContentLoaded', function () {
     if (!window.L) return;
 
-    const points = JSON.parse(document.getElementById('mapPoints').textContent);
+    const POLL_MS = 5000; // how often to check for a new/resolved emergency
+
+    const initialPoints = JSON.parse(document.getElementById('mapPoints').textContent);
     const colours = { alert: '#e53935', online: '#16a34a', weak: '#f59e0b', offline: '#94a3b8', none: '#94a3b8' };
     const labels = { alert: 'Active alert', online: 'Online', weak: 'Weak signal', offline: 'Offline', none: 'No device' };
 
@@ -167,26 +169,57 @@
       attribution: '&copy; OpenStreetMap contributors',
     }).addTo(map);
 
-    points.forEach(function (p) {
-      const colour = colours[p.map_status] || colours.offline;
-      L.marker([p.latitude, p.longitude], {
-        icon: L.divIcon({
-          className: 'map-pin-icon',
-          html: `<span class="map-pin" style="--pin:${colour}"><b>${p.initials}</b></span>`,
-          iconSize: [38, 46], iconAnchor: [19, 46], popupAnchor: [0, -44],
-        }),
-      }).addTo(map).bindPopup(`
-        <div class="map-popup">
-          <strong style="color:${colour}">${p.name}${p.age ? ', ' + p.age : ''}</strong>
-          <span>${p.open_alert ? p.open_alert.type_label : (labels[p.map_status] || '')}</span>
-          <span>${p.short_address || ''}</span>
-          <span>${p.last_seen || ''}</span>
-        </div>`);
-    });
+    let markers = {};
 
-    if (points.length) {
-      map.fitBounds(points.map((p) => [p.latitude, p.longitude]), { padding: [40, 40], maxZoom: 15 });
+    // Redraws every pin from scratch, same pattern as the full Map View
+    // page -- without this, this widget only ever shows whatever was true
+    // the moment the dashboard happened to load, and a new emergency (or
+    // one getting acknowledged) never shows up until a manual refresh.
+    function renderMarkers(points, fitBounds) {
+      const openId = Object.keys(markers).find((id) => markers[id].isPopupOpen());
+
+      Object.values(markers).forEach((m) => map.removeLayer(m));
+      markers = {};
+
+      points.forEach(function (p) {
+        const colour = colours[p.status] || colours.offline;
+        const pinClass = p.status === 'alert' ? 'map-pin pulsing' : 'map-pin';
+        const marker = L.marker([p.latitude, p.longitude], {
+          icon: L.divIcon({
+            className: 'map-pin-icon',
+            html: `<span class="${pinClass}" style="--pin:${colour}"><b>${p.initials}</b></span>`,
+            iconSize: [38, 46], iconAnchor: [19, 46], popupAnchor: [0, -44],
+          }),
+        }).addTo(map).bindPopup(`
+          <div class="map-popup">
+            <strong style="color:${colour}">${p.name}${p.age ? ', ' + p.age : ''}</strong>
+            <span>${p.alert_label || labels[p.status] || ''}</span>
+            <span>${p.address || ''}</span>
+            <span>${p.time || ''}</span>
+          </div>`);
+        markers[p.id] = marker;
+      });
+
+      if (openId && markers[openId]) markers[openId].openPopup();
+
+      if (fitBounds && points.length) {
+        map.fitBounds(points.map((p) => [p.latitude, p.longitude]), { padding: [40, 40], maxZoom: 15 });
+      }
     }
+
+    renderMarkers(initialPoints, true);
+
+    async function pollPoints() {
+      try {
+        const res = await fetch('/admin/map/points');
+        const data = await res.json();
+        if (data.success) renderMarkers(data.points, false);
+      } catch (err) {
+        // Best-effort -- a failed poll just leaves the widget as it was
+        // until the next one succeeds.
+      }
+    }
+    setInterval(pollPoints, POLL_MS);
   });
 </script>
 {% endblock %}

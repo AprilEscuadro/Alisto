@@ -555,12 +555,12 @@
           </div>
 
           <div class="header-right">
-            <button type="button" class="icon-btn" aria-label="Notifications">
+            <a href="{{ url_for('alerts') }}" class="icon-btn" aria-label="Notifications">
               <i data-lucide="bell"></i>
               {% if notification_count %}
               <span class="notif-dot">{{ notification_count }}</span>
               {% endif %}
-            </button>
+            </a>
 
             <button
               type="button"
@@ -723,8 +723,9 @@
               data-dosage="{{ med.dosage }}"
               data-purpose="{{ med.purpose }}"
               data-time-value="{{ med.time_value }}"
-              data-frequency="{{ med.frequency }}"
-              data-days="{{ med.days_csv }}"
+              data-schedule-type="{{ med.schedule_type }}"
+              data-interval-value="{{ med.interval_value or '' }}"
+              data-start-date="{{ med.start_date }}"
               data-voice="{{ '1' if med.voice_reminder_enabled else '0' }}"
             >
               <div class="med-card-top">
@@ -758,17 +759,14 @@
                   <i data-lucide="clock"></i>
                   <div>
                     <span class="detail-label">Schedule</span>
-                    <strong class="detail-value"
-                      >{{ med.schedule_day }} &bull; {{ med.schedule_time
-                      }}</strong
-                    >
+                    <strong class="detail-value">{{ med.schedule_time }}</strong>
                   </div>
                 </div>
                 <div class="detail-item">
                   <i data-lucide="repeat"></i>
                   <div>
-                    <span class="detail-label">Frequency</span>
-                    <strong class="detail-value">{{ med.frequency }}</strong>
+                    <span class="detail-label">Repeats</span>
+                    <strong class="detail-value">{{ med.schedule_label }}</strong>
                   </div>
                 </div>
                 <div class="detail-item">
@@ -924,69 +922,30 @@
               </div>
 
               <div class="form-field">
-                <label for="med_frequency">Frequency</label>
-                <select id="med_frequency" name="frequency">
-                  <option value="Daily">Daily</option>
-                  <option value="Weekly">Weekly</option>
+                <label for="med_schedule_type">Repeats</label>
+                <select id="med_schedule_type" name="schedule_type">
+                  <option value="daily">Once daily</option>
+                  <option value="every_hours">Every X hours</option>
+                  <option value="every_days">Every X days</option>
                 </select>
               </div>
 
-              <div class="form-field span-2">
-                <label>Days</label>
-                <div class="day-picker" id="medDayPicker">
-                  <label
-                    ><input
-                      type="checkbox"
-                      name="schedule_days"
-                      value="Mon"
-                    /><span>Mon</span></label
-                  >
-                  <label
-                    ><input
-                      type="checkbox"
-                      name="schedule_days"
-                      value="Tue"
-                    /><span>Tue</span></label
-                  >
-                  <label
-                    ><input
-                      type="checkbox"
-                      name="schedule_days"
-                      value="Wed"
-                    /><span>Wed</span></label
-                  >
-                  <label
-                    ><input
-                      type="checkbox"
-                      name="schedule_days"
-                      value="Thu"
-                    /><span>Thu</span></label
-                  >
-                  <label
-                    ><input
-                      type="checkbox"
-                      name="schedule_days"
-                      value="Fri"
-                    /><span>Fri</span></label
-                  >
-                  <label
-                    ><input
-                      type="checkbox"
-                      name="schedule_days"
-                      value="Sat"
-                    /><span>Sat</span></label
-                  >
-                  <label
-                    ><input
-                      type="checkbox"
-                      name="schedule_days"
-                      value="Sun"
-                    /><span>Sun</span></label
-                  >
-                </div>
-                <span class="form-hint">
-                  Leave every day unticked to repeat daily.
-                </span>
+              <div class="form-field" id="medIntervalField" hidden>
+                <label for="med_interval_value" id="medIntervalLabel"
+                  >Every how many hours</label
+                >
+                <input
+                  type="number"
+                  id="med_interval_value"
+                  name="interval_value"
+                  min="1"
+                  placeholder="4"
+                />
+              </div>
+
+              <div class="form-field" id="medStartDateField" hidden>
+                <label for="med_start_date">Start date</label>
+                <input type="date" id="med_start_date" name="start_date" />
               </div>
 
               <div class="form-field span-2">
@@ -1038,6 +997,39 @@
             id="medDeleteConfirmBtn"
           >
             Delete
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- ============ REVIEW BEFORE SAVING ============ -->
+    <div class="confirm-overlay" id="medReviewConfirm" aria-hidden="true">
+      <div
+        class="confirm-dialog"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="medReviewTitle"
+      >
+        <div class="confirm-icon"><i data-lucide="pill"></i></div>
+        <h2 class="confirm-title" id="medReviewTitle">Review before saving</h2>
+        <p class="confirm-text">
+          This is what the device will actually speak as a reminder.
+          Double-check it's correct.
+        </p>
+        <div class="med-review-preview">
+          <strong id="medReviewName"></strong>
+          <span id="medReviewSchedule"></span>
+        </div>
+        <div class="confirm-actions">
+          <button type="button" class="btn-ghost" id="medReviewCancel">
+            Cancel
+          </button>
+          <button
+            type="button"
+            class="btn-primary-action"
+            id="medReviewConfirmBtn"
+          >
+            Confirm &amp; Save
           </button>
         </div>
       </div>
@@ -1218,6 +1210,33 @@
           alertBox.className = "form-alert";
         }
 
+        // Shows the "Every X ___" and "Start date" fields only when the
+        // schedule needs them (see SCHEDULE_TYPES on the Flask side --
+        // 'daily' fires once a day, 'every_hours'/'every_days' need an
+        // interval, and only 'every_days' needs an anchor start date).
+        const scheduleTypeSelect = document.getElementById(
+          "med_schedule_type",
+        );
+        const intervalField = document.getElementById("medIntervalField");
+        const intervalLabel = document.getElementById("medIntervalLabel");
+        const startDateField = document.getElementById("medStartDateField");
+
+        function updateScheduleFields() {
+          const type = scheduleTypeSelect.value;
+          // .form-field's own CSS sets display:flex, which beats the
+          // [hidden] attribute's user-agent style -- toggle display
+          // directly instead of relying on .hidden.
+          intervalField.style.display = type === "daily" ? "none" : "";
+          startDateField.style.display =
+            type === "every_days" ? "" : "none";
+          intervalLabel.textContent =
+            type === "every_days"
+              ? "Every how many days"
+              : "Every how many hours";
+        }
+
+        scheduleTypeSelect.addEventListener("change", updateScheduleFields);
+
         function openModal(med) {
           clearAlert();
           form.reset();
@@ -1232,15 +1251,13 @@
             form.dosage.value = med.dosage || "";
             form.purpose.value = med.purpose || "";
             form.reminder_time.value = med.time || "";
-            form.frequency.value = med.frequency || "Daily";
+            form.schedule_type.value = med.scheduleType || "daily";
+            form.interval_value.value = med.intervalValue || "";
+            form.start_date.value = med.startDate || "";
             document.getElementById("med_voice").checked = med.voice !== "0";
-
-            const days = (med.days || "").split(",").filter(Boolean);
-            form
-              .querySelectorAll('input[name="schedule_days"]')
-              .forEach((cb) => (cb.checked = days.includes(cb.value)));
           }
 
+          updateScheduleFields();
           modal.classList.add("open");
           modal.setAttribute("aria-hidden", "false");
           document.body.classList.add("modal-open");
@@ -1288,8 +1305,9 @@
                 dosage: card.dataset.dosage,
                 purpose: card.dataset.purpose,
                 time: card.dataset.timeValue,
-                frequency: card.dataset.frequency,
-                days: card.dataset.days,
+                scheduleType: card.dataset.scheduleType,
+                intervalValue: card.dataset.intervalValue,
+                startDate: card.dataset.startDate,
                 voice: card.dataset.voice,
               });
               return;
@@ -1343,22 +1361,25 @@
         });
 
         // ---- Save ----
-        submitBtn.addEventListener("click", async () => {
-          clearAlert();
+        // ---- Review-before-saving confirmation ----
+        const reviewConfirm = document.getElementById("medReviewConfirm");
+        const reviewNameEl = document.getElementById("medReviewName");
+        const reviewScheduleEl = document.getElementById("medReviewSchedule");
+        const reviewCancelBtn = document.getElementById("medReviewCancel");
+        const reviewConfirmBtn = document.getElementById("medReviewConfirmBtn");
 
-          if (!form.elder_id.value) {
-            showAlert("Choose which loved one this reminder is for.", "error");
-            return;
-          }
-          if (!form.medicine_name.value.trim()) {
-            showAlert("Enter the medicine name.", "error");
-            return;
-          }
-          if (!form.reminder_time.value) {
-            showAlert("Set the time this reminder should go off.", "error");
-            return;
-          }
+        function scheduleLabelFor(type, interval) {
+          if (type === "every_hours" && interval) return `Every ${interval} hrs`;
+          if (type === "every_days" && interval) return `Every ${interval} days`;
+          return "Once daily";
+        }
 
+        function closeReviewConfirm() {
+          reviewConfirm.classList.remove("open");
+          reviewConfirm.setAttribute("aria-hidden", "true");
+        }
+
+        async function doSave() {
           submitBtn.disabled = true;
           submitLabel.textContent = "Saving...";
 
@@ -1390,15 +1411,51 @@
           submitLabel.textContent = editingId
             ? "Save changes"
             : "Save reminder";
+        }
+
+        reviewCancelBtn.addEventListener("click", closeReviewConfirm);
+        reviewConfirm.addEventListener("click", (e) => {
+          if (e.target === reviewConfirm) closeReviewConfirm();
+        });
+        reviewConfirmBtn.addEventListener("click", () => {
+          closeReviewConfirm();
+          doSave();
+        });
+
+        submitBtn.addEventListener("click", () => {
+          clearAlert();
+
+          if (!form.elder_id.value) {
+            showAlert("Choose which loved one this reminder is for.", "error");
+            return;
+          }
+          if (!form.medicine_name.value.trim()) {
+            showAlert("Enter the medicine name.", "error");
+            return;
+          }
+          if (!form.reminder_time.value) {
+            showAlert("Set the time this reminder should go off.", "error");
+            return;
+          }
+
+          reviewNameEl.textContent = form.medicine_name.value.trim();
+          reviewScheduleEl.textContent = scheduleLabelFor(
+            form.schedule_type.value,
+            form.interval_value.value,
+          );
+          reviewConfirm.classList.add("open");
+          reviewConfirm.setAttribute("aria-hidden", "false");
         });
 
         document.addEventListener("keydown", (e) => {
           if (e.key !== "Escape") return;
-          if (deleteConfirm.classList.contains("open")) closeDeleteConfirm();
+          if (reviewConfirm.classList.contains("open")) closeReviewConfirm();
+          else if (deleteConfirm.classList.contains("open")) closeDeleteConfirm();
           else if (modal.classList.contains("open")) closeModal();
         });
       })();
     </script>
     {% include 'family/_care_plan_modal.html' %}
+  <script src="{{ url_for('static', filename='js/family_nav.js') }}"></script>
   </body>
 </html>

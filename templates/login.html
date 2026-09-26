@@ -55,7 +55,7 @@
         <div class="alert alert-{{ category }}">{{ message }}</div>
         {% endfor %} {% endif %} {% endwith %}
 
-        <form method="POST" action="{{ url_for('login') }}">
+        <form method="POST" action="{{ url_for('login') }}" id="loginForm">
           <div class="form-group">
             <div class="input-icon-wrap">
               <i data-lucide="mail" class="input-icon"></i>
@@ -98,7 +98,7 @@
             <a href="#" class="forgot-link">Forgot Password?</a>
           </div>
 
-          <button type="submit" class="btn-submit">Sign In</button>
+          <button type="submit" class="btn-submit" id="signInBtn">Sign In</button>
         </form>
 
         <div class="auth-divider"><span>or</span></div>
@@ -112,6 +112,18 @@
 
     <script>
       lucide.createIcons();
+
+      // This is a plain full-page form POST (no fetch/AJAX), so the only
+      // feedback the button needs to give is right before the browser
+      // navigates away -- there's nothing to reset back on success (a
+      // fresh page loads), and on a validation error the server-rendered
+      // page reloads too, which naturally clears this state.
+      document.getElementById("loginForm").addEventListener("submit", () => {
+        const btn = document.getElementById("signInBtn");
+        btn.disabled = true;
+        btn.classList.add("is-loading");
+        btn.textContent = "Signing In...";
+      });
 
       function togglePassword() {
         const pwInput = document.getElementById("password");

@@ -72,7 +72,7 @@
               id="adminBellBtn"
               aria-haspopup="true"
               aria-expanded="false"
-              aria-label="{{ pending_count }} BHW registration(s) waiting for approval"
+              aria-label="{{ pending_count }} notification(s)"
             >
               <i data-lucide="bell"></i>
               {% if pending_count %}
@@ -88,16 +88,14 @@
                 {% endif %}
               </div>
 
-              {% if pending_bhws %}
+              {% if notif_items %}
               <div class="notif-list">
-                {% for item in pending_bhws %}
-                <a href="{{ url_for('admin.users', status='pending') }}" class="notif-item" role="menuitem">
-                  <span class="admin-avatar-lg avatar-bhw">{{ item.initials }}</span>
+                {% for item in notif_items %}
+                <a href="{{ item.href }}" class="notif-item" role="menuitem">
+                  <span class="notif-icon {{ item.tint }}"><i data-lucide="{{ item.icon }}"></i></span>
                   <span class="notif-body">
-                    <strong>{{ item.name }}</strong>
-                    <small>
-                      BHW registration waiting for approval{% if item.barangay %} · {{ item.barangay }}{% endif %}
-                    </small>
+                    <strong>{{ item.title }}</strong>
+                    <small>{{ item.subtitle }}</small>
                     <small class="text-muted">{{ item.when }}</small>
                   </span>
                   <i data-lucide="chevron-right"></i>
@@ -105,15 +103,15 @@
                 {% endfor %}
               </div>
 
-              <a href="{{ url_for('admin.users', status='pending') }}" class="notif-footer">
-                Review all {{ pending_count }} pending registration{{ '' if pending_count == 1 else 's' }}
+              <a href="{{ url_for('admin.dashboard') }}" class="notif-footer">
+                {{ pending_count }} total notification{{ '' if pending_count == 1 else 's' }}
                 <i data-lucide="arrow-right"></i>
               </a>
               {% else %}
               <div class="notif-empty">
                 <span class="empty-icon"><i data-lucide="bell-off"></i></span>
                 <strong>You're all caught up</strong>
-                <p>New BHW registrations will show up here.</p>
+                <p>New registrations, active emergencies, offline devices, and expiring subscriptions will show up here.</p>
               </div>
               {% endif %}
             </div>
@@ -144,7 +142,9 @@
                 <i data-lucide="settings"></i> Account Settings
               </a>
               <div class="admin-dropdown-divider"></div>
-              <a href="{{ url_for('logout') }}" role="menuitem">
+              <a href="{{ url_for('logout') }}" role="menuitem" class="js-confirm-link"
+                 data-confirm-title="Log out?" data-confirm-message="You'll need to sign in again to access the admin panel."
+                 data-confirm-ok="Logout">
                 <i data-lucide="log-out"></i> Logout
               </a>
             </div>
@@ -161,6 +161,20 @@
 
         {% block content %}{% endblock %}
       </main>
+    </div>
+
+    <!-- Floating confirm dialog, shared by every admin page -- see
+         confirmDialog() in admin.js. Content is filled in per call. -->
+    <div class="confirm-overlay" id="adminConfirm" aria-hidden="true">
+      <div class="confirm-dialog" role="alertdialog" aria-modal="true" aria-labelledby="adminConfirmTitle">
+        <div class="confirm-icon" id="adminConfirmIcon"><i data-lucide="triangle-alert"></i></div>
+        <h2 class="confirm-title" id="adminConfirmTitle">Are you sure?</h2>
+        <p class="confirm-text" id="adminConfirmText"></p>
+        <div class="confirm-actions">
+          <button type="button" class="btn btn-outline" id="adminConfirmCancel">Cancel</button>
+          <button type="button" class="btn btn-primary" id="adminConfirmOk">Confirm</button>
+        </div>
+      </div>
     </div>
 
     <script src="{{ url_for('static', filename='js/admin.js') }}"></script>

@@ -53,9 +53,17 @@
     </select>
   </div>
   <div class="toolbar-actions">
-    <button type="button" class="btn btn-outline" id="exportDevices">
-      <i data-lucide="download"></i> Export
-    </button>
+    <div class="export-menu" id="exportDevices">
+      <button type="button" class="btn btn-outline export-menu-btn" aria-haspopup="true" aria-expanded="false">
+        <i data-lucide="download"></i> Export <i data-lucide="chevron-down"></i>
+      </button>
+      <div class="export-menu-list" role="menu">
+        <button type="button" data-format="csv" role="menuitem"><i data-lucide="file-text"></i> CSV (.csv)</button>
+        <button type="button" data-format="excel" role="menuitem"><i data-lucide="file-spreadsheet"></i> Excel (.xls)</button>
+        <button type="button" data-format="json" role="menuitem"><i data-lucide="braces"></i> JSON (.json)</button>
+        <button type="button" data-format="pdf" role="menuitem"><i data-lucide="printer"></i> PDF (print)</button>
+      </div>
+    </div>
   </div>
 </section>
 
@@ -157,7 +165,7 @@
       </button>
     </div>
 
-    <form method="POST" action="{{ url_for('admin.add_devices') }}">
+    <form method="POST" action="{{ url_for('admin.add_devices') }}" class="js-confirm-add-devices">
       <label class="field">
         <span>Serial Numbers</span>
         <textarea

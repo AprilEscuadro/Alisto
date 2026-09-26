@@ -351,12 +351,12 @@
           </div>
 
           <div class="header-right">
-            <button type="button" class="icon-btn" aria-label="Notifications">
+            <a href="{{ url_for('alerts') }}" class="icon-btn" aria-label="Notifications">
               <i data-lucide="bell"></i>
               {% if notification_count %}
               <span class="notif-dot">{{ notification_count }}</span>
               {% endif %}
-            </button>
+            </a>
 
             <button
               type="button"
@@ -497,6 +497,30 @@
                   />
                   <span class="toggle-slider"></span>
                 </label>
+              </div>
+            </div>
+
+            <div class="settings-section">
+              <h3 class="settings-section-title">Device</h3>
+
+              <div
+                class="settings-row"
+                data-label="wifi network change your device's wifi connection"
+              >
+                <div class="settings-row-icon primary">
+                  <i data-lucide="wifi"></i>
+                </div>
+                <div class="settings-row-text">
+                  <strong>WiFi Network</strong>
+                  <small>
+                    To change your Alisto device's WiFi network, open the
+                    ALISTO mobile app and go to Device Information &rarr;
+                    Change WiFi Network. Your phone needs to connect
+                    directly to the device's own "Alisto-Setup" WiFi
+                    hotspot for this, so it isn't available from the
+                    website.
+                  </small>
+                </div>
               </div>
             </div>
           </section>
@@ -669,5 +693,6 @@
       })();
     </script>
     {% include 'family/_care_plan_modal.html' %}
+  <script src="{{ url_for('static', filename='js/family_nav.js') }}"></script>
   </body>
 </html>

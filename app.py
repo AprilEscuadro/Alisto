@@ -1,17 +1,22 @@
-from flask import Flask, render_template, request, redirect, url_for, session, flash, jsonify
+from flask import Flask, render_template, request, redirect, url_for, session, flash, jsonify, g
 from werkzeug.security import generate_password_hash, check_password_hash
 from werkzeug.utils import secure_filename
 from database import db
 from admin_routes import admin_bp
+import admin_routes  # module import too -- the auto-backup loop below calls its _run_backup()/_system_settings()
 from bhw_routes import bhw_bp
 from firebase_admin import firestore, auth as firebase_auth
 from datetime import datetime, timedelta, timezone
+import alerts_common as ac
 import care_plan_service as cps
 import requests
 import os
 import uuid
 import re
 import base64
+import threading
+import time
+from concurrent.futures import ThreadPoolExecutor
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -93,11 +98,23 @@ def _get_care_plan(elder_id=None):
 def inject_care_plan_extras():
     if 'user_id' not in session or session.get('role') != 'family':
         return {}
+    # _linked_elders_for_dashboard() is cached on flask.g -- by the time
+    # this runs (context processors fire during render_template(), after
+    # the view function's own body), the route has usually already paid
+    # for it. get_payment_methods()/get_plan_qr_codes() are independent
+    # of each other and of that, so they're fetched concurrently instead
+    # of back to back -- each is its own Firestore round trip.
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        gcash_future = pool.submit(cps.get_payment_methods)
+        qr_future = pool.submit(cps.get_plan_qr_codes)
+        elders = _linked_elders_for_dashboard()
+        gcash = gcash_future.result()
+        qr = qr_future.result()
     return {
-        'care_plan_elders': _linked_elders_for_dashboard(),
-        'care_plan_gcash': cps.get_payment_methods(),
+        'care_plan_elders': elders,
+        'care_plan_gcash': gcash,
         'care_plan_month_options': cps.PLAN_MONTH_OPTIONS,
-        'care_plan_qr_codes': cps.get_plan_qr_codes(),   # NEW
+        'care_plan_qr_codes': qr,   # NEW
     }
 
 
@@ -500,6 +517,12 @@ def login():
                     flash(
                         'Your BHW account is still pending approval by the system administrator.', 'error')
                 return redirect(url_for('login'))
+
+            # Unchecked (the default): a normal browser-session cookie --
+            # gone once the browser closes. Checked: session.permanent
+            # switches it to Flask's PERMANENT_SESSION_LIFETIME (31 days
+            # by default), so the login survives closing the browser.
+            session.permanent = bool(request.form.get('remember'))
 
             session['user_id'] = user_doc.id
             session['full_name'] = user['full_name']
@@ -1055,86 +1078,92 @@ def loved_one_update(elder_id):
 
 # ---------- ALERTS ----------
 #
-# alert/{id}  (written by the device through /api/device/alert)
-#   elder_id, device_id, trigger_type ('VOICE'|'BUTTON'), phrase_used,
-#   confidence_score, latitude, longitude, location_address,
-#   status ('PENDING'|'SENT'|'CANCELLED'|'ACKNOWLEDGED'|'RESOLVED'),
-#   created_at, cancel_reason, acknowledged_at/by, resolved_at/by
-# emergency_status_history/{id}: alert_id, status, changed_by_user_id, notes, changed_at
+# Schema/collection docs live in alerts_common.py -- this section is the
+# family dashboard's read/write side of the same emergency_alert data the
+# BHW portal (bhw_routes.py) and the Pi (firestore_backend.py) use.
 
+# Family-facing labels for ac.row_status()'s lowercase display vocabulary
+# ('active'|'acknowledged'|'resolved'|'false_alarm') -- worded for family
+# members rather than BHWs (e.g. 'false_alarm' reads as "Cancelled" here),
+# same underlying alert_status/acknowledged data either way.
 ALERT_STATUS_LABELS = {
-    'PENDING': ('Pending', 'status-pending'),
-    'SENT': ('Alert Sent', 'status-alert-sent'),
-    'ACKNOWLEDGED': ('Responded', 'status-responded'),
-    'RESPONDED': ('Responded', 'status-responded'),
-    'RESOLVED': ('Resolved', 'status-resolved'),
-    'CANCELLED': ('Cancelled', 'status-cancelled'),
+    'active': ('Alert Sent', 'status-alert-sent'),
+    'acknowledged': ('Responded', 'status-responded'),
+    'resolved': ('Resolved', 'status-resolved'),
+    'false_alarm': ('Cancelled', 'status-cancelled'),
 }
-ALERT_ACTIONS = {'acknowledge': 'ACKNOWLEDGED', 'resolve': 'RESOLVED'}
+ALERT_ACTIONS = {'acknowledge', 'resolve'}
+
+# emergency_status_history.status labels -- a finer-grained trail than
+# ALERT_STATUS_LABELS above (that one's the alert's current display
+# status; this is every step it passed through, including the device's
+# own 'CREATED'/'SMS_SENT' entries).
+HISTORY_STATUS_LABELS = {
+    'CREATED': 'Alert Created',
+    'SMS_SENT': 'SMS Sent',
+    'ACKNOWLEDGED': 'Responded',
+    'RESOLVED': 'Resolved',
+    'CANCELLED': 'Cancelled',
+    'CLOSED': 'Closed',
+}
 
 
-def _alert_coords(alert):
-    lat = alert.get('latitude', alert.get('gps_lat'))
-    lng = alert.get('longitude', alert.get('gps_long'))
-    if isinstance(lat, (int, float)) and isinstance(lng, (int, float)):
-        return lat, lng
-    return None, None
 
 
-def _sms_sent_count(alert_id, alert):
-    if isinstance(alert.get('sms_sent_count'), int):
-        return alert['sms_sent_count']
-    try:
-        return sum(1 for d in db.collection('sms_delivery_log')
-                   .where('alert_id', '==', alert_id).stream()
-                   if (d.to_dict() or {}).get('delivery_status') == 'SENT')
-    except Exception:
-        return 0
-
-
-def _alert_card(row, elder):
-    """One alert shaped for templates/family/alerts.html."""
+def _alert_card(row, elder, locations=None, phrases=None, sms_counts=None):
+    """One alert shaped for templates/family/alerts.html. Pass pre-fetched
+    locations/phrases/sms_counts (from the ac.*_bulk() helpers) when
+    rendering a LIST of alerts, so this doesn't do 3 fresh Firestore round
+    trips per call -- falls back to single-item lookups when building just
+    one card (e.g. the details modal), where a whole batch would be
+    overkill."""
     alert = row['data']
-    status = str(alert.get('status') or 'PENDING').upper()
+    status = ac.row_status(alert)
     label, status_class = ALERT_STATUS_LABELS.get(
         status, (status.title(), 'status-pending'))
-    lat, lng = _alert_coords(alert)
-    created = _to_ph(alert.get('created_at'))
+    if locations is not None:
+        lat, lng, address = locations.get(alert.get('location_id'), (None, None, None))
+    else:
+        lat, lng, address = ac.alert_location(db, alert.get('location_id'))
+    phrase = (phrases.get(alert.get('phrase_id'), '') if phrases is not None
+              else ac.alert_phrase_text(db, alert.get('phrase_id')))
+    sms_count = (sms_counts.get(row['id'], 0) if sms_counts is not None
+                 else ac.sms_sent_count(db, row['id']))
+    created = _to_ph(alert.get('date_triggered'))
     trigger = str(alert.get('trigger_type') or 'VOICE').upper()
 
     return {
         'id': row['id'],
         'short_id': row['id'][:8].upper(),
-        'type': 'false-alarm' if status == 'CANCELLED' else 'emergency',
+        'type': 'false-alarm' if status == 'false_alarm' else 'emergency',
         'is_open': _is_open_alert(alert),
         'elder_name': elder['name'],
         'elder_photo_url': elder.get('photo_url'),
         'relationship': elder.get('relationship') or 'Family',
-        'trigger_label': ('BUTTON PRESS' if trigger == 'BUTTON'
-                          else 'LOGGED BY ADMIN' if trigger == 'MANUAL'
-                          else 'VOICE TRIGGER'),
-        'trigger_icon': ('circle-dot' if trigger == 'BUTTON'
-                         else 'clipboard-list' if trigger == 'MANUAL'
-                         else 'mic'),
-        'trigger_phrase': alert.get('phrase_used') or alert.get('phrase'),
-        'timestamp': _friendly_time(alert.get('created_at')),
+        'trigger_label': 'BUTTON PRESS' if trigger == 'BUTTON' else 'VOICE TRIGGER',
+        'trigger_icon': 'circle-dot' if trigger == 'BUTTON' else 'mic',
+        'trigger_phrase': phrase,
+        'timestamp': _friendly_time(alert.get('date_triggered')),
         'created_iso': created.isoformat() if created else '',
-        'location': (alert.get('location_address')
+        'location': (address
                      or (f'{lat:.5f}, {lng:.5f}' if lat is not None else 'Location not recorded')),
         'gps_verified': lat is not None,
         'latitude': lat,
         'longitude': lng,
-        'sms_sent_count': _sms_sent_count(row['id'], alert),
+        'sms_sent_count': sms_count,
         'status': label,
         'status_class': status_class,
-        'reason': alert.get('cancel_reason') or 'Cancelled within 5 seconds',
+        'reason': alert.get('resolution_note') or 'Cancelled within 5 seconds',
     }
 
 
 def _family_alert_cards():
     elders = _linked_elders_for_dashboard()
     rows = _alerts_for_elders(elders)
-    return [_alert_card(r, elders[r['elder_id']]) for r in rows]
+    locations = ac.alert_locations_bulk(db, (r['data'].get('location_id') for r in rows))
+    phrases = ac.alert_phrases_bulk(db, (r['data'].get('phrase_id') for r in rows))
+    sms_counts = ac.sms_sent_counts_bulk(db, (r['id'] for r in rows))
+    return [_alert_card(r, elders[r['elder_id']], locations, phrases, sms_counts) for r in rows]
 
 
 def _get_linked_alert(alert_id):
@@ -1192,11 +1221,11 @@ def alert_details_json(alert_id):
     elder = elders.get(alert.get('elder_id'), {'name': 'Unknown'})
     card = _alert_card({'id': alert_id, 'data': alert}, elder)
     card['device_id'] = alert.get('device_id') or '—'
-    card['confidence'] = alert.get('confidence_score')
+    card['confidence'] = None  # not measured by the current ASR pipeline -- see firestore_backend.py
 
     history = []
     try:
-        for d in (db.collection('emergency_status_history')
+        for d in (db.collection(ac.STATUS_HISTORY_COLLECTION)
                   .where('alert_id', '==', alert_id).stream()):
             h = d.to_dict() or {}
             who = 'Device'
@@ -1207,9 +1236,9 @@ def alert_details_json(alert_id):
                                               'Unknown') if u.exists else 'Unknown'
             changed = _to_ph(h.get('changed_at'))
             history.append({
-                'status': ALERT_STATUS_LABELS.get(str(h.get('status')).upper(), (h.get('status'),))[0],
+                'status': HISTORY_STATUS_LABELS.get(str(h.get('status')).upper(), h.get('status')),
                 'by': who,
-                'notes': h.get('notes') or '',
+                'notes': h.get('remarks') or '',
                 'when': _friendly_time(h.get('changed_at')),
                 'sort_key': changed.timestamp() if changed else 0,
             })
@@ -1228,43 +1257,37 @@ def alert_respond(alert_id):
         return jsonify(success=False, message='Please log in first.'), 401
 
     data = request.get_json(silent=True) or {}
-    new_status = ALERT_ACTIONS.get(data.get('action'))
+    action = data.get('action')
     notes = (data.get('notes') or '').strip()[:500]
-    if not new_status:
+    if action not in ALERT_ACTIONS:
         return jsonify(success=False, message='Invalid action.'), 400
 
     ref, alert = _get_linked_alert(alert_id)
     if not ref:
         return jsonify(success=False, message='Alert not found.'), 404
 
-    current = str(alert.get('status') or '').upper()
-    if current in {'RESOLVED', 'CANCELLED'}:
+    current = ac.row_status(alert)
+    if current in ac.RESOLVED_STATUSES:
         return jsonify(success=False, message='This alert is already closed.'), 409
-    if current in {'ACKNOWLEDGED', 'RESPONDED'} and new_status == 'ACKNOWLEDGED':
+    if current == 'acknowledged' and action == 'acknowledge':
         return jsonify(success=False, message='Someone already responded to this alert.'), 409
 
-    stamp = 'acknowledged' if new_status == 'ACKNOWLEDGED' else 'resolved'
     try:
-        ref.update({
-            'status': new_status,
-            f'{stamp}_at': firestore.SERVER_TIMESTAMP,
-            f'{stamp}_by': session['user_id'],
-        })
-        db.collection('emergency_status_history').add({
-            'alert_id': alert_id,
-            'status': new_status,
-            'changed_by_user_id': session['user_id'],
-            'notes': notes,
-            'changed_at': firestore.SERVER_TIMESTAMP,
-        })
+        if action == 'acknowledge':
+            ac.acknowledge(db, ref, alert_id, session['user_id'])
+            if notes:
+                ac.write_status_history(db, alert_id, 'ACKNOWLEDGED', session['user_id'], remarks=notes)
+        else:
+            ac.resolve(db, ref, alert_id, session['user_id'], notes=notes)
+        _lat, _lng, address = ac.alert_location(db, alert.get('location_id'))
         _log_activity(
             alert.get('elder_id'), 'alert',
             title='Emergency alert ' +
-            ('responded to' if stamp == 'acknowledged' else 'resolved'),
+            ('responded to' if action == 'acknowledge' else 'resolved'),
             detail=notes,
-            badge='Responded' if stamp == 'acknowledged' else 'Resolved',
-            badge_class='warning' if stamp == 'acknowledged' else 'success',
-            location_address=alert.get('location_address') or '',
+            badge='Responded' if action == 'acknowledge' else 'Resolved',
+            badge_class='warning' if action == 'acknowledge' else 'success',
+            location_address=address or '',
             device_id=alert.get('device_id'),
             actor_user_id=session['user_id'],
             ref_id=alert_id,
@@ -1283,6 +1306,36 @@ def alert_respond(alert_id):
 def _device_key_ok():
     expected = os.environ.get('ALISTO_DEVICE_KEY')
     return bool(expected) and request.headers.get('X-Device-Key') == expected
+
+
+def _notification_for(alert_id, elder_id, number):
+    """Finds or creates the alert_notification doc for this (alert,
+    recipient) pair, resolving the contact by phone number -- lets
+    device_report_sms() below log a real per-attempt sms_delivery_log
+    entry the same way the Pi's write_sms_delivery_log() does."""
+    contact_id = None
+    try:
+        for c in db.collection('emergency_contact').where('elder_id', '==', elder_id).stream():
+            if (c.to_dict() or {}).get('contact_num') == number:
+                contact_id = c.id
+                break
+    except Exception:
+        pass
+    if contact_id:
+        existing = (
+            db.collection(ac.NOTIFICATION_COLLECTION)
+            .where('alert_id', '==', alert_id)
+            .where('contact_id', '==', contact_id)
+            .limit(1)
+            .get()
+        )
+        for doc in existing:
+            return doc.id
+    _, ref = db.collection(ac.NOTIFICATION_COLLECTION).add({
+        'alert_id': alert_id, 'contact_id': contact_id,
+        'sms_status': 'PENDING', 'date_sent': None, 'failure_reason': None,
+    })
+    return ref.id
 
 
 @app.route('/api/device/alert', methods=['POST'])
@@ -1313,36 +1366,46 @@ def device_create_alert():
     address = (data.get('location_address') or '').strip()
     phrase = (data.get('phrase_used') or '').strip()
 
-    alert_ref = db.collection(ALERT_COLLECTION).document()
-    alert_ref.set({
-        'elder_id': elder_id,
-        'device_id': serial,
-        'trigger_type': trigger,
-        'phrase_used': phrase or None,
-        'confidence_score': data.get('confidence_score'),
-        'latitude': lat if has_coords else None,
-        'longitude': lng if has_coords else None,
-        'location_address': address or None,
-        'status': status,
-        'title': 'Emergency Alert',
-        'cancel_reason': data.get('cancel_reason') if status == 'CANCELLED' else None,
-        'created_at': firestore.SERVER_TIMESTAMP,
-    })
-    db.collection('emergency_status_history').add({
-        'alert_id': alert_ref.id, 'status': status,
-        'changed_by_user_id': None, 'notes': 'Reported by device',
-        'changed_at': firestore.SERVER_TIMESTAMP,
-    })
-
-    # The alert also counts as a check-in (and a location report if it has GPS).
-    db.collection('device').document(serial).update(
-        {'last_seen': firestore.SERVER_TIMESTAMP})
+    location_id = None
     if has_coords:
-        db.collection('DEVICE_LOCATION').add({
+        _, loc_ref = db.collection(ac.LOCATION_COLLECTION).add({
             'device_id': serial, 'gps_lat': lat, 'gps_long': lng,
             'location_address': address or None,
             'recorded_at': firestore.SERVER_TIMESTAMP,
         })
+        location_id = loc_ref.id
+
+    phrase_id = None
+    if phrase:
+        existing = db.collection(ac.PHRASE_COLLECTION).where('phrase_text', '==', phrase).limit(1).get()
+        phrase_id = existing[0].id if existing else None
+        if not phrase_id:
+            _, phrase_ref = db.collection(ac.PHRASE_COLLECTION).add({
+                'phrase_text': phrase, 'phrase_category': 'GENERAL_HELP',
+                'status': 'ACTIVE', 'created_at': firestore.SERVER_TIMESTAMP,
+                'updated_at': firestore.SERVER_TIMESTAMP,
+            })
+            phrase_id = phrase_ref.id
+
+    alert_ref = db.collection(ALERT_COLLECTION).document()
+    alert_ref.set({
+        'elder_id': elder_id,
+        'device_id': serial,
+        'location_id': location_id,
+        'phrase_id': phrase_id,
+        'trigger_type': trigger,
+        'alert_status': status,
+        'title': 'Emergency Alert',
+        'lines': [data.get('message')] if data.get('message') else [],
+        'date_triggered': firestore.SERVER_TIMESTAMP,
+        'deleted_at': None,
+        'is_archived': False,
+    })
+    ac.write_status_history(db, alert_ref.id, 'CREATED', remarks='Reported by device')
+
+    # The alert also counts as a check-in.
+    db.collection('device').document(serial).update(
+        {'last_seen': firestore.SERVER_TIMESTAMP})
 
     _log_activity(
         elder_id, 'alert',
@@ -1374,17 +1437,15 @@ def device_cancel_alert(alert_id):
     alert = doc.to_dict() or {}
     if _clean_device_id(data.get('serial_number')) != alert.get('device_id'):
         return jsonify(success=False, message='Alert belongs to another device.'), 403
-    if str(alert.get('status')).upper() not in {'PENDING', 'SENT'}:
+    if str(alert.get('alert_status') or '').upper() not in {'PENDING', 'SENT'}:
         return jsonify(success=False, message='Alert can no longer be cancelled.'), 409
 
-    ref.update({'status': 'CANCELLED',
-                'cancel_reason': data.get('cancel_reason') or 'Cancelled within 5 seconds',
-                'cancelled_at': firestore.SERVER_TIMESTAMP})
-    db.collection('emergency_status_history').add({
-        'alert_id': alert_id, 'status': 'CANCELLED',
-        'changed_by_user_id': None, 'notes': 'Cancelled on device',
-        'changed_at': firestore.SERVER_TIMESTAMP,
+    ref.update({
+        'alert_status': 'CANCELLED',
+        'resolution_note': data.get('cancel_reason') or 'Cancelled within 5 seconds',
+        'resolved_at': firestore.SERVER_TIMESTAMP,
     })
+    ac.write_status_history(db, alert_id, 'CANCELLED', remarks='Cancelled on device')
     _log_activity(alert.get('elder_id'), 'alert', title='False alarm cancelled',
                   badge='Cancelled', badge_class='warning',
                   device_id=alert.get('device_id'), ref_id=alert_id)
@@ -1410,12 +1471,24 @@ def device_report_sms(alert_id):
     if _clean_device_id(data.get('serial_number')) != alert.get('device_id'):
         return jsonify(success=False, message='Alert belongs to another device.'), 403
 
+    notification_id = _notification_for(alert_id, alert.get('elder_id'), number)
+    sent = delivery == 'SENT'
     db.collection('sms_delivery_log').add({
-        'alert_id': alert_id,
-        'recipient_number': number,
-        'delivery_status': delivery,
-        'sent_at': firestore.SERVER_TIMESTAMP,
+        'notification_id': notification_id,
+        'status': delivery,
+        'queued_at': firestore.SERVER_TIMESTAMP,
+        'sent_at': firestore.SERVER_TIMESTAMP if sent else None,
+        'delivery_time': firestore.SERVER_TIMESTAMP if sent else None,
+        'retry_count': data.get('retry_count') or 1,
+        'failure_reason': data.get('failure_reason'),
     })
+    db.collection(ac.NOTIFICATION_COLLECTION).document(notification_id).update({
+        'sms_status': delivery,
+        'date_sent': firestore.SERVER_TIMESTAMP if sent else None,
+        'failure_reason': data.get('failure_reason'),
+    })
+    if sent:
+        db.collection(ALERT_COLLECTION).document(alert_id).update({'alert_status': 'SENT'})
     return jsonify(success=True)
 
 # ---------- DEVICE API: check-in + medication (Raspberry Pi -> Flask) ----------
@@ -1478,7 +1551,7 @@ def device_checkin():
     db.collection('device').document(serial).update(updates)
 
     if has_coords:
-        db.collection('DEVICE_LOCATION').add({
+        db.collection('device_location').add({
             'device_id': serial, 'gps_lat': lat, 'gps_long': lng,
             'location_address': address or None,
             'recorded_at': firestore.SERVER_TIMESTAMP,
@@ -1537,8 +1610,9 @@ def device_medications():
             'dosage': med.get('dosage') or '',
             'reminder_time': _med_time(med),
             'time_24h': f'{clock[0]:02d}:{clock[1]:02d}' if clock else None,
-            # empty = every day
-            'schedule_days': med.get('schedule_days') or [],
+            'schedule_type': med.get('schedule_type') or 'daily',
+            'interval_value': med.get('interval_value'),
+            'start_date': med.get('start_date'),
             'voice_reminder_enabled': med.get('voice_reminder_enabled', True),
             'status': med.get('status') or 'Upcoming',
         })
@@ -1588,16 +1662,34 @@ def device_medication_status(reminder_id):
 
 # ---------- MEDICATION REMINDERS ----------
 #
-# Shared with the Flutter app (medicine_screens.dart), same collection:
-#   medication_reminder/{id}
-# The app and the web have used two sets of field names, so the web
-# READS both and WRITES both — whichever the app reads stays in sync:
+# Shared with the Flutter app (medicine_screens.dart) AND the device (the
+# Pi reads this collection directly -- see get_active_medicine_reminders()
+# and _should_fire_now() in firestore_backend.py/alisto_main.py), same
+# collection: medication_reminder/{id}
+#
+# schedule_type ('daily' default | 'every_hours' | 'every_days') +
+# interval_value + start_date are what the Pi ACTUALLY reads to decide
+# when to speak a reminder -- this used to be a 'frequency'
+# ('Daily'/'Weekly'/'As needed') + 'schedule_days' (weekday list) pair
+# that only this page understood; the Pi had no such concept at all, so
+# every reminder the website created silently defaulted to firing once
+# daily regardless of what was picked here, and 'Weekly'/'As needed'
+# reminders fired on the wrong days (or every day) with no way to notice
+# short of watching the device. Fixed by adopting the same three-shape
+# model the app and device already use -- see _should_fire_now()'s doc
+# comment for exactly what each shape means.
+#
+# The app and the web have used two sets of field names for the rest, so
+# the web READS both and WRITES both — whichever the app reads stays in
+# sync:
 #   medicine_name + name          (medicine)
-#   reminder_time + time          (free text, e.g. "8:00 AM", "09:00 - 10:00 AM")
+#   reminder_time + time          (24-hour "HH:MM", from <input type="time">
+#                                  -- _reminder_clock() also tolerates the
+#                                  app's 12-hour "8:00 AM" for display)
 #   created_at + createdAt, updated_at + updatedAt
 #   elder_id, status ('Upcoming' / 'Notified' ...), is_active
 # Web-only extras the app simply ignores:
-#   dosage, purpose, frequency, schedule_days, voice_reminder_enabled
+#   dosage, purpose, voice_reminder_enabled
 # Delete is a hard delete, same as FirestoreService.deleteMedicine().
 
 
@@ -1605,7 +1697,8 @@ MED_STATUS_CLASSES = {
     'notified': 'success', 'taken': 'success',
     'missed': 'danger', 'overdue': 'danger',
 }
-MED_FREQUENCIES = {'Daily', 'Weekly', 'As needed'}
+SCHEDULE_TYPES = {'daily', 'every_hours', 'every_days'}
+SCHEDULE_TYPE_UNIT = {'every_hours': 'hrs', 'every_days': 'days'}
 
 
 def _med_name(med):
@@ -1634,16 +1727,31 @@ def _time_of_day(clock):
     return 'evening'
 
 
-def _day_filter(days):
-    """'today tomorrow' tags for the filter tabs. No days = every day
-    (every reminder made in the app, which has no day picker)."""
-    now = datetime.now(PH_TZ)
-    today = DASHBOARD_WEEKDAYS[now.weekday()]
-    tomorrow = DASHBOARD_WEEKDAYS[(now.weekday() + 1) % 7]
-    if not days:
+def _schedule_label(med):
+    """'Once daily' / 'Every 4 hrs' / 'Every 2 days', for the reminders
+    list and the edit form -- the human-readable form of schedule_type +
+    interval_value (see SCHEDULE_TYPES's doc comment)."""
+    schedule_type = med.get('schedule_type') or 'daily'
+    interval = med.get('interval_value')
+    if schedule_type in SCHEDULE_TYPE_UNIT and interval:
+        return f'Every {interval} {SCHEDULE_TYPE_UNIT[schedule_type]}'
+    return 'Once daily'
+
+
+def _day_filter_for(med, due, now):
+    """'today'/'tomorrow' tags for the filter tabs. 'daily' and
+    'every_hours' reminders recur every day, so they always match both
+    tabs; an 'every_days' reminder only matches whichever tab its actual
+    next occurrence (`due`, from _next_occurrence()) falls on."""
+    if (med.get('schedule_type') or 'daily') in ('daily', 'every_hours'):
         return 'today tomorrow'
-    return ' '.join(tag for tag, day in (('today', today), ('tomorrow', tomorrow))
-                    if day in days)
+    if not due:
+        return ''
+    if due.date() == now.date():
+        return 'today'
+    if due.date() == (now + timedelta(days=1)).date():
+        return 'tomorrow'
+    return ''
 
 
 def _linked_elder_list():
@@ -1661,6 +1769,8 @@ def medication_reminders():
         return redirect(url_for('login'))
 
     elders, lookup = _linked_elder_list()
+    now = datetime.now(PH_TZ)
+    far_future = now.replace(year=now.year + 1)
 
     schedules = []
     for elder_id, elder in lookup.items():
@@ -1678,9 +1788,8 @@ def medication_reminders():
 
             reminder_time = _med_time(med)
             clock = _reminder_clock(reminder_time)
-            days = [d for d in (med.get('schedule_days') or [])
-                    if d in DASHBOARD_WEEKDAYS]
             status = med.get('status') or 'Upcoming'
+            due = _next_occurrence(med, now)
 
             schedules.append({
                 'id': doc.id,
@@ -1693,21 +1802,23 @@ def medication_reminders():
                 # blank for app-made reminders
                 'dosage': med.get('dosage') or '',
                 'purpose': med.get('purpose') or 'general use',
-                'frequency': med.get('frequency') or 'Daily',
+                'schedule_type': med.get('schedule_type') or 'daily',
+                'interval_value': med.get('interval_value'),
+                'start_date': med.get('start_date') or '',
+                'schedule_label': _schedule_label(med),
                 'voice_reminder_enabled': med.get('voice_reminder_enabled', True),
 
-                'schedule_time': reminder_time or 'No time set',
-                'schedule_day': ', '.join(days) if days else 'Every day',
+                'schedule_time': (_display_time(f'{clock[0]:02d}:{clock[1]:02d}')
+                                  if clock else 'No time set'),
                 # <input type="time"> only accepts 24-hour HH:MM
                 'time_value': f'{clock[0]:02d}:{clock[1]:02d}' if clock else '',
-                'days_csv': ','.join(days),
 
-                'time_of_day': _time_of_day(clock),
-                'day_filter': _day_filter(days),
+                'time_of_day': _time_of_day((due.hour, due.minute) if due else clock),
+                'day_filter': _day_filter_for(med, due, now),
 
                 'status': status,
                 'status_class': MED_STATUS_CLASSES.get(status.lower(), ''),
-                'sort_key': (clock is None, clock or (0, 0), _med_name(med).casefold()),
+                'sort_key': (due is None, due or far_future, _med_name(med).casefold()),
             })
 
     schedules.sort(key=lambda s: s['sort_key'])
@@ -1744,27 +1855,67 @@ def _reminder_form(lookup):
     if not time_input or not _reminder_clock(time_input):
         return None, 'Set the time this reminder should go off.'
 
-    frequency = request.form.get('frequency', 'Daily').strip() or 'Daily'
-    if frequency not in MED_FREQUENCIES:
-        frequency = 'Daily'
-    days = [d for d in request.form.getlist(
-        'schedule_days') if d in DASHBOARD_WEEKDAYS]
-    if frequency == 'Weekly' and not days:
-        return None, 'Pick at least one day for a weekly reminder.'
+    schedule_type = request.form.get('schedule_type', 'daily').strip() or 'daily'
+    if schedule_type not in SCHEDULE_TYPES:
+        schedule_type = 'daily'
 
-    reminder_time = _display_time(time_input)
+    interval_value = None
+    start_date = None
+    if schedule_type in ('every_hours', 'every_days'):
+        try:
+            interval_value = int(request.form.get('interval_value', '').strip())
+        except (TypeError, ValueError):
+            interval_value = None
+        if not interval_value or interval_value <= 0:
+            return None, f"Enter how many {SCHEDULE_TYPE_UNIT[schedule_type]} apart this reminder repeats."
+        if schedule_type == 'every_days':
+            start_date = (request.form.get('start_date', '').strip()
+                          or datetime.now(PH_TZ).strftime('%Y-%m-%d'))
+
+    # <input type="time"> already gives 24-hour "HH:MM" -- this is exactly
+    # what the Pi's _should_fire_now() and the app both expect, so it's
+    # stored as-is rather than converted to a 12-hour display string.
+    # _display_time() below is only ever used to FORMAT this for display,
+    # never to change what's stored.
     return {
         'elder_id': elder_id,
         'medicine_name': medicine_name,
         'name': medicine_name,            # app field name
-        'reminder_time': reminder_time,
-        'time': reminder_time,            # app field name
+        'reminder_time': time_input,
+        'time': time_input,               # app field name
         'dosage': request.form.get('dosage', '').strip()[:50],
         'purpose': request.form.get('purpose', '').strip()[:100],
-        'frequency': frequency,
-        'schedule_days': days,
+        'schedule_type': schedule_type,
+        'interval_value': interval_value,
+        'start_date': start_date,
         'voice_reminder_enabled': request.form.get('voice_reminder_enabled') == 'on',
     }, None
+
+
+def _has_active_medicine_named(elder_id, name, exclude_id=None):
+    """True if this elder already has another ACTIVE reminder for a
+    medicine with the same name (case-insensitive, trimmed) -- mirrors
+    FirestoreService.hasActiveMedicineNamed() on the app side. Blocked
+    outright (not just warned) rather than allowed as a second entry:
+    the correct way to schedule multiple doses of the SAME medicine is
+    'Every X hrs' on one entry, not two separate entries that could
+    double-announce/double-mark it. Pass exclude_id when checking during
+    an edit, so a reminder doesn't collide with itself."""
+    normalized = name.strip().lower()
+    try:
+        docs = (db.collection('medication_reminder')
+                .where('elder_id', '==', elder_id)
+                .where('is_active', '==', True)
+                .stream())
+    except Exception:
+        return False  # best-effort check -- never block saving over this
+    for doc in docs:
+        if doc.id == exclude_id:
+            continue
+        existing_name = _med_name(doc.to_dict() or {}).strip().lower()
+        if existing_name == normalized:
+            return True
+    return False
 
 
 def _get_linked_reminder(reminder_id, lookup):
@@ -1788,6 +1939,14 @@ def add_medication_reminder():
     fields, error = _reminder_form(lookup)
     if error:
         return jsonify(success=False, message=error), 400
+
+    if _has_active_medicine_named(fields['elder_id'], fields['medicine_name']):
+        return jsonify(
+            success=False,
+            message=f'There\'s already an active reminder for '
+                    f'"{fields["medicine_name"]}". Please edit that one '
+                    f'instead of adding a new one.',
+        ), 409
 
     try:
         db.collection('medication_reminder').add({
@@ -1826,6 +1985,14 @@ def update_medication_reminder(reminder_id):
     fields, error = _reminder_form(lookup)
     if error:
         return jsonify(success=False, message=error), 400
+
+    if _has_active_medicine_named(fields['elder_id'], fields['medicine_name'], exclude_id=reminder_id):
+        return jsonify(
+            success=False,
+            message=f'There\'s already an active reminder for '
+                    f'"{fields["medicine_name"]}". Please edit that one '
+                    f'instead of adding a new one.',
+        ), 409
 
     updates = {**fields,
                'updated_at': firestore.SERVER_TIMESTAMP,
@@ -2869,7 +3036,6 @@ def _initials(name: str) -> str:
 
 
 PH_TZ = timezone(timedelta(hours=8))
-DASHBOARD_WEEKDAYS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']
 DASHBOARD_ALERT_LIMIT = 3
 
 
@@ -2928,7 +3094,18 @@ def _reminder_clock(reminder_time):
 
 
 def _linked_elders_for_dashboard():
-    """{elder_id: {...}} for every non-deleted elder linked to this account."""
+    """{elder_id: {...}} for every non-deleted elder linked to this account.
+
+    Cached on flask.g for the lifetime of one request. This is called by
+    inject_care_plan_extras() (runs on EVERY family page, via
+    @app.context_processor) *and* separately by whichever route handles
+    the request -- without caching, every single page load did this
+    family_elder_link scan (plus one elder_profile lookup per link)
+    twice over, which added up across the several Firestore round trips
+    the rest of a page already needs."""
+    if hasattr(g, '_linked_elders_cache'):
+        return g._linked_elders_cache
+
     links = (
         db.collection('family_elder_link')
         .where('family_user_id', '==', session['user_id'])
@@ -2953,6 +3130,7 @@ def _linked_elders_for_dashboard():
             'initials': _initials(name),
             'relationship': link_data.get('relationship') or 'Family',
         }
+    g._linked_elders_cache = elders
     return elders
 
 
@@ -2974,7 +3152,7 @@ def _alerts_for_elders(elders):
                 alert = doc.to_dict() or {}
                 if alert.get('deleted_at'):  # removed by the admin
                     continue
-                created = _to_ph(alert.get('created_at'))
+                created = _to_ph(alert.get('date_triggered'))
                 rows.append({
                     'id': doc.id,
                     'elder_id': elder_id,
@@ -2989,20 +3167,23 @@ def _alerts_for_elders(elders):
 
 
 def _is_open_alert(alert):
-    return str(alert.get('status') or '') not in RESOLVED_STATUSES
+    return ac.row_status(alert) in ac.OPEN_STATUSES
 
 
-def _alert_row(row):
-    """One alert shaped for the Recent Alerts list in the template."""
+def _alert_row(row, phrases=None):
+    """One alert shaped for the Recent Alerts list in the template. Pass a
+    pre-fetched phrases dict (ac.alert_phrases_bulk()) when mapping over
+    several rows, same reasoning as _alert_card()."""
     alert = row['data']
-    status = str(alert.get('status') or 'PENDING').upper()
-    phrase = alert.get('phrase_used') or alert.get('phrase')
+    status = ac.row_status(alert)
+    phrase = (phrases.get(alert.get('phrase_id'), '') if phrases is not None
+              else ac.alert_phrase_text(db, alert.get('phrase_id')))
 
-    if status == 'RESOLVED':
+    if status == 'resolved':
         icon, icon_class, label = 'check-circle-2', 'ok', 'Resolved'
-    elif status == 'CANCELLED':
+    elif status == 'false_alarm':
         icon, icon_class, label = 'circle-x', 'warn', 'Cancelled (false alarm)'
-    elif status in {s.upper() for s in RESPONDED_STATUSES}:
+    elif status == 'acknowledged':
         icon, icon_class, label = 'bell', 'warn', 'Responded'
     else:
         icon, icon_class, label = 'siren', 'sos', 'Needs attention'
@@ -3016,7 +3197,7 @@ def _alert_row(row):
         'icon_class': icon_class,
         'title': alert.get('title') or 'Emergency Alert',
         'subtext': subtext,
-        'timestamp': _friendly_time(alert.get('created_at')),
+        'timestamp': _friendly_time(alert.get('date_triggered')),
     }
 
 
@@ -3073,6 +3254,68 @@ def _device_summary(serial, device, loc):
             'note': note + battery_text}
 
 
+def _next_occurrence(med, now):
+    """Next datetime this reminder is due, or None if it can't be worked
+    out. Mirrors the Pi's _should_fire_now() (alisto_main.py) but scans
+    forward instead of checking "is it due right this second" -- used
+    here for the dashboard's Next Medicine card and the reminders list's
+    day/time-of-day filters, so both match what the device will actually
+    do rather than the old (Pi-incompatible) weekday-list guess."""
+    clock = _reminder_clock(_med_time(med))
+    if not clock:
+        return None
+    hour, minute = clock
+    schedule_type = med.get('schedule_type') or 'daily'
+
+    if schedule_type == 'every_hours':
+        try:
+            interval_h = int(med.get('interval_value') or 0)
+        except (TypeError, ValueError):
+            interval_h = 0
+        if interval_h <= 0:
+            return None
+        anchor_min = hour * 60 + minute
+        interval_min = interval_h * 60
+        today = now.replace(hour=0, minute=0, second=0, microsecond=0)
+        for day_offset in (0, 1):
+            day_start = today + timedelta(days=day_offset)
+            slot = day_start + timedelta(minutes=anchor_min)
+            while slot < day_start + timedelta(days=1):
+                if slot > now:
+                    return slot
+                slot += timedelta(minutes=interval_min)
+        return None
+
+    if schedule_type == 'every_days':
+        try:
+            interval_d = max(1, int(med.get('interval_value') or 1))
+        except (TypeError, ValueError):
+            interval_d = 1
+        start_date_str = med.get('start_date')
+        try:
+            start_date = (datetime.strptime(start_date_str, '%Y-%m-%d').date()
+                         if start_date_str else now.date())
+        except ValueError:
+            start_date = now.date()
+        for offset in range(interval_d * 8 + 1):
+            day = now + timedelta(days=offset)
+            days_since_start = (day.date() - start_date).days
+            if days_since_start < 0 or days_since_start % interval_d != 0:
+                continue
+            due = day.replace(hour=hour, minute=minute, second=0, microsecond=0)
+            if due > now:
+                return due
+        return None
+
+    # 'daily' (default/unrecognized) -- fires once, at this time, every day.
+    for offset in range(8):
+        day = now + timedelta(days=offset)
+        due = day.replace(hour=hour, minute=minute, second=0, microsecond=0)
+        if due > now:
+            return due
+    return None
+
+
 def _next_medicine(elder_id):
     """Soonest upcoming active reminder for this elder (next 7 days)."""
     empty = {'time': 'No upcoming reminder',
@@ -3094,24 +3337,9 @@ def _next_medicine(elder_id):
         med = doc.to_dict() or {}
         if med.get('deleted_at') or med.get('is_active') is False:
             continue
-        clock = _reminder_clock(_med_time(med))
-        if not clock:
-            continue
-        # No schedule_days means it repeats every day (how the mobile app saves it).
-        days = [d for d in (med.get('schedule_days') or [])
-                if d in DASHBOARD_WEEKDAYS]
-
-        for offset in range(8):
-            day = now + timedelta(days=offset)
-            if days and DASHBOARD_WEEKDAYS[day.weekday()] not in days:
-                continue
-            due = day.replace(hour=clock[0], minute=clock[1],
-                              second=0, microsecond=0)
-            if due <= now:
-                continue
-            if best is None or due < best[0]:
-                best = (due, med)
-            break
+        due = _next_occurrence(med, now)
+        if due and (best is None or due < best[0]):
+            best = (due, med)
 
     if not best:
         return empty
@@ -3163,14 +3391,30 @@ def dashboard():
     next_reminder = {'time': '—', 'medicine_name': 'No loved one linked yet',
                      'date': '—'}
     location = dict(TEMP_LOCATION)
+    care_plan = None
 
     if elderly_id:
         loved_one = {**elders[elderly_id], 'elder_id': elderly_id}
 
-        serial, device_data = _device_for_elder(elderly_id)
-        loc = _latest_device_location(serial)
+        # Three independent lookups -- none needs another's result -- so
+        # they're fetched concurrently instead of one after another. Real
+        # testing showed this page taking 4-6s end to end because of
+        # exactly this: 7+ independent Firestore reads, each paying its
+        # own full network round trip, run strictly sequentially.
+        def _fetch_device():
+            serial, device_data = _device_for_elder(elderly_id)
+            loc = _latest_device_location(serial)
+            return serial, device_data, loc
+
+        with ThreadPoolExecutor(max_workers=3) as pool:
+            device_future = pool.submit(_fetch_device)
+            medicine_future = pool.submit(_next_medicine, elderly_id)
+            care_plan_future = pool.submit(_get_care_plan, elderly_id)
+            serial, device_data, loc = device_future.result()
+            next_reminder = medicine_future.result()
+            care_plan = care_plan_future.result()
+
         device = _device_summary(serial, device_data, loc)
-        next_reminder = _next_medicine(elderly_id)
 
         # Real location only once the device has sent coordinates;
         # until then TEMP_LOCATION stays on screen.
@@ -3191,12 +3435,17 @@ def dashboard():
             loved_one['pill_label'] = device['status']
             loved_one['pill_class'] = device['status_class']
 
-    recent_alerts = [_alert_row(a) for a in all_alerts[:DASHBOARD_ALERT_LIMIT]]
+    if care_plan is None:
+        care_plan = _get_care_plan()
+
+    recent_slice = all_alerts[:DASHBOARD_ALERT_LIMIT]
+    recent_phrases = ac.alert_phrases_bulk(db, (a['data'].get('phrase_id') for a in recent_slice))
+    recent_alerts = [_alert_row(a, recent_phrases) for a in recent_slice]
 
     return render_template(
         'family/dashboard.html',
         full_name=session['full_name'], role=session['role'],
-        care_plan=_get_care_plan(),
+        care_plan=care_plan,
         loved_one=loved_one, elderly_id=elderly_id,
         device=device, next_reminder=next_reminder,
         location=location, recent_alerts=recent_alerts,
@@ -3224,7 +3473,7 @@ def map_modal(elderly_id):
                                    address='No device linked yet')
 
         locations = list(
-            db.collection('DEVICE_LOCATION')
+            db.collection('device_location')
             .where('device_id', '==', device_id)
             .order_by('recorded_at', direction=firestore.Query.DESCENDING)
             .limit(1)
@@ -3249,10 +3498,7 @@ def map_modal(elderly_id):
 # ---------- LIVE MAP ----------
 
 DEVICE_ONLINE_WINDOW = timedelta(minutes=10)
-ALERT_COLLECTION = 'alert'
-
-RESPONDED_STATUSES = {'ACKNOWLEDGED', 'RESPONDED', 'acknowledged', 'responded'}
-RESOLVED_STATUSES = {'RESOLVED', 'CANCELLED', 'resolved', 'cancelled'}
+ALERT_COLLECTION = 'emergency_alert'
 
 
 def _latest_device_location(device_serial):
@@ -3260,7 +3506,7 @@ def _latest_device_location(device_serial):
         return None
     try:
         docs = list(
-            db.collection('DEVICE_LOCATION')
+            db.collection('device_location')
             .where('device_id', '==', device_serial)
             .order_by('recorded_at', direction=firestore.Query.DESCENDING)
             .limit(1)
@@ -3276,31 +3522,39 @@ def _latest_device_location(device_serial):
     # Fallback that needs no index: read this device's rows and pick the newest.
     try:
         rows = [d.to_dict() or {} for d in
-                db.collection('DEVICE_LOCATION')
+                db.collection('device_location')
                 .where('device_id', '==', device_serial)
                 .stream()]
     except Exception as e:
-        print(f'[location] could not read DEVICE_LOCATION: {e}')
+        print(f'[location] could not read device_location: {e}')
         return None
     rows = [r for r in rows if hasattr(r.get('recorded_at'), 'timestamp')]
     return max(rows, key=lambda r: r['recorded_at'].timestamp()) if rows else None
 
 
 def _open_alert_for_elder(elder_id):
+    """Most recent still-open alert for this elder, or None. Sorts
+    client-side instead of `.order_by()` + `.where()` together -- that
+    combination needs a composite index Firestore doesn't have by
+    default, which made this silently fall back to nothing (the bare
+    except below) until one was created for the old collection name.
+    Alert volume per elder is small enough that fetching them all and
+    sorting in Python is not worth an index for."""
     try:
         docs = list(
             db.collection(ALERT_COLLECTION)
             .where('elder_id', '==', elder_id)
-            .order_by('created_at', direction=firestore.Query.DESCENDING)
-            .limit(5)
             .stream()
         )
     except Exception:
         return None
 
+    oldest = datetime.min.replace(tzinfo=timezone.utc)
+    docs.sort(key=lambda d: _to_ph(d.to_dict().get('date_triggered')) or oldest, reverse=True)
+
     for doc in docs:
         alert = doc.to_dict() or {}
-        if str(alert.get('status') or '') in RESOLVED_STATUSES:
+        if ac.row_status(alert) in ac.RESOLVED_STATUSES:
             continue
         return alert
     return None
@@ -3308,8 +3562,7 @@ def _open_alert_for_elder(elder_id):
 
 def _elder_map_status(alert, recorded_at):
     if alert:
-        status = str(alert.get('status') or '')
-        return 'responded' if status in RESPONDED_STATUSES else 'emergency'
+        return 'responded' if ac.row_status(alert) == 'acknowledged' else 'emergency'
 
     if hasattr(recorded_at, 'timestamp'):
         seen = recorded_at if recorded_at.tzinfo else recorded_at.replace(
@@ -3390,6 +3643,60 @@ def loved_ones_map_data():
         success=True, elders=elders, total=len(elders),
         plotted=len(plotted), waiting=len(elders) - len(plotted),
     )
+
+
+# Auto-escalation: an admin has to actually notice an unattended alert to
+# flag it for the BHW. This sweeps for alerts nobody has acknowledged within
+# the app's own alarm window and flags them the same way a manual "Notify
+# BHW" click would, so the BHW still finds out even if no admin is watching.
+AUTO_ESCALATE_SWEEP_SECONDS = 30
+
+
+def _run_auto_escalation_loop():
+    while True:
+        try:
+            flagged = ac.auto_escalate_stale_alerts(db)
+            if flagged:
+                print(f'[auto-escalation] flagged {flagged} stale alert(s) for BHW attention')
+        except Exception as e:
+            print(f'[auto-escalation] sweep failed: {e}')
+        time.sleep(AUTO_ESCALATE_SWEEP_SECONDS)
+
+
+# Auto Backup: the Settings page toggle used to just save a preference --
+# nothing ever read it. Checks hourly (not daily) so a backup still happens
+# reasonably soon after the admin turns this on mid-day, but only actually
+# runs one if the last one is more than 24h old (or there's never been one),
+# so it doesn't re-back-up on every check.
+AUTO_BACKUP_CHECK_SECONDS = 3600
+AUTO_BACKUP_MIN_INTERVAL = timedelta(hours=24)
+
+
+def _run_auto_backup_loop():
+    while True:
+        try:
+            if admin_routes._system_settings()['auto_backup']:
+                doc = db.collection('app_settings').document(admin_routes.SYSTEM_DOC).get()
+                last = (doc.to_dict() or {}).get('last_backup_at') if doc.exists else None
+                stale = not hasattr(last, 'astimezone') or \
+                    (datetime.now(timezone.utc) - last.astimezone(timezone.utc)) > AUTO_BACKUP_MIN_INTERVAL
+                if stale:
+                    filename, total = admin_routes._run_backup()
+                    print(f'[auto-backup] created {filename} ({total} records)')
+        except Exception as e:
+            print(f'[auto-backup] check failed: {e}')
+        time.sleep(AUTO_BACKUP_CHECK_SECONDS)
+
+
+# `python app.py` (debug=True) imports this module twice: once as the
+# reloader's monitor process, which only watches files and never sets
+# WERKZEUG_RUN_MAIN, then again as the actual serving child, which does --
+# gate on that so the sweep threads don't start twice. Under a real WSGI
+# worker (gunicorn etc.) __name__ is never '__main__' and there's no
+# reloader, so start them unconditionally there.
+if __name__ != '__main__' or os.environ.get('WERKZEUG_RUN_MAIN') == 'true':
+    threading.Thread(target=_run_auto_escalation_loop, daemon=True).start()
+    threading.Thread(target=_run_auto_backup_loop, daemon=True).start()
 
 
 if __name__ == '__main__':

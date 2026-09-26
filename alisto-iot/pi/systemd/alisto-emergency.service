@@ -1,0 +1,20 @@
+[Unit]
+Description=ALISTO Emergency System (unified voice + button)
+# No network dependency -- this system runs fully offline. Waiting on
+# network-online.target could add up to ~90s of boot delay chasing a
+# connection that will never come, which is unacceptable for an emergency
+# device that should be ready as soon as possible after power-on.
+
+[Service]
+Type=simple
+User=alisto
+WorkingDirectory=/home/alisto
+# -u: unbuffered stdout/stderr -- without this, Python buffers print() when
+# not attached to a terminal (always true under systemd), so log output
+# would be delayed or missing from journalctl entirely.
+ExecStart=/usr/bin/python3 -u /home/alisto/alisto_main.py
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

@@ -69,13 +69,24 @@
       <span class="setting-text">
         <strong>Auto Backup</strong>
         <small>
-          Automatically back up system data.
+          Automatically back up system data once a day.
           {% if system.last_backup != '—' %}Last backup: {{ system.last_backup }}.{% endif %}
         </small>
       </span>
       <input type="checkbox" name="auto_backup" class="switch-input" {% if system.auto_backup %}checked{% endif %} />
       <span class="switch" aria-hidden="true"></span>
     </label>
+
+    <div class="setting-row">
+      <span class="setting-icon tint-blue"><i data-lucide="download"></i></span>
+      <span class="setting-text">
+        <strong>Backup Now</strong>
+        <small>Runs a backup immediately instead of waiting for the daily one.</small>
+      </span>
+      <button type="submit" class="btn btn-outline" formaction="{{ url_for('admin.backup_now') }}" formnovalidate>
+        Backup Now
+      </button>
+    </div>
   </section>
 
   <section class="admin-card settings-card">
@@ -89,22 +100,7 @@
       </span>
       <i data-lucide="chevron-right"></i>
     </a>
-
-    <label class="setting-row">
-      <span class="setting-icon tint-orange"><i data-lucide="mail"></i></span>
-      <span class="setting-text">
-        <strong>Admin Email Notifications</strong>
-        <small>Receive important system updates and security notifications via email.</small>
-      </span>
-      <input type="checkbox" name="email_notifications" class="switch-input" {% if email_notifications %}checked{% endif %} />
-      <span class="switch" aria-hidden="true"></span>
-    </label>
   </section>
 
-  <p class="settings-note">
-    <i data-lucide="info"></i>
-    Toggles are saved to your account. Auto Backup and the email notifications are stored as
-    preferences — the jobs that act on them are not built yet.
-  </p>
 </form>
 {% endblock %}

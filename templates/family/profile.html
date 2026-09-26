@@ -314,12 +314,12 @@
           </div>
 
           <div class="header-right">
-            <button type="button" class="icon-btn" aria-label="Notifications">
+            <a href="{{ url_for('alerts') }}" class="icon-btn" aria-label="Notifications">
               <i data-lucide="bell"></i>
               {% if notification_count %}
               <span class="notif-dot">{{ notification_count }}</span>
               {% endif %}
-            </button>
+            </a>
 
             <button
               type="button"
@@ -886,5 +886,6 @@
       })();
     </script>
     {% include 'family/_care_plan_modal.html' %}
+  <script src="{{ url_for('static', filename='js/family_nav.js') }}"></script>
   </body>
 </html>

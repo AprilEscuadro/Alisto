@@ -167,7 +167,9 @@
   document.addEventListener('DOMContentLoaded', function () {
     if (!window.L) return;
 
-    const points = JSON.parse(document.getElementById('mapPoints').textContent);
+    const POLL_MS = 5000; // how often to check for a new/resolved emergency
+
+    const initialPoints = JSON.parse(document.getElementById('mapPoints').textContent);
     const colours = { alert: '#e53935', online: '#16a34a', weak: '#f59e0b', offline: '#94a3b8', none: '#94a3b8' };
     const labels = { alert: 'Active alert', online: 'Online', weak: 'Weak signal', offline: 'Offline', none: 'No device' };
 
@@ -178,30 +180,114 @@
       attribution: '&copy; OpenStreetMap contributors',
     }).addTo(map);
 
-    const markers = {};
-    points.forEach(function (p) {
-      const colour = colours[p.status] || colours.offline;
-      const marker = L.marker([p.latitude, p.longitude], {
-        icon: L.divIcon({
-          className: 'map-pin-icon',
-          html: `<span class="map-pin" style="--pin:${colour}"><b>${p.initials}</b></span>`,
-          iconSize: [38, 46], iconAnchor: [19, 46], popupAnchor: [0, -44],
-        }),
-      }).addTo(map);
+    let markers = {};
+    let currentPoints = []; // kept in sync with `markers` so applyFilters() below always filters the current poll's data, not the page's first load
 
-      marker.bindPopup(`
-        <div class="map-popup">
-          <strong style="color:${colour}">${p.name}${p.age ? ', ' + p.age : ''}</strong>
-          <span><i class="pop-dot" style="background:${colour}"></i> ${p.alert_label || labels[p.status] || ''}</span>
-          <span>${p.address || ''}</span>
-          <span>${p.time || ''}</span>
-        </div>`);
-      markers[p.id] = marker;
-    });
+    // Redraws every pin from scratch. Only fits/zooms the map on the very
+    // first render -- an admin who has since panned/zoomed to look at one
+    // barangay shouldn't get yanked back out to fit everyone just because
+    // a 15-second poll came in.
+    function renderMarkers(points, fitBounds) {
+      const openId = Object.keys(markers).find((id) => markers[id].isPopupOpen());
 
-    if (points.length) {
-      map.fitBounds(points.map((p) => [p.latitude, p.longitude]), { padding: [50, 50], maxZoom: 15 });
+      Object.values(markers).forEach((m) => map.removeLayer(m));
+      markers = {};
+      currentPoints = points;
+
+      points.forEach(function (p) {
+        const colour = colours[p.status] || colours.offline;
+        // Pulses automatically for a fresh, in-progress emergency (server
+        // already only sets status='alert' for one -- see
+        // _is_fresh_alert() in admin_routes.py) -- not on click. A
+        // resident who hasn't pressed anything should never appear to be
+        // mid-alert just because someone happened to look at their pin.
+        const pinClass = p.status === 'alert' ? 'map-pin pulsing' : 'map-pin';
+        const marker = L.marker([p.latitude, p.longitude], {
+          icon: L.divIcon({
+            className: 'map-pin-icon',
+            html: `<span class="${pinClass}" style="--pin:${colour}"><b>${p.initials}</b></span>`,
+            iconSize: [38, 46], iconAnchor: [19, 46], popupAnchor: [0, -44],
+          }),
+        }).addTo(map);
+
+        const flagBtn = p.alert_id
+          ? `<button type="button" class="btn btn-sm btn-outline map-flag-btn" data-alert-id="${p.alert_id}">
+               <i data-lucide="bell-ring"></i> Notify BHW
+             </button>`
+          : '';
+        marker.bindPopup(`
+          <div class="map-popup">
+            <strong style="color:${colour}">${p.name}${p.age ? ', ' + p.age : ''}</strong>
+            <span><i class="pop-dot" style="background:${colour}"></i> ${p.alert_label || labels[p.status] || ''}</span>
+            <span>${p.address || ''}</span>
+            <span>${p.time || ''}</span>
+            ${p.bhw_name ? `<span>BHW: ${p.bhw_name}</span>` : '<span>No BHW assigned to this barangay yet</span>'}
+            ${flagBtn}
+          </div>`);
+
+        // Leaflet injects the popup as raw HTML, so the <i data-lucide>
+        // icon inside it needs a fresh pass -- lucide only scans the DOM
+        // once on page load otherwise.
+        marker.on('popupopen', function () {
+          if (window.lucide) lucide.createIcons();
+        });
+
+        markers[p.id] = marker;
+      });
+
+      // Re-open whichever popup was open before this redraw, so a poll
+      // arriving while an admin is reading one doesn't yank it shut.
+      if (openId && markers[openId]) markers[openId].openPopup();
+
+      if (fitBounds && points.length) {
+        map.fitBounds(points.map((p) => [p.latitude, p.longitude]), { padding: [50, 50], maxZoom: 15 });
+      }
     }
+
+    renderMarkers(initialPoints, true);
+
+    async function pollPoints() {
+      try {
+        const res = await fetch('/admin/map/points');
+        const data = await res.json();
+        if (data.success) {
+          renderMarkers(data.points, false);
+          // Re-apply whatever search/barangay/status filter the admin had
+          // active -- renderMarkers() itself always adds every pin fresh,
+          // so without this a poll would silently undo an active filter.
+          if (typeof applyFilters === 'function') applyFilters();
+        }
+      } catch (err) {
+        // Best-effort -- a failed poll just means the map stays as it
+        // was until the next one succeeds, never a hard error the admin
+        // has to deal with.
+      }
+    }
+    setInterval(pollPoints, POLL_MS);
+
+    // "Notify BHW" button inside a popup -- delegated on the map container
+    // since Leaflet creates/destroys the popup's DOM on open/close, so a
+    // listener bound directly to the button at creation time would never
+    // fire (the button doesn't exist yet then).
+    document.getElementById('adminMap').addEventListener('click', async function (e) {
+      const btn = e.target.closest('.map-flag-btn');
+      if (!btn) return;
+      btn.disabled = true;
+      btn.innerHTML = 'Notifying...';
+      try {
+        const res = await fetch(`/admin/map/flag/${btn.dataset.alertId}`, { method: 'POST' });
+        const data = await res.json();
+        if (data.success) {
+          btn.innerHTML = 'BHW notified';
+        } else {
+          btn.innerHTML = data.message || 'Failed -- try again';
+          btn.disabled = false;
+        }
+      } catch (err) {
+        btn.innerHTML = 'Could not reach server -- try again';
+        btn.disabled = false;
+      }
+    });
 
     // Clicking a resident in the side list moves the map to them.
     document.querySelectorAll('#mapResidents .map-list-item').forEach(function (item) {
@@ -234,7 +320,7 @@
                         (!state || item.dataset.status === state));
       });
 
-      points.forEach(function (p) {
+      currentPoints.forEach(function (p) {
         const marker = markers[p.id];
         if (!marker) return;
         const text = `${p.name} ${p.barangay || ''}`.toLowerCase();
