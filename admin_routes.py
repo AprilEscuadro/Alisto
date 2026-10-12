@@ -205,7 +205,8 @@ def _offline_devices_raw():
         state, last_seen = _device_state(device)
         if state != 'offline':
             continue
-        name = (elders.get(device['elder_id']) or {}).get('full_name') or 'Unnamed resident'
+        name = (elders.get(device['elder_id']) or {}).get(
+            'full_name') or 'Unnamed resident'
         out.append({'doc_id': doc.id, 'name': name, 'last_seen': last_seen})
     return out
 
@@ -231,7 +232,8 @@ def _notif_items(prefs):
             })
 
     if prefs.get('emergency_alerts', True):
-        open_alerts = _cached('open_alerts', lambda: [a for a in _all_alert_rows() if a['is_open']])
+        open_alerts = _cached('open_alerts', lambda: [
+                              a for a in _all_alert_rows() if a['is_open']])
         for a in open_alerts:
             items.append({
                 'kind': 'emergency', 'title': a['name'],
@@ -250,7 +252,8 @@ def _notif_items(prefs):
             })
 
     if prefs.get('subscription_expiry_alerts', True):
-        expiring = _cached('expiring_subs', lambda: [s for s in _subscription_rows() if s['status'] == 'expiring'])
+        expiring = _cached('expiring_subs', lambda: [
+                           s for s in _subscription_rows() if s['status'] == 'expiring'])
         for s in expiring:
             days = s['days_left']
             items.append({
@@ -281,7 +284,8 @@ def _admin_layout_context():
         return {}
     user_id = session['user_id']
     prefs = _cached(f'prefs:{user_id}', lambda: (
-        (db.collection('user_account').document(user_id).get().to_dict() or {}).get('notification_settings') or {}
+        (db.collection('user_account').document(user_id).get(
+        ).to_dict() or {}).get('notification_settings') or {}
     ))
     items = _notif_items(prefs)
     return {
@@ -340,9 +344,11 @@ def _bhw_by_barangay():
         return out
     for doc in docs:
         user = doc.to_dict() or {}
-        barangay = (profiles.get(doc.id, {}).get('barangay_assigned') or '').strip()
+        barangay = (profiles.get(doc.id, {}).get(
+            'barangay_assigned') or '').strip()
         if barangay and barangay not in out:
-            out[barangay] = {'id': doc.id, 'name': user.get('full_name') or 'Unnamed BHW'}
+            out[barangay] = {'id': doc.id, 'name': user.get(
+                'full_name') or 'Unnamed BHW'}
     return out
 
 
@@ -359,7 +365,8 @@ def _devices_by_elder():
     for doc in db.collection('device').stream():
         device = doc.to_dict() or {}
         if device.get('elder_id'):
-            by_elder.setdefault(device['elder_id'], []).append((doc.id, device))
+            by_elder.setdefault(device['elder_id'],
+                                []).append((doc.id, device))
     return by_elder
 
 
@@ -393,8 +400,10 @@ def _all_alert_rows(since=None):
     # Batched once for the whole page instead of 3 Firestore round trips
     # PER alert -- that N+1 pattern was clearly noticeable once there was
     # more than a handful of alerts.
-    locations = ac.alert_locations_bulk(db, (a.get('location_id') for _, a in alerts))
-    phrases = ac.alert_phrases_bulk(db, (a.get('phrase_id') for _, a in alerts))
+    locations = ac.alert_locations_bulk(
+        db, (a.get('location_id') for _, a in alerts))
+    phrases = ac.alert_phrases_bulk(
+        db, (a.get('phrase_id') for _, a in alerts))
 
     rows = []
     for alert_id, alert in alerts:
@@ -409,7 +418,8 @@ def _all_alert_rows(since=None):
         if not serial:
             owned = devices_by_elder.get(alert.get('elder_id'), [])
             serial = owned[0][0] if owned else ''
-        lat, lng, _address = locations.get(alert.get('location_id'), (None, None, None))
+        lat, lng, _address = locations.get(
+            alert.get('location_id'), (None, None, None))
 
         rows.append({
             'id': alert_id,
@@ -432,7 +442,7 @@ def _all_alert_rows(since=None):
             'created_at': alert.get('date_triggered'),
             'time': ac.fmt_time(alert.get('date_triggered')),
             'full_time': ac.local(alert.get('date_triggered')).strftime('%b %d, %Y %I:%M %p')
-                         if ac.local(alert.get('date_triggered')) else '—',
+            if ac.local(alert.get('date_triggered')) else '—',
             'notes': alert.get('resolution_note') or '',
             'trigger_phrase': phrases.get(alert.get('phrase_id'), ''),
             'response_minutes': ac.response_minutes(alert),
@@ -450,7 +460,8 @@ def _resident_rows():
     """Every elder with their device status and whether they have an open alert."""
     elders = _all_elders()
     devices_by_elder = _devices_by_elder()
-    open_by_elder = {r['elder_id']: r for r in reversed(_all_alert_rows()) if r['is_open']}
+    open_by_elder = {r['elder_id']: r for r in reversed(
+        _all_alert_rows()) if r['is_open']}
     order = ('online', 'weak', 'offline')
 
     rows = []
@@ -467,7 +478,8 @@ def _resident_rows():
         # The device's own doc never carries its location -- write_location()
         # on the Pi only ever appends to device_location. See
         # alerts_common.latest_device_location()'s doc comment.
-        lat, lng, _address, _recorded_at = ac.latest_device_location(db, serial)
+        lat, lng, _address, _recorded_at = ac.latest_device_location(
+            db, serial)
 
         open_alert = open_by_elder.get(elder_id)
         name = elder.get('full_name') or 'Unnamed'
@@ -494,7 +506,8 @@ def _resident_rows():
 
 
 def _avg_response(rows):
-    answered = [r['response_minutes'] for r in rows if r['response_minutes'] is not None]
+    answered = [r['response_minutes']
+                for r in rows if r['response_minutes'] is not None]
     return round(sum(answered) / len(answered)) if answered else None
 
 
@@ -524,8 +537,10 @@ def dashboard():
         'total_devices': len(devices),
     }
 
-    month_start = datetime.now(ac.PH_TIME).replace(day=1, hour=0, minute=0, second=0, microsecond=0)
-    this_month = [a for a in alerts if (ac.local(a['created_at']) or month_start) >= month_start]
+    month_start = datetime.now(ac.PH_TIME).replace(
+        day=1, hour=0, minute=0, second=0, microsecond=0)
+    this_month = [a for a in alerts if (
+        ac.local(a['created_at']) or month_start) >= month_start]
     summary = {
         'active': sum(1 for a in this_month if a['is_open']),
         'acknowledged': sum(1 for a in this_month if a['status'] == 'acknowledged'),
@@ -562,12 +577,14 @@ def users():
     for doc in db.collection('device').stream():
         elder_id = (doc.to_dict() or {}).get('elder_id')
         if elder_id:
-            devices_per_elder[elder_id] = devices_per_elder.get(elder_id, 0) + 1
+            devices_per_elder[elder_id] = devices_per_elder.get(
+                elder_id, 0) + 1
 
     elders_per_family = {}
     for doc in db.collection('family_elder_link').stream():
         link = doc.to_dict() or {}
-        elders_per_family.setdefault(link.get('family_user_id'), []).append(link.get('elder_id'))
+        elders_per_family.setdefault(
+            link.get('family_user_id'), []).append(link.get('elder_id'))
 
     bhw_profiles = {}
     for doc in db.collection('bhw_profile').stream():
@@ -611,9 +628,11 @@ def users():
 
         if role == 'family':
             row['display_id'] = _short_id('FAM', user_id)
-            row['devices'] = sum(devices_per_elder.get(e, 0) for e in elders_per_family.get(user_id, []))
+            row['devices'] = sum(devices_per_elder.get(e, 0)
+                                 for e in elders_per_family.get(user_id, []))
             row['status'] = 'archived' if user.get('is_archived') else 'active'
-            row['details'].append(['Linked Loved Ones', len(elders_per_family.get(user_id, []))])
+            row['details'].append(
+                ['Linked Loved Ones', len(elders_per_family.get(user_id, []))])
         else:
             approval = user.get('approval_status', 'pending')
             profile = bhw_profiles.get(user_id, {})
@@ -622,7 +641,8 @@ def users():
             if user.get('is_archived'):
                 row['status'] = 'archived'
             else:
-                row['status'] = {'approved': 'active', 'rejected': 'rejected'}.get(approval, 'pending')
+                row['status'] = {'approved': 'active',
+                                 'rejected': 'rejected'}.get(approval, 'pending')
             row['details'] += [
                 ['Date of Birth', profile.get('date_of_birth') or '—'],
                 ['Barangay', profile.get('barangay_assigned') or '—'],
@@ -631,8 +651,10 @@ def users():
                 ['BHW ID Number', profile.get('bhw_id_number') or '—'],
             ]
             if profile.get('valid_id_stored_as'):
-                row['valid_id_url'] = url_for('admin.bhw_valid_id', user_id=user_id)
-                row['valid_id_name'] = profile.get('valid_id_filename') or 'View file'
+                row['valid_id_url'] = url_for(
+                    'admin.bhw_valid_id', user_id=user_id)
+                row['valid_id_name'] = profile.get(
+                    'valid_id_filename') or 'View file'
 
         rows.append(row)
 
@@ -697,7 +719,8 @@ def archive_user(user_id):
     the default Users view and tags them 'Archived' (already a status
     filter option); calling this again restores them. `type` (from the row
     the button was on) says which collection actually owns this ID."""
-    collection = 'elder_profile' if request.form.get('type') == 'elderly' else 'user_account'
+    collection = 'elder_profile' if request.form.get(
+        'type') == 'elderly' else 'user_account'
     ref = db.collection(collection).document(user_id)
     doc = ref.get()
     if not doc.exists:
@@ -720,8 +743,10 @@ def archive_user(user_id):
 @admin_required
 def bhw_valid_id(user_id):
     """Serve a BHW's uploaded ID to admins only (the file is not in /static)."""
-    matches = list(db.collection('bhw_profile').where('user_id', '==', user_id).limit(1).stream())
-    stored = (matches[0].to_dict() or {}).get('valid_id_stored_as') if matches else None
+    matches = list(db.collection('bhw_profile').where(
+        'user_id', '==', user_id).limit(1).stream())
+    stored = (matches[0].to_dict() or {}).get(
+        'valid_id_stored_as') if matches else None
     if not stored:
         abort(404)
     folder = os.path.join(current_app.root_path, 'uploads', 'bhw_ids')
@@ -880,7 +905,8 @@ def devices():
             'sort': _sort_key(device.get('created_at')),
         })
 
-    rows.sort(key=lambda r: (r['status'] != 'available', -r['sort'], r['serial']))
+    rows.sort(key=lambda r: (r['status'] !=
+              'available', -r['sort'], r['serial']))
 
     stats = {
         'total': len(rows),
@@ -895,7 +921,8 @@ def devices():
 @admin_required
 def add_devices():
     """Pre-register one or many serial numbers. One serial per line."""
-    raw_lines = (request.form.get('serial_numbers') or '').replace(',', '\n').splitlines()
+    raw_lines = (request.form.get('serial_numbers')
+                 or '').replace(',', '\n').splitlines()
     batch = (request.form.get('batch') or '').strip()
 
     typed = [line for line in (l.strip() for l in raw_lines) if line]
@@ -903,7 +930,8 @@ def add_devices():
         flash('Please enter at least one serial number.', 'error')
         return redirect(url_for('admin.devices'))
     if len(typed) > MAX_SERIALS_PER_SUBMIT:
-        flash(f'Please add at most {MAX_SERIALS_PER_SUBMIT} serial numbers at a time.', 'error')
+        flash(
+            f'Please add at most {MAX_SERIALS_PER_SUBMIT} serial numbers at a time.', 'error')
         return redirect(url_for('admin.devices'))
 
     invalid, seen, to_add = [], set(), []
@@ -932,11 +960,14 @@ def add_devices():
         added.append(serial)
 
     if added:
-        flash(f"Pre-registered {len(added)} serial number{'s' if len(added) != 1 else ''}.", 'success')
+        flash(
+            f"Pre-registered {len(added)} serial number{'s' if len(added) != 1 else ''}.", 'success')
     if existing:
-        flash(f"Already in the system, skipped: {_join_sample(existing)}", 'info')
+        flash(
+            f"Already in the system, skipped: {_join_sample(existing)}", 'info')
     if invalid:
-        flash(f"Not a valid serial number, skipped: {_join_sample(invalid)}", 'error')
+        flash(
+            f"Not a valid serial number, skipped: {_join_sample(invalid)}", 'error')
     return redirect(url_for('admin.devices'))
 
 
@@ -956,15 +987,18 @@ def _notify_family_device_unregistered(elder_id, elder_name):
     get_family_fcm_tokens()'s dedup (same phone can be linked more than
     once)."""
     try:
-        links = db.collection('family_elder_link').where('elder_id', '==', elder_id).stream()
+        links = db.collection('family_elder_link').where(
+            'elder_id', '==', elder_id).stream()
         seen = set()
         tokens = []
         for link in links:
             family_user_id = (link.to_dict() or {}).get('family_user_id')
             if not family_user_id:
                 continue
-            user_doc = db.collection('user_account').document(family_user_id).get()
-            token = (user_doc.to_dict() or {}).get('fcm_token') if user_doc.exists else None
+            user_doc = db.collection(
+                'user_account').document(family_user_id).get()
+            token = (user_doc.to_dict() or {}).get(
+                'fcm_token') if user_doc.exists else None
             if token and token not in seen:
                 seen.add(token)
                 tokens.append(token)
@@ -989,7 +1023,8 @@ def _notify_family_device_unregistered(elder_id, elder_name):
                 android=messaging.AndroidConfig(priority='high'),
             ))
         except Exception as e:
-            print(f'[admin_routes] failed to push device-unregistered notice to a token: {e}')
+            print(
+                f'[admin_routes] failed to push device-unregistered notice to a token: {e}')
 
 
 @admin_bp.route('/devices/<serial>/unregister', methods=['POST'])
@@ -1012,8 +1047,10 @@ def unregister_device(serial):
         return redirect(url_for('admin.devices'))
 
     elder_id = device.get('elder_id')
-    elder_doc = db.collection('elder_profile').document(elder_id).get() if elder_id else None
-    elder_name = (elder_doc.to_dict() or {}).get('full_name') if elder_doc and elder_doc.exists else None
+    elder_doc = db.collection('elder_profile').document(
+        elder_id).get() if elder_id else None
+    elder_name = (elder_doc.to_dict() or {}).get(
+        'full_name') if elder_doc and elder_doc.exists else None
 
     ref.update({
         'is_registered': False,
@@ -1045,7 +1082,8 @@ def delete_device(serial):
     if not doc.exists:
         flash('That serial number is not in the system.', 'error')
     elif (doc.to_dict() or {}).get('is_registered'):
-        flash('That device is already linked to an elder, so it cannot be removed.', 'error')
+        flash(
+            'That device is already linked to an elder, so it cannot be removed.', 'error')
     else:
         ref.delete()
         flash(f'Removed serial number {serial}.', 'success')
@@ -1199,7 +1237,8 @@ def emergency_logs():
 
     rows = _all_alert_rows(since=_range_start(range_key))
     everything = _all_alert_rows()
-    month_start = datetime.now(ac.PH_TIME).replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+    month_start = datetime.now(ac.PH_TIME).replace(
+        day=1, hour=0, minute=0, second=0, microsecond=0)
 
     stats = {
         'total': len(everything),
@@ -1221,17 +1260,20 @@ def emergency_logs():
 @admin_bp.route('/emergency-logs.csv')
 @admin_required
 def download_logs():
-    rows = _all_alert_rows(since=_range_start(request.args.get('range', 'all')))
+    rows = _all_alert_rows(since=_range_start(
+        request.args.get('range', 'all')))
     buffer = io.StringIO()
     writer = csv.writer(buffer)
     writer.writerow(['Alert ID', 'Device', 'Resident', 'Age', 'Location', 'Barangay',
                      'Type', 'Severity', 'Status', 'Date & Time', 'Response (minutes)', 'Notes'])
     for r in rows:
         writer.writerow([r['code'], r['device'], r['name'], r['age'] or '', r['location'],
-                         r['barangay'], r['type_label'], r['severity'].title(), r['status_label'],
-                         r['full_time'],
-                         '' if r['response_minutes'] is None else round(r['response_minutes']),
-                         r['notes']])
+                         r['barangay'], r['type_label'], r['severity'].title(
+        ), r['status_label'],
+            r['full_time'],
+            '' if r['response_minutes'] is None else round(
+                             r['response_minutes']),
+            r['notes']])
     return _csv_response(buffer, 'emergency-logs')
 
 
@@ -1267,8 +1309,10 @@ def reports():
         'avg_response': _fmt_minutes(_avg_response(rows)),
         'active_users': len(users),
     }
-    stats['online_pct'] = round(stats['online_devices'] / (stats['total_devices'] or 1) * 100, 1)
-    stats['resolved_pct'] = round(stats['resolved'] / (len(rows) or 1) * 100, 1)
+    stats['online_pct'] = round(
+        stats['online_devices'] / (stats['total_devices'] or 1) * 100, 1)
+    stats['resolved_pct'] = round(
+        stats['resolved'] / (len(rows) or 1) * 100, 1)
 
     # Alerts per day across the range, for the line chart.
     now = datetime.now(ac.PH_TIME)
@@ -1287,7 +1331,8 @@ def reports():
         moment = ac.local(row['created_at'])
         if not moment:
             continue
-        index = min(max((moment.date() - window_start.date()).days // step, 0), len(buckets) - 1)
+        index = min(max((moment.date() - window_start.date()
+                         ).days // step, 0), len(buckets) - 1)
         per_bucket[index] += 1
         if row['status'] in ac.RESOLVED_STATUSES:
             resolved_bucket[index] += 1
@@ -1366,7 +1411,8 @@ def _spark_points(values, peak):
 @admin_bp.route('/reports.csv')
 @admin_required
 def download_report():
-    rows = _all_alert_rows(since=_range_start(request.args.get('range', 'last_30')))
+    rows = _all_alert_rows(since=_range_start(
+        request.args.get('range', 'last_30')))
     buffer = io.StringIO()
     writer = csv.writer(buffer)
     writer.writerow(['Alert ID', 'Resident', 'Barangay', 'Type', 'Severity', 'Status',
@@ -1418,7 +1464,8 @@ def _subscription_rows():
         if elder_id and elder_id in elders:
             owner, kind, prefix = elders[elder_id], 'elderly', 'ELD'
             owner_id = elder_id
-            serials = sub.get('device_serials') or [d for d, _ in devices_by_elder.get(elder_id, [])]
+            serials = sub.get('device_serials') or [
+                d for d, _ in devices_by_elder.get(elder_id, [])]
         elif user_id and user_id in accounts:
             owner = accounts[user_id]
             kind = owner.get('role') or 'family'
@@ -1462,7 +1509,8 @@ def _subscription_rows():
             'sort': _sort_key(sub.get('expiry_date')),
         })
 
-    rows.sort(key=lambda r: (('expired', 'expiring', 'active').index(r['status']), r['name'].casefold()))
+    rows.sort(key=lambda r: (('expired', 'expiring', 'active').index(
+        r['status']), r['name'].casefold()))
     return rows
 
 
@@ -1517,7 +1565,7 @@ def subscriptions():
     return render_template(
         'admin/subscriptions.html', active_page='subscriptions',
         rows=rows, stats=stats, plans=PLANS, expiring_days=EXPIRING_SOON_DAYS,
-        pending_payments=_pending_payments(),
+        pending_payments=_pending_payments(), reject_reasons=cps.REJECT_REASONS,
     )
 
 
@@ -1536,13 +1584,14 @@ def update_payment(payment_id, action):
         return redirect(url_for('admin.subscriptions'))
 
     if action == 'reject':
-        ref.update({
-            'status': 'rejected',
-            'reviewed_by': session['user_id'],
-            'reviewed_by_name': session.get('full_name'),
-            'reviewed_at': firestore.SERVER_TIMESTAMP,
-        })
-        flash(f"Payment {payment.get('payment_no') or payment_id[:6].upper()} rejected.", 'success')
+        ok, error = cps.reject_payment(
+            ref, payment, session['user_id'], session.get('full_name'),
+            request.form.get('reason_key'), request.form.get('admin_note'))
+        if not ok:
+            flash(error, 'error')
+        else:
+            flash(f"Payment {payment.get('payment_no') or payment_id[:6].upper()} rejected. "
+                  "The family can see your message.", 'success')
         return redirect(url_for('admin.subscriptions'))
 
     try:
@@ -1566,7 +1615,8 @@ def download_subscriptions():
                      'Devices', 'Status', 'Start Date', 'Expiry Date', 'Auto Renew'])
     for r in _subscription_rows():
         writer.writerow([r['name'], r['display_id'], r['type_label'], r['plan'], r['price'],
-                         ', '.join(r['devices']) or 'None', r['status'].title(),
+                         ', '.join(
+                             r['devices']) or 'None', r['status'].title(),
                          r['start'], r['expiry'], 'Yes' if r['auto_renew'] else 'No'])
     return _csv_response(buffer, 'subscriptions')
 
@@ -1663,7 +1713,8 @@ def settings():
 
     return render_template(
         'admin/settings.html', active_page='settings',
-        notifications={key: bool(saved.get(key, True)) for key in NOTIFICATION_KEYS},
+        notifications={key: bool(saved.get(key, True))
+                       for key in NOTIFICATION_KEYS},
         system=_system_settings(), timezones=TIMEZONES, date_formats=DATE_FORMATS,
     )
 
@@ -1699,7 +1750,8 @@ def save_settings():
 def profile():
     doc = db.collection('user_account').document(session['user_id']).get()
     user = doc.to_dict() if doc.exists else {}
-    admins = sum(1 for _, u in _active_docs('user_account') if u.get('role') == 'admin')
+    admins = sum(1 for _, u in _active_docs(
+        'user_account') if u.get('role') == 'admin')
 
     return render_template(
         'admin/profile.html', active_page='profile', user=user,

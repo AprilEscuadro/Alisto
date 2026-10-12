@@ -3,7 +3,8 @@ from werkzeug.security import generate_password_hash, check_password_hash
 from werkzeug.utils import secure_filename
 from database import db
 from admin_routes import admin_bp
-import admin_routes  # module import too -- the auto-backup loop below calls its _run_backup()/_system_settings()
+# module import too -- the auto-backup loop below calls its _run_backup()/_system_settings()
+import admin_routes
 from bhw_routes import bhw_bp
 from firebase_admin import firestore, auth as firebase_auth
 from datetime import datetime, timedelta, timezone
@@ -1108,8 +1109,6 @@ HISTORY_STATUS_LABELS = {
 }
 
 
-
-
 def _alert_card(row, elder, locations=None, phrases=None, sms_counts=None):
     """One alert shaped for templates/family/alerts.html. Pass pre-fetched
     locations/phrases/sms_counts (from the ac.*_bulk() helpers) when
@@ -1122,7 +1121,8 @@ def _alert_card(row, elder, locations=None, phrases=None, sms_counts=None):
     label, status_class = ALERT_STATUS_LABELS.get(
         status, (status.title(), 'status-pending'))
     if locations is not None:
-        lat, lng, address = locations.get(alert.get('location_id'), (None, None, None))
+        lat, lng, address = locations.get(
+            alert.get('location_id'), (None, None, None))
     else:
         lat, lng, address = ac.alert_location(db, alert.get('location_id'))
     phrase = (phrases.get(alert.get('phrase_id'), '') if phrases is not None
@@ -1160,8 +1160,10 @@ def _alert_card(row, elder, locations=None, phrases=None, sms_counts=None):
 def _family_alert_cards():
     elders = _linked_elders_for_dashboard()
     rows = _alerts_for_elders(elders)
-    locations = ac.alert_locations_bulk(db, (r['data'].get('location_id') for r in rows))
-    phrases = ac.alert_phrases_bulk(db, (r['data'].get('phrase_id') for r in rows))
+    locations = ac.alert_locations_bulk(
+        db, (r['data'].get('location_id') for r in rows))
+    phrases = ac.alert_phrases_bulk(
+        db, (r['data'].get('phrase_id') for r in rows))
     sms_counts = ac.sms_sent_counts_bulk(db, (r['id'] for r in rows))
     return [_alert_card(r, elders[r['elder_id']], locations, phrases, sms_counts) for r in rows]
 
@@ -1221,7 +1223,8 @@ def alert_details_json(alert_id):
     elder = elders.get(alert.get('elder_id'), {'name': 'Unknown'})
     card = _alert_card({'id': alert_id, 'data': alert}, elder)
     card['device_id'] = alert.get('device_id') or '—'
-    card['confidence'] = None  # not measured by the current ASR pipeline -- see firestore_backend.py
+    # not measured by the current ASR pipeline -- see firestore_backend.py
+    card['confidence'] = None
 
     history = []
     try:
@@ -1276,7 +1279,8 @@ def alert_respond(alert_id):
         if action == 'acknowledge':
             ac.acknowledge(db, ref, alert_id, session['user_id'])
             if notes:
-                ac.write_status_history(db, alert_id, 'ACKNOWLEDGED', session['user_id'], remarks=notes)
+                ac.write_status_history(
+                    db, alert_id, 'ACKNOWLEDGED', session['user_id'], remarks=notes)
         else:
             ac.resolve(db, ref, alert_id, session['user_id'], notes=notes)
         _lat, _lng, address = ac.alert_location(db, alert.get('location_id'))
@@ -1377,7 +1381,8 @@ def device_create_alert():
 
     phrase_id = None
     if phrase:
-        existing = db.collection(ac.PHRASE_COLLECTION).where('phrase_text', '==', phrase).limit(1).get()
+        existing = db.collection(ac.PHRASE_COLLECTION).where(
+            'phrase_text', '==', phrase).limit(1).get()
         phrase_id = existing[0].id if existing else None
         if not phrase_id:
             _, phrase_ref = db.collection(ac.PHRASE_COLLECTION).add({
@@ -1401,7 +1406,8 @@ def device_create_alert():
         'deleted_at': None,
         'is_archived': False,
     })
-    ac.write_status_history(db, alert_ref.id, 'CREATED', remarks='Reported by device')
+    ac.write_status_history(db, alert_ref.id, 'CREATED',
+                            remarks='Reported by device')
 
     # The alert also counts as a check-in.
     db.collection('device').document(serial).update(
@@ -1445,7 +1451,8 @@ def device_cancel_alert(alert_id):
         'resolution_note': data.get('cancel_reason') or 'Cancelled within 5 seconds',
         'resolved_at': firestore.SERVER_TIMESTAMP,
     })
-    ac.write_status_history(db, alert_id, 'CANCELLED', remarks='Cancelled on device')
+    ac.write_status_history(db, alert_id, 'CANCELLED',
+                            remarks='Cancelled on device')
     _log_activity(alert.get('elder_id'), 'alert', title='False alarm cancelled',
                   badge='Cancelled', badge_class='warning',
                   device_id=alert.get('device_id'), ref_id=alert_id)
@@ -1471,7 +1478,8 @@ def device_report_sms(alert_id):
     if _clean_device_id(data.get('serial_number')) != alert.get('device_id'):
         return jsonify(success=False, message='Alert belongs to another device.'), 403
 
-    notification_id = _notification_for(alert_id, alert.get('elder_id'), number)
+    notification_id = _notification_for(
+        alert_id, alert.get('elder_id'), number)
     sent = delivery == 'SENT'
     db.collection('sms_delivery_log').add({
         'notification_id': notification_id,
@@ -1488,7 +1496,8 @@ def device_report_sms(alert_id):
         'failure_reason': data.get('failure_reason'),
     })
     if sent:
-        db.collection(ALERT_COLLECTION).document(alert_id).update({'alert_status': 'SENT'})
+        db.collection(ALERT_COLLECTION).document(
+            alert_id).update({'alert_status': 'SENT'})
     return jsonify(success=True)
 
 # ---------- DEVICE API: check-in + medication (Raspberry Pi -> Flask) ----------
@@ -1855,7 +1864,8 @@ def _reminder_form(lookup):
     if not time_input or not _reminder_clock(time_input):
         return None, 'Set the time this reminder should go off.'
 
-    schedule_type = request.form.get('schedule_type', 'daily').strip() or 'daily'
+    schedule_type = request.form.get(
+        'schedule_type', 'daily').strip() or 'daily'
     if schedule_type not in SCHEDULE_TYPES:
         schedule_type = 'daily'
 
@@ -1863,7 +1873,8 @@ def _reminder_form(lookup):
     start_date = None
     if schedule_type in ('every_hours', 'every_days'):
         try:
-            interval_value = int(request.form.get('interval_value', '').strip())
+            interval_value = int(request.form.get(
+                'interval_value', '').strip())
         except (TypeError, ValueError):
             interval_value = None
         if not interval_value or interval_value <= 0:
@@ -1944,8 +1955,8 @@ def add_medication_reminder():
         return jsonify(
             success=False,
             message=f'There\'s already an active reminder for '
-                    f'"{fields["medicine_name"]}". Please edit that one '
-                    f'instead of adding a new one.',
+            f'"{fields["medicine_name"]}". Please edit that one '
+            f'instead of adding a new one.',
         ), 409
 
     try:
@@ -1990,8 +2001,8 @@ def update_medication_reminder(reminder_id):
         return jsonify(
             success=False,
             message=f'There\'s already an active reminder for '
-                    f'"{fields["medicine_name"]}". Please edit that one '
-                    f'instead of adding a new one.',
+            f'"{fields["medicine_name"]}". Please edit that one '
+            f'instead of adding a new one.',
         ), 409
 
     updates = {**fields,
@@ -2514,6 +2525,16 @@ def pay_care_plan():
     return jsonify(success=True,
                    message=f'Payment submitted ({payment_ref.id[:6].upper()}). '
                    'Waiting for admin approval.')
+
+
+@app.route('/care-plan/last-rejection')
+def care_plan_last_rejection():
+    """Shown in the Pay care plan modal when the admin rejected the family's
+    most recent payment (reason + the admin's message)."""
+    if 'user_id' not in session:
+        return jsonify(rejection=None), 401
+    elders = _linked_elders_for_dashboard()
+    return jsonify(rejection=cps.latest_rejection(list(elders)))
 
 
 # ---------- MY PROFILE ----------
@@ -3294,7 +3315,7 @@ def _next_occurrence(med, now):
         start_date_str = med.get('start_date')
         try:
             start_date = (datetime.strptime(start_date_str, '%Y-%m-%d').date()
-                         if start_date_str else now.date())
+                          if start_date_str else now.date())
         except ValueError:
             start_date = now.date()
         for offset in range(interval_d * 8 + 1):
@@ -3302,7 +3323,8 @@ def _next_occurrence(med, now):
             days_since_start = (day.date() - start_date).days
             if days_since_start < 0 or days_since_start % interval_d != 0:
                 continue
-            due = day.replace(hour=hour, minute=minute, second=0, microsecond=0)
+            due = day.replace(hour=hour, minute=minute,
+                              second=0, microsecond=0)
             if due > now:
                 return due
         return None
@@ -3439,7 +3461,8 @@ def dashboard():
         care_plan = _get_care_plan()
 
     recent_slice = all_alerts[:DASHBOARD_ALERT_LIMIT]
-    recent_phrases = ac.alert_phrases_bulk(db, (a['data'].get('phrase_id') for a in recent_slice))
+    recent_phrases = ac.alert_phrases_bulk(
+        db, (a['data'].get('phrase_id') for a in recent_slice))
     recent_alerts = [_alert_row(a, recent_phrases) for a in recent_slice]
 
     return render_template(
@@ -3550,7 +3573,8 @@ def _open_alert_for_elder(elder_id):
         return None
 
     oldest = datetime.min.replace(tzinfo=timezone.utc)
-    docs.sort(key=lambda d: _to_ph(d.to_dict().get('date_triggered')) or oldest, reverse=True)
+    docs.sort(key=lambda d: _to_ph(d.to_dict().get(
+        'date_triggered')) or oldest, reverse=True)
 
     for doc in docs:
         alert = doc.to_dict() or {}
@@ -3657,7 +3681,8 @@ def _run_auto_escalation_loop():
         try:
             flagged = ac.auto_escalate_stale_alerts(db)
             if flagged:
-                print(f'[auto-escalation] flagged {flagged} stale alert(s) for BHW attention')
+                print(
+                    f'[auto-escalation] flagged {flagged} stale alert(s) for BHW attention')
         except Exception as e:
             print(f'[auto-escalation] sweep failed: {e}')
         time.sleep(AUTO_ESCALATE_SWEEP_SECONDS)
@@ -3676,13 +3701,17 @@ def _run_auto_backup_loop():
     while True:
         try:
             if admin_routes._system_settings()['auto_backup']:
-                doc = db.collection('app_settings').document(admin_routes.SYSTEM_DOC).get()
-                last = (doc.to_dict() or {}).get('last_backup_at') if doc.exists else None
+                doc = db.collection('app_settings').document(
+                    admin_routes.SYSTEM_DOC).get()
+                last = (doc.to_dict() or {}).get(
+                    'last_backup_at') if doc.exists else None
                 stale = not hasattr(last, 'astimezone') or \
-                    (datetime.now(timezone.utc) - last.astimezone(timezone.utc)) > AUTO_BACKUP_MIN_INTERVAL
+                    (datetime.now(timezone.utc) -
+                     last.astimezone(timezone.utc)) > AUTO_BACKUP_MIN_INTERVAL
                 if stale:
                     filename, total = admin_routes._run_backup()
-                    print(f'[auto-backup] created {filename} ({total} records)')
+                    print(
+                        f'[auto-backup] created {filename} ({total} records)')
         except Exception as e:
             print(f'[auto-backup] check failed: {e}')
         time.sleep(AUTO_BACKUP_CHECK_SECONDS)

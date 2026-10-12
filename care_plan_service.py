@@ -17,7 +17,7 @@ subscription/{elder_id}          one per elder (= one per ALISTO device)
 
 payment/{id}                     every payment, from a family or recorded by the admin
     payment_no, elder_id, elder_name, device_id,
-    months, unit_price, amount, currency,
+    months, unit_price, amount, amount_paid, currency,
     method ('gcash' | 'maya' | 'bank' | 'cash'), reference_no, payer_name, note,
     paid_by_user_id, paid_by_name,
     status ('pending' | 'approved' | 'rejected'),
@@ -27,6 +27,7 @@ payment/{id}                     every payment, from a family or recorded by the
 An expired plan never switches off emergency alerts: safety first.
 """
 import calendar
+import re
 from datetime import datetime, timedelta, timezone
 
 from firebase_admin import firestore
@@ -322,3 +323,119 @@ def save_plan_qr_code(months, gcash_name, gcash_number, qr_image_url):
             'updated_at': firestore.SERVER_TIMESTAMP,
         }
     }, merge=True)
+
+
+# ---------- payment submission checks ----------
+
+def validate_payment_submission(months, amount_paid_raw, reference_no, plan=None):
+    """Checks a family's payment form before it is saved.
+
+    The amount they say they sent must equal unit_price * months, so the
+    admin never sees a '6 months' request backed by a 1-month payment.
+
+    Returns (ok, message, info). info = {'expected', 'amount_paid', 'unit_price'}.
+    """
+    plan = plan or get_plan()
+    unit_price = plan['price']
+    expected = round(unit_price * months, 2)
+    plural = 's' if months != 1 else ''
+
+    if not re.fullmatch(r'\d{13}', reference_no or ''):
+        return False, 'GCash reference numbers have 13 digits.', {}
+
+    try:
+        amount_paid = round(
+            float(str(amount_paid_raw or '').replace(',', '')), 2)
+    except ValueError:
+        return False, 'Enter the amount you sent.', {}
+
+    if abs(amount_paid - expected) > 0.005:
+        return False, (f"\u20b1{amount_paid:,.2f} doesn't match {months} month{plural} "
+                       f"(\u20b1{expected:,.2f}). Choose the plan that matches what you paid."), {}
+
+    try:
+        dupes = list(db.collection('payment')
+                     .where('reference_no', '==', reference_no).limit(1).stream())
+    except Exception as e:
+        print(f'[care plan] duplicate reference check failed: {e}')
+        dupes = []
+    if dupes:
+        return False, 'This reference number was already submitted.', {}
+
+    return True, '', {'expected': expected, 'amount_paid': amount_paid,
+                      'unit_price': unit_price}
+
+# ---------- rejecting a payment ----------
+
+
+REJECT_REASONS = {
+    'amount_mismatch': {
+        'label': "Amount doesn't match the plan",
+        'message': "The amount we received doesn't match the plan you selected. "
+                   "Please send the exact amount for your plan and submit again.",
+    },
+    'reference_not_found': {
+        'label': 'Reference number not found',
+        'message': "We couldn't find this reference number in our GCash records. "
+                   "Please check the number on your receipt and submit again.",
+    },
+    'reference_used': {
+        'label': 'Reference number already used',
+        'message': 'This reference number was already used for another payment. '
+                   'Please submit the reference from your latest payment.',
+    },
+    'payer_mismatch': {
+        'label': "Payer name doesn't match",
+        'message': "The payer name doesn't match the GCash account that sent the payment. "
+                   "Please submit again with the name on the account.",
+    },
+    'other': {'label': 'Other', 'message': ''},
+}
+REJECT_MESSAGE_MAX = 300
+
+
+def reject_payment(payment_ref, payment, reviewer_id, reviewer_name, reason_key, message):
+    """Marks a pending payment rejected. Returns (ok, error_message)."""
+    reason = REJECT_REASONS.get(reason_key or '')
+    if not reason:
+        return False, 'Choose a reason for rejecting this payment.'
+    message = (message or '').strip()
+    if not message:
+        return False, 'Write a short message so the family knows what to fix.'
+    if len(message) > REJECT_MESSAGE_MAX:
+        return False, f'Keep the message under {REJECT_MESSAGE_MAX} characters.'
+
+    payment_ref.update({
+        'status': 'rejected',
+        'reject_reason_key': reason_key,
+        'reject_reason': reason['label'],
+        'admin_note': message,
+        'reviewed_by': reviewer_id,
+        'reviewed_by_name': reviewer_name,
+        'reviewed_at': firestore.SERVER_TIMESTAMP,
+    })
+    return True, ''
+
+
+def latest_rejection(elder_ids):
+    """Only returns something if the MOST RECENT payment was rejected."""
+    latest = None
+    for elder_id in elder_ids:
+        try:
+            for doc in db.collection('payment').where('elder_id', '==', elder_id).stream():
+                data = doc.to_dict() or {}
+                created = to_ph(data.get('created_at'))
+                if created and (latest is None or created > latest[0]):
+                    latest = (created, data)
+        except Exception as e:
+            print(f'[care plan] could not read payments for {elder_id}: {e}')
+    if not latest or latest[1].get('status') != 'rejected':
+        return None
+    data = latest[1]
+    return {
+        'payment_no': data.get('payment_no') or '',
+        'months': data.get('months'),
+        'reason': data.get('reject_reason') or 'Payment rejected',
+        'message': data.get('admin_note') or '',
+        'date': fmt_date(data.get('reviewed_at') or data.get('created_at')),
+    }

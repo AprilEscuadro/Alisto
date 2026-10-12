@@ -97,9 +97,11 @@
                 </button>
               </form>
               <form method="POST" action="{{ url_for('admin.update_payment', payment_id=p.id, action='reject') }}">
-                <button type="submit" class="btn btn-sm btn-outline">
-                  <i data-lucide="x"></i> Reject
-                </button>
+                      <button type="button" class="btn btn-sm btn-outline"
+                      data-id="{{ p.id }}" data-no="{{ p.payment_no }}" data-elder="{{ p.elder_name }}"
+                      onclick="openRejectPayment(this)">
+                <i data-lucide="x"></i> Reject
+              </button>
               </form>
             </div>
           </td>
@@ -253,4 +255,147 @@
   </div>
   {% endfor %}
 </section>
+
+<style>
+  .rj-overlay { display:none; position:fixed; inset:0; z-index:1100; align-items:center; justify-content:center; padding:16px; background:rgba(15,23,42,.45); }
+  .rj-overlay.open { display:flex; }
+  .rj-modal { width:100%; max-width:440px; max-height:90vh; overflow-y:auto; background:#fff; border-radius:20px; box-shadow:0 24px 60px rgba(15,23,42,.3); font-family:"Inter","Nunito",sans-serif; color:#0f172a; }
+  .rj-head { display:grid; grid-template-columns:36px 1fr 36px; align-items:center; padding:16px 18px; border-bottom:1px solid #eef0f4; }
+  .rj-head h3 { margin:0; text-align:center; font-size:16px; font-weight:800; }
+  .rj-icon-btn { width:32px; height:32px; border:none; background:none; border-radius:8px; color:#64748b; cursor:pointer; display:grid; place-items:center; }
+  .rj-icon-btn:hover { background:#f1f5f9; }
+  .rj-icon-btn[hidden] { visibility:hidden; display:grid; }
+  .rj-body { padding:18px 20px 6px; }
+  .rj-lead { margin:0 0 12px; font-size:13px; color:#64748b; font-weight:600; }
+  .rj-step { display:none; }
+  .rj-step.active { display:block; }
+  .rj-list { margin:0 -4px 12px; padding:0; list-style:none; }
+  .rj-list button { width:100%; display:flex; align-items:center; justify-content:space-between; padding:14px 8px; border:none; border-bottom:1px solid #eef0f4; background:none; font:inherit; font-size:14px; font-weight:700; color:#0f172a; text-align:left; cursor:pointer; }
+  .rj-list li:last-child button { border-bottom:none; }
+  .rj-list button:hover { background:#f4f6fa; }
+  .rj-list svg { color:#94a3b8; flex:none; }
+  .rj-label { display:block; margin:0 0 6px; font-size:12px; font-weight:800; letter-spacing:.02em; color:#334155; }
+  .rj-textarea { width:100%; box-sizing:border-box; min-height:120px; resize:vertical; padding:12px 14px; border:1px solid #dfe3ea; border-radius:12px; font:inherit; font-size:14px; line-height:1.45; color:#0f172a; }
+  .rj-textarea:focus { outline:none; border-color:#5088fe; box-shadow:0 0 0 3px rgba(80,136,254,.18); }
+  .rj-meta { display:flex; justify-content:space-between; margin:6px 2px 12px; font-size:12px; color:#94a3b8; }
+  .rj-card { background:#f8fafc; border:1px solid #e8ecf2; border-radius:12px; padding:10px 14px; margin-bottom:10px; }
+  .rj-card small { display:block; font-size:11px; font-weight:700; letter-spacing:.03em; color:#64748b; }
+  .rj-card strong { display:block; margin-top:2px; font-size:14px; font-weight:700; white-space:pre-wrap; word-break:break-word; }
+  .rj-foot { display:flex; justify-content:flex-end; gap:10px; padding:14px 20px 18px; border-top:1px solid #eef0f4; background:#fbfcfe; border-radius:0 0 20px 20px; }
+  .rj-btn { padding:10px 18px; border-radius:10px; font:inherit; font-size:14px; font-weight:700; border:1px solid #dfe3ea; background:#fff; color:#0f172a; cursor:pointer; }
+  .rj-btn.primary { background:#2f6fed; border-color:#2f6fed; color:#fff; }
+  .rj-btn.danger { background:#dc2626; border-color:#dc2626; color:#fff; }
+  .rj-btn:disabled { opacity:.45; cursor:not-allowed; }
+  .rj-foot .rj-btn[hidden] { display:none; }
+</style>
+
+<div class="rj-overlay" id="rjOverlay">
+  <form class="rj-modal" id="rjForm" method="POST" role="dialog" aria-modal="true" aria-labelledby="rjTitle">
+    <input type="hidden" name="reason_key" id="rjReasonKey" />
+    <input type="hidden" name="admin_note" id="rjNoteField" />
+
+    <div class="rj-head">
+      <button type="button" class="rj-icon-btn" id="rjBack" aria-label="Back" hidden>
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 12H5M12 19l-7-7 7-7"/></svg>
+      </button>
+      <h3 id="rjTitle">Reject payment</h3>
+      <button type="button" class="rj-icon-btn" id="rjClose" aria-label="Close">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"/></svg>
+      </button>
+    </div>
+
+    <div class="rj-body">
+      <div class="rj-step active" data-step="1">
+        <p class="rj-lead">Why are you rejecting this payment?</p>
+        <ul class="rj-list" id="rjReasonList"></ul>
+      </div>
+
+      <div class="rj-step" data-step="2">
+        <p class="rj-lead" id="rjReasonLead"></p>
+        <label class="rj-label" for="rjNote">MESSAGE TO THE FAMILY</label>
+        <textarea class="rj-textarea" id="rjNote" maxlength="300" placeholder="Tell them what to fix..."></textarea>
+        <div class="rj-meta"><span>They'll see this when they open Pay care plan.</span><span id="rjCount">0/300</span></div>
+      </div>
+
+      <div class="rj-step" data-step="3">
+        <p class="rj-lead">You're about to reject this payment</p>
+        <div class="rj-card"><small>PAYMENT</small><strong id="rjSumPayment"></strong></div>
+        <div class="rj-card"><small>REASON</small><strong id="rjSumReason"></strong></div>
+        <div class="rj-card"><small>MESSAGE TO THE FAMILY</small><strong id="rjSumNote"></strong></div>
+      </div>
+    </div>
+
+    <div class="rj-foot">
+      <button type="button" class="rj-btn" id="rjCancel">Cancel</button>
+      <button type="button" class="rj-btn primary" id="rjNext" hidden>Continue</button>
+      <button type="submit" class="rj-btn danger" id="rjSubmit" hidden>Reject payment</button>
+    </div>
+  </form>
+</div>
+
+<script>
+  (function () {
+    const REASONS = {{ reject_reasons | tojson }};
+    const ACTION_TEMPLATE = "{{ url_for('admin.update_payment', payment_id='__ID__', action='reject') }}";
+    const $ = (id) => document.getElementById(id);
+    const state = { step: 1, key: '', payment: '' };
+    const titles = { 1: 'Reject payment', 2: 'Message to family', 3: 'Confirm rejection' };
+
+    $('rjReasonList').innerHTML = Object.entries(REASONS).map(([key, r]) =>
+      `<li><button type="button" data-key="${key}">${r.label}
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 6l6 6-6 6"/></svg>
+      </button></li>`).join('');
+
+    function syncCount() {
+      $('rjCount').textContent = $('rjNote').value.length + '/300';
+      $('rjNext').disabled = $('rjNote').value.trim().length === 0;
+    }
+
+    function show(step) {
+      state.step = step;
+      document.querySelectorAll('#rjForm .rj-step').forEach((el) =>
+        el.classList.toggle('active', Number(el.dataset.step) === step));
+      $('rjTitle').textContent = titles[step];
+      $('rjBack').hidden = step === 1;
+      $('rjNext').hidden = step !== 2;
+      $('rjSubmit').hidden = step !== 3;
+      if (step === 2) { $('rjNote').focus(); syncCount(); }
+      if (step === 3) {
+        $('rjSumPayment').textContent = state.payment;
+        $('rjSumReason').textContent = REASONS[state.key].label;
+        $('rjSumNote').textContent = $('rjNote').value.trim();
+      }
+    }
+
+    window.openRejectPayment = function (btn) {
+      const d = btn.dataset;
+      state.payment = `${d.no || 'Payment'} · ${d.elder || 'Resident'}`;
+      $('rjForm').action = ACTION_TEMPLATE.replace('__ID__', d.id);
+      $('rjReasonKey').value = '';
+      $('rjNote').value = '';
+      show(1);
+      $('rjOverlay').classList.add('open');
+    };
+    function closeReject() { $('rjOverlay').classList.remove('open'); }
+
+    $('rjReasonList').addEventListener('click', (e) => {
+      const b = e.target.closest('button[data-key]');
+      if (!b) return;
+      state.key = b.dataset.key;
+      $('rjReasonKey').value = state.key;
+      $('rjReasonLead').textContent = 'Reason: ' + REASONS[state.key].label;
+      $('rjNote').value = REASONS[state.key].message;   // pre-filled, fully editable
+      show(2);
+    });
+    $('rjNote').addEventListener('input', syncCount);
+    $('rjNext').addEventListener('click', () => show(3));
+    $('rjBack').addEventListener('click', () => show(state.step - 1));
+    $('rjCancel').addEventListener('click', closeReject);
+    $('rjClose').addEventListener('click', closeReject);
+    $('rjOverlay').addEventListener('click', (e) => { if (e.target.id === 'rjOverlay') closeReject(); });
+    document.addEventListener('keydown', (e) => { if (e.key === 'Escape') closeReject(); });
+    $('rjForm').addEventListener('submit', () => { $('rjNoteField').value = $('rjNote').value.trim(); });
+  })();
+</script>
+
 {% endblock %}
