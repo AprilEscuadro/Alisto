@@ -19,9 +19,11 @@ drop them.
 """
 
 import os
+import re
 import shutil
 import subprocess
 import time
+from collections import Counter
 
 WHISPER_BIN = "/home/alisto/whisper.cpp/build/bin/whisper-cli"
 WHISPER_MODEL = "/home/alisto/whisper.cpp/models/ggml-tiny-q5_1.bin"
@@ -67,7 +69,11 @@ def transcribe(wav_path):
             capture_output=True, text=True, timeout=TIMEOUT_S,
         )
         with open(OUTPUT_TXT) as f:
-            return f.read().strip().lower()
+            text = f.read().strip().lower()
+        if _is_noise_loop(text):
+            print(f"whisper: repetition loop discarded as noise ({text[:40]!r}...)")
+            return ""
+        return text
     except subprocess.TimeoutExpired:
         _save_timeout_copy(wav_path)
         print(f"whisper transcription TIMED OUT after {TIMEOUT_S}s -- clip saved for analysis")
@@ -75,6 +81,26 @@ def transcribe(wav_path):
     except Exception as e:
         print(f"whisper transcription failed: {e}")
         return ""
+
+
+def _is_noise_loop(text):
+    """True for Whisper's classic hallucination on non-speech audio: one
+    token repeated over and over until it runs out of decode budget
+    ("[song ang ang ang ang ...", real log output on steady background
+    noise). Those transcripts are meaningless -- and since the wake-word
+    check is a lenient fragment match, a loop that happens to contain
+    "ales"/"alest" could in principle raise a false emergency. A loop whose
+    repeated word is itself wake-word-like is deliberately NOT discarded,
+    so someone genuinely repeating "Alisto, Alisto, Alisto..." in a panic
+    still triggers."""
+    words = [w.strip("[]().,!?") for w in text.split()]
+    words = [w for w in words if w]
+    if len(words) < 8:
+        return False
+    top_word, top_count = Counter(words).most_common(1)[0]
+    if top_count / len(words) < 0.6:
+        return False
+    return not any(frag in top_word for frag in WAKE_FRAGMENTS)
 
 
 def _save_timeout_copy(wav_path):
@@ -93,5 +119,7 @@ def has_wake_word(text):
     # check on the raw (spaced) text. Words getting split like this is a
     # recurring Whisper quirk, not a one-off, so fix it structurally here
     # rather than adding more space-containing fragments one at a time.
-    compact = text.replace(" ", "")
+    # Same idea for punctuation: real test at 3 m heard "ali's to tarbang" --
+    # the apostrophe broke "alist" apart. Keep letters only.
+    compact = re.sub(r"[^a-z]", "", text.lower())
     return any(frag in compact for frag in WAKE_FRAGMENTS)

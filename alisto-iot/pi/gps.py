@@ -35,6 +35,7 @@ periodic background poll can never overlap a send in time.
 """
 
 import contextlib
+import json
 import re
 import threading
 import time
@@ -62,6 +63,20 @@ port_lock = threading.Lock()
 
 _last_fix = None       # (lat, lon) or None
 _last_fix_time = 0.0
+
+# Last good fix, kept on disk so it survives a reboot -- the in-memory
+# _last_fix above is gone the moment the service restarts, and a device
+# that boots indoors may not see the sky for a long time. This device sits
+# in one place (an elder's home), so even a days-old fix is usually still
+# the right place; trigger_emergency() uses it as a labelled "last known"
+# fallback instead of sending an SMS with no location at all.
+LAST_FIX_PATH = "/home/alisto/.last_gps_fix.json"
+LAST_KNOWN_MAX_AGE_S = 7 * 24 * 3600
+# SD cards wear out with constant writes -- only re-save when the position
+# actually moved, or the saved copy is getting old.
+_SAVE_MIN_MOVE_DEG = 0.0005     # ~55 m
+_SAVE_MIN_INTERVAL_S = 900
+_persisted = None      # (lat, lon, wall_clock_ts) as loaded/last written
 
 _CGPSINFO_RE = re.compile(
     r"\+CGPSINFO:\s*"
@@ -152,6 +167,37 @@ def _query_once():
         return None
 
 
+def _load_persisted():
+    global _persisted
+    try:
+        with open(LAST_FIX_PATH) as f:
+            d = json.load(f)
+        _persisted = (float(d["lat"]), float(d["lon"]), float(d["ts"]))
+    except (OSError, ValueError, KeyError):
+        _persisted = None
+
+
+def _maybe_save(fix):
+    """Writes `fix` to LAST_FIX_PATH if it's new/moved/stale enough -- see
+    _SAVE_MIN_MOVE_DEG. Best-effort; a failed write never affects polling."""
+    global _persisted
+    now = time.time()
+    if _persisted is not None:
+        lat, lon, ts = _persisted
+        moved = max(abs(fix[0] - lat), abs(fix[1] - lon)) >= _SAVE_MIN_MOVE_DEG
+        if not moved and now - ts < _SAVE_MIN_INTERVAL_S:
+            return
+    try:
+        with open(LAST_FIX_PATH, "w") as f:
+            json.dump({"lat": fix[0], "lon": fix[1], "ts": now}, f)
+        _persisted = (fix[0], fix[1], now)
+    except OSError as e:
+        print(f"GPS: failed to save last fix ({e})")
+
+
+_load_persisted()
+
+
 def poll_loop():
     """Runs forever in its own daemon thread (started once from
     alisto_main.main()), refreshing the cached fix every POLL_INTERVAL_S.
@@ -163,6 +209,7 @@ def poll_loop():
         if fix:
             _last_fix = fix
             _last_fix_time = time.monotonic()
+            _maybe_save(fix)
         time.sleep(POLL_INTERVAL_S)
 
 
@@ -176,6 +223,37 @@ def get_last_fix(max_age_s=FIX_MAX_AGE_S):
     if time.monotonic() - _last_fix_time > max_age_s:
         return None
     return _last_fix
+
+
+def get_last_known(max_age_s=LAST_KNOWN_MAX_AGE_S):
+    """(fix, age_seconds) for the most recent fix we have -- this process's
+    own (age measured on the monotonic clock, accurate) or, after a
+    restart, the one saved on disk (age from the wall clock, only
+    approximate: the Pi has no working RTC battery, so offline the clock
+    can be off). None if there's never been a fix or it's older than
+    max_age_s. Meant for the "last known location" fallback when
+    get_last_fix() has nothing fresh."""
+    if _last_fix is not None:
+        age = time.monotonic() - _last_fix_time
+        return (_last_fix, age) if age <= max_age_s else None
+    if _persisted is not None:
+        lat, lon, ts = _persisted
+        age = max(0.0, time.time() - ts)
+        return ((lat, lon), age) if age <= max_age_s else None
+    return None
+
+
+def age_text(age_s):
+    """'just now' / '12 min ago' / '3 hr ago' / '2 days ago'."""
+    minutes = int(age_s // 60)
+    if minutes < 1:
+        return "just now"
+    if minutes < 60:
+        return f"{minutes} min ago"
+    hours = minutes // 60
+    if hours < 48:
+        return f"{hours} hr ago"
+    return f"{hours // 24} days ago"
 
 
 def coords_text(fix):

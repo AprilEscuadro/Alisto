@@ -7,6 +7,7 @@ this project folder):
 
 ```bash
 scp -r "alisto-iot/pi/voice_detector" alisto@192.168.1.71:/home/alisto/
+scp -r "alisto-iot/pi/network" alisto@192.168.1.71:/home/alisto/
 scp "alisto-iot/pi/alisto_main.py" alisto@192.168.1.71:/home/alisto/
 ```
 
@@ -73,4 +74,22 @@ sudo systemctl status alisto-emergency.service --no-pager
 
 ```bash
 journalctl -u alisto-emergency.service -f
+```
+
+## 8. Disable WiFi power-save (fixes the audible "knock" through the speaker)
+
+The WiFi radio's periodic sleep/wake cycle under power-save mode draws brief
+current spikes that couple into the I2S audio line as a knock -- most
+noticeable during quiet reminder audio and around WiFi (re)connection. This
+is a NetworkManager config change, not a firmware/hardware fix:
+
+```bash
+sudo cp /home/alisto/network/99-wifi-powersave-off.conf /etc/NetworkManager/conf.d/
+sudo systemctl restart NetworkManager
+```
+
+Confirm it took effect:
+
+```bash
+iw dev wlan0 get power_save   # should print "Power save: off"
 ```

@@ -104,9 +104,12 @@ no collection_group query or its index required.
 
 import json
 import threading
+import time
+from datetime import timedelta
 
 import firebase_admin
 from firebase_admin import credentials, firestore, messaging
+from google.api_core.exceptions import AlreadyExists
 
 SERVICE_ACCOUNT_PATH = "/home/alisto/firebase_service_account.json"
 DEVICE_CONFIG_PATH = "/home/alisto/device_config.json"
@@ -308,27 +311,49 @@ def write_voice_detection_log(device_id, alert_id, detected_phrase, is_emergency
         print(f"firestore: failed to write voice detection log: {e}")
 
 
-def write_status_history(alert_id, status, remarks=None):
+def write_status_history(alert_id, status, remarks=None, doc_id=None):
     """Appends one emergency_status_history entry. Best-effort and
     fire-and-forget -- a failure here should never affect the alert
-    itself, which has already been written by the time this is called."""
+    itself, which has already been written by the time this is called.
+    `doc_id` makes the write idempotent (same ID = same doc) -- used by the
+    early alert write so the outbox's later batch overwrites rather than
+    duplicates the CREATED entry."""
     if not alert_id:
         return
     try:
         db = _get_db()
-        db.collection("emergency_status_history").add({
+        data = {
             "alert_id": alert_id,
             "status": status,
             "changed_at": firestore.SERVER_TIMESTAMP,
             "remarks": remarks,
-        })
+        }
+        if doc_id:
+            db.collection("emergency_status_history").document(doc_id).set(data)
+        else:
+            db.collection("emergency_status_history").add(data)
     except Exception as e:
         print(f"firestore: failed to write status history: {e}")
 
 
+def new_alert_id():
+    """A fresh emergency_alert doc ID, generated locally -- Firestore IDs
+    are random client-side, so this needs no network at all. Lets
+    trigger_emergency() know its alert_id instantly and do the real write
+    (write_emergency_alert(..., alert_id=...)) in the background: with no
+    internet that write can block for ~60s on Firestore's retries, and it
+    used to sit on the emergency's critical path in front of the cancel
+    window and the SMS. Returns None if even that fails."""
+    try:
+        return _get_db().collection("emergency_alert").document().id
+    except Exception as e:
+        print(f"firestore: failed to generate alert id: {e}")
+        return None
+
+
 def write_emergency_alert(elder_id, device_id, title, lines, trigger_type="VOICE",
                           location_id=None, phrase_id=None, alert_status="PENDING",
-                          resolution_note=None):
+                          resolution_note=None, alert_id=None):
     """Logs one emergency into emergency_alert so it shows up in the app's
     History screen, the Home screen's alert count/last-alert card, and
     the BHW/family website. `lines` is a list of short strings shown as
@@ -342,27 +367,38 @@ def write_emergency_alert(elder_id, device_id, title, lines, trigger_type="VOICE
     False Alarms tab has something to count; see trigger_emergency()'s
     cancelled branch. Returns the new alert's doc ID (so a push
     notification -- see send_emergency_push() -- and the SMS loop's
-    per-contact logging can reference it), or None if the write failed."""
+    per-contact logging can reference it), or None if the write failed.
+    Pass `alert_id` (from new_alert_id()) to write to that exact doc ID
+    instead of letting Firestore pick one."""
     try:
         db = _get_db()
-        _, doc_ref = db.collection("emergency_alert").add({
-            "elder_id": elder_id,
-            "device_id": device_id,
-            "location_id": location_id,
-            "phrase_id": phrase_id,
-            "trigger_type": trigger_type,
-            "alert_status": alert_status,
-            "title": title,
-            "lines": lines,
-            "date_triggered": firestore.SERVER_TIMESTAMP,
-            "deleted_at": None,
-            "is_archived": False,
-            "resolution_note": resolution_note,
-        })
+        collection = db.collection("emergency_alert")
+        doc_ref = collection.document(alert_id) if alert_id else collection.document()
+        try:
+            # create(), not set(): if the outbox uploader already wrote the
+            # finished record (this early write was stuck offline), this
+            # must not overwrite it with the bare PENDING version.
+            doc_ref.create({
+                "elder_id": elder_id,
+                "device_id": device_id,
+                "location_id": location_id,
+                "phrase_id": phrase_id,
+                "trigger_type": trigger_type,
+                "alert_status": alert_status,
+                "title": title,
+                "lines": lines,
+                "date_triggered": firestore.SERVER_TIMESTAMP,
+                "deleted_at": None,
+                "is_archived": False,
+                "resolution_note": resolution_note,
+            })
+        except AlreadyExists:
+            return doc_ref.id
         write_status_history(
             doc_ref.id,
             "CANCELLED" if alert_status == "CANCELLED" else "CREATED",
             remarks=resolution_note,
+            doc_id=f"{doc_ref.id}_h1" if alert_id else None,
         )
         return doc_ref.id
     except Exception as e:
@@ -389,6 +425,124 @@ def update_emergency_alert(alert_id, **fields):
                                  remarks=fields.get("resolution_note"))
     except Exception as e:
         print(f"firestore: failed to update alert {alert_id}: {e}")
+
+
+def upload_alert_record(rec, when):
+    """Writes one outbox record (see outbox.py) to Firestore as a single
+    ATOMIC batch with fixed document IDs: it either all lands or none of it
+    does, and retrying after any failure just rewrites the same documents,
+    so a flaky connection can never leave a half-recorded alert or
+    duplicates. `when` is the real time of the emergency (the Pi's clock may
+    have been wrong while offline). Raises on any failure -- the outbox
+    keeps the record and tries again."""
+    db = _get_db()
+    alert_id = rec["alert_id"]
+    device_id = rec.get("device_id")
+    status = rec.get("status") or "PENDING"
+    cancelled = status == "CANCELLED"
+    batch = db.batch()
+
+    # Phrase: reuse an existing doc for the same text (lookup is strict --
+    # a network failure must raise, not silently drop the phrase); only
+    # create one, under a fixed ID, if it doesn't exist yet.
+    phrase_id = None
+    text = (rec.get("phrase_text") or "").strip()
+    if text:
+        for doc in (db.collection("distress_phrase")
+                    .where("phrase_text", "==", text).limit(1).get()):
+            phrase_id = doc.id
+        if phrase_id is None:
+            phrase_id = f"{alert_id}_phrase"
+            batch.set(db.collection("distress_phrase").document(phrase_id), {
+                "phrase_text": text,
+                "phrase_category": rec.get("category") or "GENERAL_HELP",
+                "status": "ACTIVE",
+                "created_at": when,
+                "updated_at": when,
+            })
+
+    location_id = None
+    gps = rec.get("gps")
+    if gps:
+        location_id = f"{alert_id}_loc"
+        batch.set(db.collection("device_location").document(location_id), {
+            "device_id": device_id,
+            "gps_lat": gps["lat"],
+            "gps_long": gps["lon"],
+            "location_address": gps.get("barangay"),
+            "recorded_at": when,
+        })
+
+    alert = {
+        "elder_id": rec.get("elder_id"),
+        "device_id": device_id,
+        "location_id": location_id,
+        "phrase_id": phrase_id,
+        "trigger_type": rec.get("trigger_type"),
+        "alert_status": status,
+        "title": rec.get("title"),
+        "lines": rec.get("lines"),
+        "deleted_at": None,
+        "is_archived": False,
+        "resolution_note": rec.get("resolution_note"),
+    }
+    if not rec.get("early_created"):
+        # The early write already stamped a server-side trigger time; only
+        # fill it in when that write never made it.
+        alert["date_triggered"] = when
+    batch.set(db.collection("emergency_alert").document(alert_id), alert, merge=True)
+
+    history = db.collection("emergency_status_history")
+    batch.set(history.document(f"{alert_id}_h1"), {
+        "alert_id": alert_id, "status": "CREATED", "changed_at": when, "remarks": None,
+    })
+    if cancelled:
+        batch.set(history.document(f"{alert_id}_h2"), {
+            "alert_id": alert_id, "status": "CANCELLED",
+            "changed_at": when + timedelta(seconds=5),
+            "remarks": rec.get("resolution_note"),
+        })
+    elif status == "SENT":
+        batch.set(history.document(f"{alert_id}_h2"), {
+            "alert_id": alert_id, "status": "SMS_SENT",
+            "changed_at": when + timedelta(seconds=10), "remarks": None,
+        })
+
+    if not cancelled:
+        batch.set(db.collection("voice_detection_log").document(f"{alert_id}_vlog"), {
+            "device_id": device_id,
+            "alert_id": alert_id,
+            "detected_phrase": rec.get("phrase_text"),
+            "confidence_score": None,
+            "noise_level": None,
+            "recognition_timestamp": when,
+            "is_emergency": True,
+        })
+        for i, c in enumerate(rec.get("contacts") or []):
+            if not c.get("contact_id"):
+                continue  # default-recipient fallback has nothing to attach to
+            ok = bool(c.get("ok"))
+            fail = None if ok else "No response from modem after retries"
+            notif_id = f"{alert_id}_n{i}"
+            sent_at = when + timedelta(seconds=10) if ok else None
+            batch.set(db.collection("alert_notification").document(notif_id), {
+                "alert_id": alert_id,
+                "contact_id": c["contact_id"],
+                "sms_status": "SENT" if ok else "FAILED",
+                "date_sent": sent_at,
+                "failure_reason": fail,
+            })
+            batch.set(db.collection("sms_delivery_log").document(f"{alert_id}_s{i}"), {
+                "notification_id": notif_id,
+                "status": "SENT" if ok else "FAILED",
+                "queued_at": when,
+                "sent_at": sent_at,
+                "delivery_time": sent_at,
+                "retry_count": c.get("attempts"),
+                "failure_reason": fail,
+            })
+
+    batch.commit()
 
 
 def mark_alert_sms_sent(alert_id):
@@ -552,32 +706,37 @@ def get_family_fcm_tokens(elder_id):
     this" pressed N times to actually clear the screen, for what a real
     family member would experience as a single alert."""
     try:
-        db = _get_db()
-        links = (
-            db.collection("family_elder_link")
-            .where("elder_id", "==", elder_id)
-            .get()
-        )
-        seen = set()
-        tokens = []
-        for link in links:
-            family_user_id = link.to_dict().get("family_user_id")
-            if not family_user_id:
-                continue
-            user_doc = db.collection(
-                "user_account").document(family_user_id).get()
-            if user_doc.exists:
-                token = user_doc.to_dict().get("fcm_token")
-                if token and token not in seen:
-                    seen.add(token)
-                    tokens.append(token)
-        return tokens
+        return _fetch_family_fcm_tokens(elder_id)
     except Exception as e:
         print(f"firestore: failed to read family FCM tokens: {e}")
         return []
 
 
-def send_emergency_push(elder_id, title, body, alert_id=None):
+def _fetch_family_fcm_tokens(elder_id):
+    """The raising version of get_family_fcm_tokens() -- send_emergency_push()
+    needs to tell "nobody to notify" apart from "couldn't reach Firestore"."""
+    db = _get_db()
+    links = (
+        db.collection("family_elder_link")
+        .where("elder_id", "==", elder_id)
+        .get()
+    )
+    seen = set()
+    tokens = []
+    for link in links:
+        family_user_id = link.to_dict().get("family_user_id")
+        if not family_user_id:
+            continue
+        user_doc = db.collection("user_account").document(family_user_id).get()
+        if user_doc.exists:
+            token = user_doc.to_dict().get("fcm_token")
+            if token and token not in seen:
+                seen.add(token)
+                tokens.append(token)
+    return tokens
+
+
+def send_emergency_push(elder_id, title, body, alert_id=None, deadline_mono=None):
     """Pushes a notification to every family account linked to this elder,
     via the Admin SDK -- doesn't need each device's token individually
     passed in like a normal server would; firebase_admin already has full
@@ -595,17 +754,42 @@ def send_emergency_push(elder_id, title, body, alert_id=None):
     app's own handlers instead (onMessage in the foreground,
     firebaseMessagingBackgroundHandler otherwise -- see
     notification_service.dart), which is what starts
-    EmergencyAlarmService.kt's real alarm loop in every app state."""
-    tokens = get_family_fcm_tokens(elder_id)
+    EmergencyAlarmService.kt's real alarm loop in every app state.
+
+    Returns True when the push is handled (at least one token reached, or
+    nobody to notify) and False when it failed outright -- the outbox uses
+    that to try again once the internet is back.
+
+    `deadline_mono` (a time.monotonic() value): the push makes the family's
+    phone ring a full alarm, so it must not go out long after the fact. With
+    no internet the token lookup below can sit in gRPC's retries for minutes
+    and then succeed the moment WiFi returns -- without this check that would
+    ring the alarm for an emergency that's long over. Past the deadline the
+    push is dropped (returns True: handled, nothing more to do)."""
+    def expired():
+        return deadline_mono is not None and time.monotonic() > deadline_mono
+
+    try:
+        tokens = _fetch_family_fcm_tokens(elder_id)
+    except Exception as e:
+        print(f"firestore: failed to read family FCM tokens: {e}")
+        return False
+    if expired():
+        print("firestore: push dropped -- too late to be a useful alarm (SMS already sent)")
+        return True
     if not tokens:
         print("firestore: no family FCM tokens to push to (nobody has opened the app with notifications yet)")
-        return
+        return True  # nothing to send is a finished job, not a failure
 
     data = {"type": "emergency", "title": title, "body": body}
     if alert_id:
         data["alert_id"] = alert_id
 
+    sent = 0
     for token in tokens:
+        if expired():
+            print("firestore: push dropped -- too late to be a useful alarm (SMS already sent)")
+            return True
         try:
             message = messaging.Message(
                 token=token,
@@ -613,8 +797,10 @@ def send_emergency_push(elder_id, title, body, alert_id=None):
                 android=messaging.AndroidConfig(priority="high"),
             )
             messaging.send(message)
+            sent += 1
         except Exception as e:
             print(f"firestore: push failed for one token ({e})")
+    return sent > 0
 
 
 def _normalize_ph_number(num):
@@ -632,7 +818,45 @@ def _normalize_ph_number(num):
     return num
 
 
-def get_emergency_contacts(elder_id):
+def _active_contacts(docs):
+    """[{'contact_id', 'contact_num'}] from emergency_contact docs, leaving out
+    contacts removed in the web app -- those are only archived (soft delete:
+    deleted_at set, or status INACTIVE), so they must never be texted. Shared
+    by the live read and the cache refresh so the two can't disagree: a
+    refresh that kept archived contacts would text them during an offline
+    emergency."""
+    return [
+        {"contact_id": d.id, "contact_num": _normalize_ph_number(
+            d.to_dict().get("contact_num"))}
+        for d in docs
+        if d.to_dict().get("contact_num")
+        and not d.to_dict().get("deleted_at")
+        and d.to_dict().get("status") != "INACTIVE"
+    ]
+
+
+def refresh_contacts_cache(elder_id, timeout_s=10):
+    """Re-reads the contact list and rewrites the local cache. Called
+    periodically while online (see alisto_main.outbox_uploader_loop()) so an
+    emergency while OFFLINE still texts the current contacts, not whatever
+    they were the last time an emergency happened to occur online. Returns
+    True if the refresh succeeded."""
+    try:
+        docs = (
+            _get_db().collection("emergency_contact")
+            .where("elder_id", "==", elder_id)
+            .get(timeout=timeout_s)
+        )
+        contacts = _active_contacts(docs)
+        with open(EMERGENCY_CONTACTS_CACHE_PATH, "w") as f:
+            json.dump(contacts, f)
+        return True
+    except Exception as e:
+        print(f"firestore: contacts cache refresh failed: {e}")
+        return False
+
+
+def get_emergency_contacts(elder_id, timeout_s=None):
     """Returns [{'contact_id':..., 'contact_num':...}, ...] for every
     contact (family + BHW) linked to this elder -- the real SMS recipient
     list, replacing the single hardcoded RECIPIENT in alisto_sms.py.
@@ -645,23 +869,20 @@ def get_emergency_contacts(elder_id):
     WiFi needed) -- the only way an emergency would fail to reach every
     contact is if THIS list itself couldn't be fetched from Firestore at
     the exact moment of the emergency. Caches the last successful read so
-    an offline trigger still has a recipient list to use."""
-    try:
+    an offline trigger still has a recipient list to use.
+
+    `timeout_s` is a HARD cutoff on how long to wait for Firestore before
+    using that cache -- the emergency SMS path passes a short one so a
+    slow/unreachable connection can't hold up the SMS. It's enforced by
+    waiting on a thread, not by gRPC's own timeout: real testing showed
+    query.get(timeout=3) still blocked for over 3 minutes with no internet
+    (gRPC keeps retrying under its own, longer deadline), delaying the SMS
+    until WiFi came back."""
+    def fetch():
         db = _get_db()
-        docs = (
-            db.collection("emergency_contact")
-            .where("elder_id", "==", elder_id)
-            .get()
-        )
-        contacts = [
-            {"contact_id": d.id, "contact_num": _normalize_ph_number(
-                d.to_dict().get("contact_num"))}
-            for d in docs
-            if d.to_dict().get("contact_num")
-            # Contacts removed in the web app are only archived (soft delete).
-            and not d.to_dict().get("deleted_at")
-            and d.to_dict().get("status") != "INACTIVE"
-        ]
+        query = db.collection("emergency_contact").where("elder_id", "==", elder_id)
+        docs = query.get()
+        contacts = _active_contacts(docs)
         try:
             with open(EMERGENCY_CONTACTS_CACHE_PATH, "w") as f:
                 json.dump(contacts, f)
@@ -669,6 +890,24 @@ def get_emergency_contacts(elder_id):
             print(
                 f"firestore: failed to cache emergency contacts locally: {e}")
         return contacts
+
+    try:
+        if not timeout_s:
+            return fetch()
+        box = {}
+
+        def runner():
+            try:
+                box["contacts"] = fetch()
+            except Exception as e:
+                box["error"] = e
+
+        t = threading.Thread(target=runner, daemon=True)
+        t.start()
+        t.join(timeout_s)
+        if "contacts" in box:
+            return box["contacts"]
+        raise box.get("error") or TimeoutError(f"no answer within {timeout_s}s")
     except Exception as e:
         print(
             f"firestore: failed to read emergency contacts ({e}) -- falling back to local cache")

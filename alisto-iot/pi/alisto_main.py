@@ -23,7 +23,9 @@ Replaces alisto_emergency.py + alisto_voice.py with one process that:
 Run as the alisto-emergency systemd service (see systemd/alisto-emergency.service).
 """
 
+import math
 import os
+import socket
 import subprocess
 import sys
 import threading
@@ -41,11 +43,12 @@ import vad                # noqa: E402
 import whisper_asr         # noqa: E402
 
 sys.path.insert(0, "/home/alisto")
-from alisto_sms import send_sms, read_own_sim_number  # noqa: E402  (existing, working, own serial port)
+from alisto_sms import send_sms, read_own_sim_number, read_sim_health, sms_failure_reason  # noqa: E402  (existing, working, own serial port)
 import gps  # noqa: E402  (SIM7600's built-in GNSS -- shares that same port,
             # but never used at the same time as send_sms(), see below)
 import reverse_geocode  # noqa: E402  (offline lat/lon -> barangay name)
 import firestore_backend  # noqa: E402  (Admin SDK -- finds who claimed this device)
+import outbox  # noqa: E402  (offline store-and-forward for emergency alerts)
 
 try:
     from alisto_sms import DEFAULT_MESSAGE  # noqa: E402
@@ -61,6 +64,7 @@ AUDIO_CHUNK_SIZE = 4096
 AUDIO_READY_TIMEOUT_S = 3
 AUDIO_DONE_TIMEOUT_S = 5
 AUDIO_BYTES_PER_SEC = 32000  # 16kHz * 2 bytes/sample (matches the I2S config)
+AUDIO_LEAD_S = 0.2  # how far ahead of real-time playback stream_audio() may run
 
 WHISPER_TEMP_WAV = "/home/alisto/voice_detector/whisper_in.wav"
 
@@ -120,6 +124,29 @@ _audio_state_lock = threading.Lock()
 # reading medicine reminders, and looking up emergency contacts are all
 # scoped to this elder_id, not to any particular user account.
 _elder_id = None
+
+# _elder_id lives in memory only, so a Pi that boots with NO internet used to
+# come up not knowing who it protects: no contacts lookup (SMS only to the
+# hardcoded default number) and no alert record. Remembered on disk the last
+# time it resolved, and loaded back at startup -- the pairing watcher still
+# re-checks it against Firestore whenever the internet is available.
+ELDER_ID_CACHE_PATH = "/home/alisto/.elder_id_cache"
+
+
+def _load_cached_elder_id():
+    try:
+        with open(ELDER_ID_CACHE_PATH) as f:
+            return f.read().strip() or None
+    except OSError:
+        return None
+
+
+def _save_cached_elder_id(elder_id):
+    try:
+        with open(ELDER_ID_CACHE_PATH, "w") as f:
+            f.write(elder_id)
+    except OSError as e:
+        print(f"could not cache elder_id: {e}")
 
 
 def open_esp32():
@@ -258,7 +285,17 @@ def stream_audio(ser, path):
             ser.write(chunk)
             ser.flush()
             sent += len(chunk)
-            remaining = (sent / AUDIO_BYTES_PER_SEC) - (time.monotonic() - start)
+            # Stay AUDIO_LEAD_S ahead of real-time playback instead of
+            # delivering each chunk exactly when the previous one finishes
+            # playing. With zero lead any single Pi hiccup (a Firestore
+            # thread, scheduling, GC) lets the ESP32's I2S buffer run dry
+            # -> a gap of silence -> an audible pop/knock when audio resumes.
+            # Real testing: the ~6s medicine reminder knocked every time while
+            # the ~3s button announcement didn't, because the longer stream
+            # has more chances to hit one. The lead has to stay within what
+            # the ESP32 can buffer without dropping bytes (8192-byte serial
+            # RX buffer + ~8192 bytes of I2S DMA = ~0.5s); 0.2s fits easily.
+            remaining = (sent / AUDIO_BYTES_PER_SEC) - (time.monotonic() - start) - AUDIO_LEAD_S
             if remaining > 0:
                 time.sleep(remaining)
 
@@ -267,6 +304,150 @@ def stream_audio(ser, path):
 
     if not audio_done_event.wait(timeout=AUDIO_DONE_TIMEOUT_S):
         print("WARNING: no AUDIO_DONE confirmation from ESP32")
+
+
+# How long to wait on Firestore for the emergency-contact list before using
+# the local cache instead. The SMS goes out over the SIM7600's own cellular
+# link, so it must never end up waiting on WiFi/Firestore -- real testing
+# measured ~6s of Firestore calls (alert update, push, contacts) sitting in
+# front of the SMS even with working internet, and an offline or slow
+# connection would stretch that much further.
+CONTACTS_FETCH_TIMEOUT_S = 3
+
+
+def _run_in_background(fn, *args):
+    """Runs a best-effort Firestore step off the emergency's critical path.
+    Never raises into the caller -- a failure here must not affect the SMS."""
+    def runner():
+        try:
+            fn(*args)
+        except Exception as e:
+            print(f"background step {fn.__name__} failed: {e}")
+    threading.Thread(target=runner, daemon=True).start()
+
+
+# OFFLINE STORE-AND-FORWARD (see outbox.py). Every emergency is saved to a
+# local file the moment it starts and finished off there; the Firestore side
+# (alert doc, location, phrase, logs, push) is uploaded by
+# outbox_uploader_loop() whenever the internet allows, and the file is
+# deleted once it's all safely uploaded. Nothing in the emergency flow itself
+# waits on Firestore.
+
+OUTBOX_RETRY_INTERVAL_S = 15
+CONTACTS_REFRESH_INTERVAL_S = 30 * 60
+
+_push_inflight = set()  # alert_ids whose immediate push is still running
+_push_inflight_lock = threading.Lock()
+
+
+def _outbox_update(alert_id, **fields):
+    """outbox.update() that can never raise into the emergency flow (a full
+    or failing disk must not stop the SMS)."""
+    if not alert_id:
+        return
+    try:
+        outbox.update(alert_id, **fields)
+    except Exception as e:
+        print(f"outbox: could not update {alert_id}: {e}")
+
+
+def _bg_create_alert(alert_id, elder_id, own_serial, alert_title, lines, trigger_type):
+    """The early emergency_alert write, off the critical path (see
+    firestore_backend.new_alert_id()): purely so the website/app show the
+    alert the instant it fires when internet is up. If it can't get through
+    (offline), the outbox uploader writes the whole alert later."""
+    if firestore_backend.write_emergency_alert(
+        elder_id=elder_id,
+        device_id=own_serial,
+        title=alert_title,
+        lines=lines,
+        trigger_type=trigger_type,
+        alert_id=alert_id,
+    ):
+        _outbox_update(alert_id, early_created=True)
+
+
+def _send_push(elder_id, alert_id, alert_title, age_s=0.0):
+    """`age_s` = how long ago the emergency happened. The push is dropped if
+    it can't go out within outbox.PUSH_MAX_AGE_S of the emergency itself,
+    even if the call only gets unstuck later (see send_emergency_push)."""
+    return firestore_backend.send_emergency_push(
+        elder_id=elder_id,
+        title="ALISTO Emergency Alert",
+        body=f"{alert_title}. Please check immediately.",
+        alert_id=alert_id,
+        deadline_mono=time.monotonic() + outbox.PUSH_MAX_AGE_S - age_s,
+    )
+
+
+def _bg_push(elder_id, alert_id, alert_title):
+    """The immediate push, sent right when the SMS starts. If it fails
+    (offline) the outbox uploader retries it after the alert is uploaded."""
+    with _push_inflight_lock:
+        _push_inflight.add(alert_id)
+    try:
+        if _send_push(elder_id, alert_id, alert_title):
+            _outbox_update(alert_id, push_sent=True)
+    finally:
+        with _push_inflight_lock:
+            _push_inflight.discard(alert_id)
+
+
+def _outbox_push(rec):
+    """push_fn for outbox.process_pending(): the delayed push, unless the
+    immediate one is still in flight (would double-notify)."""
+    with _push_inflight_lock:
+        if rec["alert_id"] in _push_inflight:
+            return False
+    age_s = max(0.0, time.time() - outbox.event_time(rec).timestamp())
+    return _send_push(rec["elder_id"], rec["alert_id"], rec["title"], age_s)
+
+
+def outbox_uploader_loop():
+    """Uploads finished alerts from the outbox to Firestore and deletes them
+    once they're safely there. Runs once at startup (picks up anything left
+    from before a reboot), then whenever an alert completes or every
+    OUTBOX_RETRY_INTERVAL_S. Also keeps the SMS-recipient cache fresh so a
+    later offline emergency still has the current contacts."""
+    last_contacts_refresh = None
+    while True:
+        try:
+            done = outbox.process_pending(firestore_backend.upload_alert_record, _outbox_push)
+            if done:
+                print(f"outbox: uploaded {done} alert(s) to Firestore")
+        except Exception as e:
+            print(f"outbox: uploader pass failed: {e}")
+
+        if _elder_id is not None and (
+            last_contacts_refresh is None
+            or time.monotonic() - last_contacts_refresh >= CONTACTS_REFRESH_INTERVAL_S
+        ):
+            try:
+                if firestore_backend.refresh_contacts_cache(_elder_id):
+                    last_contacts_refresh = time.monotonic()
+            except Exception as e:
+                print(f"contacts cache refresh failed: {e}")
+
+        outbox.wake.wait(OUTBOX_RETRY_INTERVAL_S)
+        outbox.wake.clear()
+
+
+def _announce_sms_failure(ser):
+    """Speaks why the emergency SMS failed for every contact (no SIM, no
+    signal, no load, modem not answering). Called from inside
+    trigger_emergency(), which already holds _audio_state_lock with the mic
+    paused, so this streams directly instead of taking those again.
+    Best-effort -- must never raise into the emergency flow."""
+    try:
+        with gps.port_lock:
+            health = read_sim_health()
+        reason = sms_failure_reason(health)
+        print(f"SMS FAILED for every contact -- SIM health: {health} -> {reason}")
+        audio_path = tts.synthesize_sms_failure(reason)
+        if audio_path:
+            stream_audio(ser, audio_path)
+    except Exception as e:
+        print(f"SMS-failure announcement failed: {e}")
 
 
 def trigger_emergency(ser, source, category="UNKNOWN", message=None):
@@ -315,12 +496,26 @@ def trigger_emergency(ser, source, category="UNKNOWN", message=None):
             # clears, rather than waiting to create the doc until then.
             alert_id = None
             if _elder_id is not None:
-                alert_id = firestore_backend.write_emergency_alert(
-                    elder_id=_elder_id,
-                    device_id=own_serial,
-                    title=alert_title,
-                    lines=(message or DEFAULT_MESSAGE).split("\n"),
-                    trigger_type=trigger_type,
+                alert_id = firestore_backend.new_alert_id() or outbox.local_alert_id()
+            if alert_id:
+                # Saved to local disk FIRST (no network involved) -- this is
+                # the copy that survives no internet and even a power cut;
+                # see outbox.py. Then the early Firestore write happens in
+                # the background -- with no internet it can block for ~60s on
+                # Firestore's retries, and this used to sit in front of the
+                # announcement, the cancel window, and the SMS.
+                try:
+                    outbox.new_record(
+                        alert_id, elder_id=_elder_id, device_id=own_serial,
+                        title=alert_title, trigger_type=trigger_type,
+                        category=category, phrase_text=message,
+                        lines=(message or DEFAULT_MESSAGE).split("\n"),
+                    )
+                except Exception as e:
+                    print(f"outbox: could not save alert {alert_id} locally: {e}")
+                _run_in_background(
+                    _bg_create_alert, alert_id, _elder_id, own_serial,
+                    alert_title, (message or DEFAULT_MESSAGE).split("\n"), trigger_type,
                 )
 
             if source == "voice":
@@ -347,7 +542,11 @@ def trigger_emergency(ser, source, category="UNKNOWN", message=None):
                     cancelled = True
                     break
                 print("Sending SMS in", i)
-                time.sleep(1)
+                # wait(), not sleep(): returns the instant cancel_event is
+                # set instead of finishing out the full second first, so a
+                # cancel during the countdown takes effect immediately.
+                if cancel_event.wait(timeout=1):
+                    break
             if cancel_event.is_set():
                 cancelled = True
 
@@ -358,12 +557,17 @@ def trigger_emergency(ser, source, category="UNKNOWN", message=None):
                 # (no push, no SMS -- nobody needs to be notified about a
                 # false alarm) so the website's False Alarms tab has
                 # something to count, instead of creating a second doc.
+                # Background thread, not inline: this is two Firestore
+                # writes (the alert + its status history), and the `finally`
+                # below -- which turns the blue listening LED back on and
+                # resumes the mic -- can't run until this returns. Real
+                # testing: the LED took ~3s to come back after a cancel.
                 if alert_id:
-                    firestore_backend.update_emergency_alert(
-                        alert_id,
-                        alert_status="CANCELLED",
-                        resolution_note="Cancelled within 5 seconds",
+                    _outbox_update(
+                        alert_id, status="CANCELLED",
+                        resolution_note="Cancelled within 5 seconds", complete=True,
                     )
+                    outbox.wake.set()
             else:
                 final_message = message or DEFAULT_MESSAGE
                 # Instant, in-memory read -- no serial I/O here at all (see
@@ -372,90 +576,79 @@ def trigger_emergency(ser, source, category="UNKNOWN", message=None):
                 # background poll loop (started in main()) most recently
                 # cached, which is normally at most POLL_INTERVAL_S old.
                 fix = gps.get_last_fix()
-                location_id = None
+                fix_age_s = None  # None = a fresh fix; a number = stale "last known"
+                if fix is None:
+                    # No fresh fix (indoors, antenna just moved, first boot,
+                    # ...). This device sits in one place -- an elder's home
+                    # -- so the last known position is almost certainly still
+                    # right; sending it, clearly labelled and aged, beats an
+                    # SMS with no location at all.
+                    known = gps.get_last_known()
+                    if known:
+                        fix, fix_age_s = known
+                gps_args = None
                 if fix:
                     lat, lon = fix
                     coords = gps.coords_text(fix)  # plain "lat,lon", not a
                     # clickable link -- see gps.coords_text() for why
                     # (carrier URL filtering).
                     barangay = reverse_geocode.barangay_for(lat, lon)
-                    if barangay:
+                    place = f"{barangay}, Cebu City ({coords})" if barangay else coords
+                    if fix_age_s is None:
                         # Human-readable first, coordinates kept alongside
                         # as backup precision for anyone who does have a
                         # maps app -- not hardcoded, this is a live
                         # point-in-polygon lookup against the actual fix.
-                        final_message += f"\nLocation: {barangay}, Cebu City ({coords})"
+                        final_message += f"\nLocation: {place}"
+                        # Only a fresh fix becomes a new device_location row
+                        # -- a stale one would be recorded with a misleading
+                        # "just now" timestamp.
+                        gps_args = (lat, lon, barangay)
                     else:
-                        final_message += f"\nLocation: {coords}"
-                    print(f"GPS: including cached location {fix} -> {barangay}")
-                    # device_location doc doubles as the emergency_alert's
-                    # location_id (paper ERD) -- best-effort, a failed
-                    # write just leaves location_id null.
-                    location_id = firestore_backend.write_location(own_serial, lat, lon, barangay)
+                        final_message += f"\nLast known: {place} {gps.age_text(fix_age_s)}"
+                    print(f"GPS: including {'cached' if fix_age_s is None else 'LAST KNOWN (' + gps.age_text(fix_age_s) + ')'} location {fix} -> {barangay}")
                 else:
-                    print("GPS: no recent fix cached -- sending without location")
+                    print("GPS: no fix at all (fresh or saved) -- sending without location")
 
-                # Logs this emergency into the app's History screen, the
-                # Home-screen alert count/last-alert card, AND pushes the
-                # phone notification -- done BEFORE the SMS block below,
-                # not after. This used to run last, meaning the (fast,
-                # internet-based) push notification sat waiting behind
-                # the (slow, cellular-based) SMS retries -- up to several
-                # minutes in the worst case, per real testing -- before a
-                # family member got notified at all. Push and SMS are two
-                # independent channels with no reason for one to block
-                # the other; the faster one should never wait on the
-                # slower one. Best-effort either way, never allowed to
-                # affect the actual emergency handling.
+                # Everything that needs Firestore (push, alert doc update,
+                # location row, logs) now runs on background threads, started
+                # BEFORE the SMS loop so the push still goes out immediately
+                # but nothing here can delay or block the SMS. The SMS uses
+                # the SIM7600's own cellular link and has to work even when
+                # WiFi/Firestore is slow or down -- previously push, alert
+                # update, location write, and contact lookup all ran in
+                # series in front of it (~6s with working internet).
                 if alert_id:
-                    phrase_id = firestore_backend.get_or_create_phrase(message, category)
-                    firestore_backend.update_emergency_alert(
-                        alert_id,
-                        lines=final_message.split("\n"),
-                        location_id=location_id,
-                        phrase_id=phrase_id,
+                    _outbox_update(
+                        alert_id, lines=final_message.split("\n"),
+                        gps=(
+                            {"lat": gps_args[0], "lon": gps_args[1], "barangay": gps_args[2]}
+                            if gps_args else None
+                        ),
                     )
-                if _elder_id is not None:
-                    firestore_backend.write_voice_detection_log(
-                        device_id=own_serial,
-                        alert_id=alert_id,
-                        detected_phrase=message,
-                        is_emergency=True,
-                    )
-                    firestore_backend.send_emergency_push(
-                        elder_id=_elder_id,
-                        title="ALISTO Emergency Alert",
-                        body=f"{alert_title}. Please check immediately.",
-                        alert_id=alert_id,
-                    )
+                    _run_in_background(_bg_push, _elder_id, alert_id, alert_title)
 
                 # Real recipients (added through the app's Contacts screen)
                 # instead of the single hardcoded number -- falls back to
                 # alisto_sms.py's own default RECIPIENT only if no contact
                 # could be resolved at all (not yet paired, or genuinely
-                # zero contacts added). Each dict carries contact_id (None
-                # for the fallback) so per-contact logging below has
-                # something to attach to.
+                # zero contacts added). The Firestore read is capped at
+                # CONTACTS_FETCH_TIMEOUT_S and falls back to the local cache.
                 contacts = (
-                    firestore_backend.get_emergency_contacts(_elder_id)
+                    firestore_backend.get_emergency_contacts(
+                        _elder_id, timeout_s=CONTACTS_FETCH_TIMEOUT_S)
                     if _elder_id is not None else []
                 )
                 if not contacts:
                     print("No emergency contacts found -- falling back to default recipient.")
                     contacts = [{"contact_id": None, "contact_num": None}]
 
-                any_ok = False
+                results = []  # (contact_id, ok, attempts) for the post-send log
                 for contact in contacts:
                     recipient = contact["contact_num"]
                     label = recipient or "default recipient"
-                    # alert_notification doc for this (alert, contact) pair
-                    # (paper ERD) -- None when there's no real contact_id
-                    # (fallback recipient, or the alert itself failed to
-                    # write), in which case write_sms_delivery_log() below
-                    # is a no-op.
-                    notification_id = firestore_backend.write_alert_notification(
-                        alert_id, contact["contact_id"])
                     ok = False
+                    attempt = 0
                     for attempt in range(1, SMS_RETRY_ATTEMPTS + 1):
                         print(f"Sending SMS to {label} (attempt {attempt}/{SMS_RETRY_ATTEMPTS})...")
                         # port_lock keeps this from ever overlapping the
@@ -466,24 +659,37 @@ def trigger_emergency(ser, source, category="UNKNOWN", message=None):
                             break
                         if attempt < SMS_RETRY_ATTEMPTS:
                             time.sleep(SMS_RETRY_DELAY_S)
-                    firestore_backend.write_sms_delivery_log(
-                        notification_id,
-                        "SENT" if ok else "FAILED",
-                        attempt,
-                        failure_reason=None if ok else "No response from modem after retries",
-                    )
+                    results.append((contact["contact_id"], ok, attempt))
                     print(f"SMS to {label} sent." if ok else f"SMS to {label} FAILED after {SMS_RETRY_ATTEMPTS} attempts.")
-                    any_ok = any_ok or ok
-                ok = any_ok
-                if ok:
-                    firestore_backend.mark_alert_sms_sent(alert_id)
+                any_ok = any(ok for _, ok, _ in results)
+                if alert_id:
+                    _outbox_update(
+                        alert_id,
+                        status="SENT" if any_ok else "PENDING",
+                        contacts=[
+                            {"contact_id": cid, "ok": ok, "attempts": n}
+                            for cid, ok, n in results
+                        ],
+                        complete=True,
+                    )
+                    outbox.wake.set()
+                if not any_ok:
+                    # Nothing got through to anyone -- say so out loud, with
+                    # the likely reason, instead of failing in silence.
+                    _announce_sms_failure(ser)
                 send_command(ser, "CMD:CANCEL")  # reset ESP32 state for next trigger
 
         finally:
+            # Stamp the watchdog BEFORE clearing the flag: the mic has been
+            # paused for the whole emergency (possibly minutes), and the
+            # moment the flag clears the watchdog judges by the last frame
+            # time -- which would look like a long stall for a moment.
+            _progress["t"] = time.monotonic()
             with _emergency_lock:
                 _emergency_in_progress = False
 
             dropped = frames.resume() if frames is not None else 0
+            _progress["t"] = time.monotonic()
             if dropped:
                 print(f"(discarded {dropped} boundary frame(s) after emergency handling)")
             send_command(ser, "CMD:STATUS_LED_ON")  # back to solid = listening again
@@ -500,6 +706,33 @@ def _blink_status_led(ser, stop_event, interval_s=0.2):
         state = not state
         send_command(ser, "CMD:STATUS_LED_ON" if state else "CMD:STATUS_LED_OFF")
         stop_event.wait(interval_s)
+
+
+def apply_capture_gain():
+    """Sets the mic HAT's capture gain (see config.CAPTURE_PGA). Best-effort:
+    a failure just leaves the card at whatever it was -- detection still
+    works, only with less reach."""
+    if config.CAPTURE_PGA is None:
+        return
+    try:
+        result = subprocess.run(
+            ["amixer", "-c", config.CAPTURE_CARD, "-q", "sset", "PGA", str(config.CAPTURE_PGA)],
+            capture_output=True, text=True, timeout=5,
+        )
+        if result.returncode == 0:
+            print(f"Mic capture gain set: PGA {config.CAPTURE_PGA} ({config.CAPTURE_PGA * 0.5:.1f} dB)")
+        else:
+            print(f"WARNING: could not set mic gain: {result.stderr.strip()}")
+    except Exception as e:
+        print(f"WARNING: could not set mic gain: {e}")
+
+
+# Test hook: `touch /home/alisto/range_test.flag` makes a recognised wake word
+# only get LOGGED ("RANGE TEST: heard it") instead of raising an emergency, so
+# how far away the device can hear can be tested without an announcement and
+# an SMS for every attempt. `rm` it to return to normal -- it is checked on
+# every detection, so no restart is needed either way.
+RANGE_TEST_FLAG = "/home/alisto/range_test.flag"
 
 
 def voice_listen_loop(ser):
@@ -524,12 +757,27 @@ def voice_listen_loop(ser):
     """
     global frames
 
+    apply_capture_gain()
     print("Whisper-based voice detection ready. Listening...")
     send_command(ser, "CMD:STATUS_LED_ON")  # solid = ready/listening
     segmenter = vad.Segmenter()
     frames = audio_io.FrameStream()
+    _progress["t"] = time.monotonic()
+    _progress["listening"] = True
 
+    # Starting the mic stream makes the same DC step/click as restarting it
+    # after a pause, so the very first moments get the same settle window.
+    if config.AUDIO_PREPROCESS:
+        segmenter.restart()
+    last_frame_t = time.monotonic()
     for frame in frames:
+        now = time.monotonic()
+        _progress["t"] = now  # watchdog heartbeat, see watchdog_loop()
+        if config.AUDIO_PREPROCESS and now - last_frame_t > config.FRAME_GAP_RESTART_S:
+            # The mic was paused (transcription, an emergency, a reminder...)
+            # and has just restarted -- see Segmenter.restart().
+            segmenter.restart()
+        last_frame_t = now
         if _emergency_in_progress:
             continue  # don't try to match while already handling one
 
@@ -574,14 +822,20 @@ def voice_listen_loop(ser):
             # UNKNOWN alert if no specific keyword matched -- an emergency
             # is never silently dropped just because the category isn't clear.
             category, message = categorize.categorize(text)
-            print(f"WAKE WORD + '{category}': '{text}' ({elapsed_s:.1f}s)")
+            print(f"WAKE WORD + '{category}': '{text[:200]}' ({elapsed_s:.1f}s)")
+            if os.path.exists(RANGE_TEST_FLAG):
+                # Test mode: report the detection but don't raise an emergency
+                # (no announcement, no SMS), so the pickup range can be tested.
+                print("RANGE TEST: heard it -- would have triggered (not triggering)")
+                send_command(ser, "CMD:STATUS_LED_ON")
+                continue
             # trigger_emergency() itself pauses the mic and turns the status
             # LED off for the whole emergency flow (cancel window, audio
             # announcement, SMS send), and restores both when done -- covers
             # the physical SOS button path too, not just this voice path.
             trigger_emergency(ser, "voice", category=category, message=message)
         else:
-            print(f"no match: '{text}' ({elapsed_s:.1f}s)")
+            print(f"no match: '{text[:80]}' ({elapsed_s:.1f}s)")
             send_command(ser, "CMD:STATUS_LED_ON")  # back to solid = listening again
 
 
@@ -780,6 +1034,9 @@ def device_pairing_watcher_loop(ser):
 
     print(f"Device pairing: watching for serial {serial!r} to be claimed...")
 
+    confirmed = False  # _elder_id may come from the on-disk cache at startup;
+                       # the first real Firestore answer still has to do the
+                       # "set Online" step even if the value is unchanged
     while True:
         try:
             elder_id = firestore_backend.resolve_elder_id(serial)
@@ -787,8 +1044,10 @@ def device_pairing_watcher_loop(ser):
             print(f"Device pairing: Firestore check failed ({e})")
             elder_id = None
 
-        if elder_id and elder_id != _elder_id:
+        if elder_id and (elder_id != _elder_id or not confirmed):
+            confirmed = True
             _elder_id = elder_id
+            _save_cached_elder_id(elder_id)
             firestore_backend.set_device_status(serial, "Online")
             print(f"Device pairing: resolved elder_id={elder_id!r} -- status set to Online.")
 
@@ -809,9 +1068,36 @@ def device_pairing_watcher_loop(ser):
         time.sleep(DEVICE_PAIRING_CHECK_INTERVAL_S)
 
 
-LOCATION_SYNC_INTERVAL_S = 30  # matches gps.py's own background poll
-                                # interval -- no point syncing to Firestore
-                                # more often than the fix itself refreshes
+LOCATION_SYNC_INTERVAL_S = 30  # how often the cached fix is CHECKED -- matches
+                                # gps.py's own background poll interval
+# ...but a Firestore document is only WRITTEN when the device has actually
+# moved, or this long has passed. Every check used to write one (2,880 docs a
+# day per device, forever): the Firebase free tier allows 20,000 writes a day
+# in total, so a handful of devices would exhaust it -- which is what took the
+# website down with 429 errors -- and the collection grew without bound for a
+# device that sits in one room. 5 minutes keeps the app's "X minutes ago" on
+# the Home screen's GPS card looking fresh.
+LOCATION_WRITE_MIN_MOVE_M = 25
+LOCATION_WRITE_MAX_AGE_S = 300
+
+
+def _distance_m(a, b):
+    """Great-circle distance in metres between two (lat, lon) points."""
+    lat1, lon1, lat2, lon2 = map(math.radians, (a[0], a[1], b[0], b[1]))
+    h = (math.sin((lat2 - lat1) / 2) ** 2
+         + math.cos(lat1) * math.cos(lat2) * math.sin((lon2 - lon1) / 2) ** 2)
+    return 2 * 6371000 * math.asin(math.sqrt(h))
+
+
+def location_write_due(fix, last_fix, last_write_mono, now_mono):
+    """Whether this fix is worth a Firestore write: the first one, a move of
+    LOCATION_WRITE_MIN_MOVE_M or more since the last write, or the periodic
+    refresh."""
+    if last_fix is None or last_write_mono is None:
+        return True
+    if now_mono - last_write_mono >= LOCATION_WRITE_MAX_AGE_S:
+        return True
+    return _distance_m(fix, last_fix) >= LOCATION_WRITE_MIN_MOVE_M
 
 
 def location_sync_loop():
@@ -820,17 +1106,24 @@ def location_sync_loop():
     Firestore's device_location collection, so the app's Home screen GPS
     card and "Find Alisto" feature have something to show. Does nothing
     until pairing resolves _elder_id, and skips silently if there's no
-    fix yet -- both are normal, not errors."""
+    fix yet -- both are normal, not errors. Only writes when
+    location_write_due() says so (see the note above)."""
+    last_fix = None
+    last_write_mono = None
     while True:
         if _elder_id is not None:
             fix = gps.get_last_fix()
-            if fix:
+            if fix and location_write_due(fix, last_fix, last_write_mono, time.monotonic()):
                 lat, lon = fix
                 barangay = reverse_geocode.barangay_for(lat, lon)
                 address = f"{barangay}, Cebu City" if barangay else None
                 try:
                     serial = firestore_backend.get_own_serial()
-                    firestore_backend.write_location(serial, lat, lon, address)
+                    # write_location() returns None when the write failed --
+                    # then nothing is recorded as written, so the next check
+                    # tries again instead of waiting out the full interval.
+                    if firestore_backend.write_location(serial, lat, lon, address):
+                        last_fix, last_write_mono = fix, time.monotonic()
                 except Exception as e:
                     print(f"Location sync: failed ({e})")
         time.sleep(LOCATION_SYNC_INTERVAL_S)
@@ -858,6 +1151,33 @@ def play_wifi_connected_announcement(ser):
             send_command(ser, "CMD:STATUS_LED_ON")
 
 
+# Test hook: `echo SIM > /home/alisto/test_sms_failure.flag` (or SIGNAL / LOAD /
+# MODEM, empty = LOAD) makes the device speak the matching "SMS failed"
+# announcement once, so it can be heard without pulling the SIM or shutting
+# anything down. Polled by wifi_connected_watcher_loop() below; the file is
+# removed as soon as it's picked up.
+SMS_FAILURE_TEST_FLAG = "/home/alisto/test_sms_failure.flag"
+
+
+def play_sms_failure_test(ser, reason):
+    """Same pause-mic/status-LED-off/resume pattern as every other
+    announcement -- see play_medicine_reminder() for why
+    _audio_state_lock is required."""
+    with _audio_state_lock:
+        if frames is not None:
+            frames.pause()
+        send_command(ser, "CMD:STATUS_LED_OFF")
+        try:
+            audio_path = tts.synthesize_sms_failure(reason)
+            if audio_path:
+                stream_audio(ser, audio_path)
+        finally:
+            dropped = frames.resume() if frames is not None else 0
+            if dropped:
+                print(f"(discarded {dropped} boundary frame(s) after SMS-failure test)")
+            send_command(ser, "CMD:STATUS_LED_ON")
+
+
 def wifi_connected_watcher_loop(ser):
     """wifi_setup_server.py runs standalone (as root, triggered manually
     during device setup) and has no access to the ESP32/speaker -- that
@@ -875,6 +1195,16 @@ def wifi_connected_watcher_loop(ser):
                 pass
             print("WiFi setup: detected successful connection -- announcing.")
             play_wifi_connected_announcement(ser)
+        if os.path.exists(SMS_FAILURE_TEST_FLAG):
+            reason = "LOAD"
+            try:
+                with open(SMS_FAILURE_TEST_FLAG) as f:
+                    reason = f.read().strip().upper() or "LOAD"
+                os.remove(SMS_FAILURE_TEST_FLAG)
+            except OSError:
+                pass
+            print(f"SMS-failure announcement TEST ({reason}).")
+            play_sms_failure_test(ser, reason)
         time.sleep(WIFI_FLAG_CHECK_INTERVAL_S)
 
 
@@ -930,7 +1260,149 @@ def sync_sim_number():
         print(f"SIM number auto-detect skipped: {e}")
 
 
+BATTERY_CHECK_INTERVAL_S = 30
+# How many consecutive low readings in a row before actually announcing --
+# a single momentary dip (e.g. the speaker itself drawing a current spike
+# while announcing something) shouldn't trigger a false "low battery" on
+# its own; requiring a few in a row filters that out.
+BATTERY_CONSECUTIVE_CHECKS_REQUIRED = 2
+
+
+def _is_undervoltage():
+    """Reads the Pi's OWN built-in undervoltage flag on its 5V input rail
+    (bit 0 of vcgencmd get_throttled's "currently" bits) -- no dedicated
+    battery/fuel-gauge sensor on this unit. This only works when running
+    off something that can actually sag (a power bank going flat); it
+    can't report a percentage, only "about to brown out" vs "fine", and
+    typically only fires seconds before real shutdown, not minutes. See
+    battery_monitor_loop()'s own doc comment for the honest limits of
+    this approach. Returns False on any failure (missing vcgencmd, parse
+    error) rather than raising -- a failed battery check should never
+    affect the emergency system."""
+    try:
+        out = subprocess.run(
+            ["vcgencmd", "get_throttled"],
+            capture_output=True, text=True, timeout=3, check=True,
+        ).stdout.strip()
+        # e.g. "throttled=0x50005"
+        value = int(out.split("=")[1], 16)
+        return bool(value & 0x1)
+    except Exception:
+        return False
+
+
+def play_low_battery_announcement(ser):
+    """Same pause-mic/status-LED-off/resume pattern as every other
+    announcement -- see play_medicine_reminder() for why _audio_state_lock
+    is required."""
+    with _audio_state_lock:
+        if frames is not None:
+            frames.pause()
+        send_command(ser, "CMD:STATUS_LED_OFF")
+
+        try:
+            audio_path = tts.synthesize_low_battery()
+            if audio_path:
+                stream_audio(ser, audio_path)
+            else:
+                print("Low-battery TTS unavailable -- skipping announcement")
+        finally:
+            dropped = frames.resume() if frames is not None else 0
+            if dropped:
+                print(f"(discarded {dropped} boundary frame(s) after low-battery announcement)")
+            send_command(ser, "CMD:STATUS_LED_ON")
+
+
+def battery_monitor_loop(ser):
+    """Announces 'Low battery, please charge' once per sustained
+    under-voltage episode -- a software-only stopgap for running off a
+    power bank with no fuel-gauge sensor to report an actual percentage.
+    A power bank's USB output stays a steady 5V right up until it's
+    nearly empty, so there's no gradual signal to read; this only catches
+    it very close to the end (seconds of real warning, not minutes).
+    Re-arms once voltage recovers (e.g. after charging), so the NEXT
+    low-battery episode announces again instead of only ever firing
+    once per boot."""
+    consecutive = 0
+    already_announced = False
+    while True:
+        if _is_undervoltage():
+            consecutive += 1
+        else:
+            consecutive = 0
+            already_announced = False
+
+        if consecutive >= BATTERY_CONSECUTIVE_CHECKS_REQUIRED and not already_announced:
+            already_announced = True
+            print("Battery: sustained undervoltage detected -- announcing low battery.")
+            play_low_battery_announcement(ser)
+
+        time.sleep(BATTERY_CHECK_INTERVAL_S)
+
+
+# WATCHDOG. systemd's Restart=always only covers a CRASH; a program that hangs
+# (mic stream dead, a blocking call that never returns, the emergency flow
+# stuck) just sits there looking alive while the device is deaf -- the
+# worst failure for an emergency device, and invisible to the family. The
+# voice loop stamps _progress on every mic frame (~33/s); watchdog_loop()
+# restarts the process when that stops for too long. It ALSO pings systemd
+# (WATCHDOG=1, see systemd/alisto-emergency.service) only while healthy, so
+# if the whole interpreter freezes -- where this thread couldn't run either --
+# systemd itself kills and restarts it.
+_progress = {"t": time.monotonic(), "listening": False}
+WATCHDOG_CHECK_INTERVAL_S = 10
+# Normal operation: frames arrive constantly, and every pause (whisper <=7s,
+# reminders, announcements) is far shorter than this.
+WATCHDOG_STALL_S = 120
+# While an emergency is being handled (or before the voice loop has started)
+# the mic is paused by design: an emergency with several contacts can
+# legitimately run SMS retries for minutes, and startup includes the ~15s
+# voice-model load and the modem/GPS setup.
+WATCHDOG_BUSY_STALL_S = 600
+
+
+def watchdog_stalled(now, last_progress, listening, emergency):
+    """True when the voice loop has made no progress for longer than it
+    legitimately could."""
+    limit = WATCHDOG_STALL_S if (listening and not emergency) else WATCHDOG_BUSY_STALL_S
+    return now - last_progress > limit
+
+
+def _sd_notify(message):
+    """Minimal systemd sd_notify (no extra package): a datagram to the
+    socket named in $NOTIFY_SOCKET. Silently does nothing when not running
+    under a unit that has the watchdog enabled."""
+    addr = os.environ.get("NOTIFY_SOCKET")
+    if not addr:
+        return
+    try:
+        if addr.startswith("@"):
+            addr = "\0" + addr[1:]  # abstract socket namespace
+        with socket.socket(socket.AF_UNIX, socket.SOCK_DGRAM) as s:
+            s.connect(addr)
+            s.sendall(message.encode())
+    except OSError as e:
+        print(f"sd_notify failed: {e}")
+
+
+def watchdog_loop():
+    while True:
+        now = time.monotonic()
+        if watchdog_stalled(now, _progress["t"], _progress["listening"], _emergency_in_progress):
+            print(
+                f"WATCHDOG: voice loop made no progress for {now - _progress['t']:.0f}s "
+                f"(listening={_progress['listening']}, emergency={_emergency_in_progress}) "
+                "-- restarting the service."
+            )
+            sys.stdout.flush()
+            os._exit(1)  # systemd (Restart=always) brings it back in ~5s
+        _sd_notify("WATCHDOG=1")
+        time.sleep(WATCHDOG_CHECK_INTERVAL_S)
+
+
 def main():
+    threading.Thread(target=watchdog_loop, daemon=True).start()
+
     ser = open_esp32()
     print("ESP32 connected.")
 
@@ -949,6 +1421,11 @@ def main():
     # it's actually needed -- see gps.py for why both AT+CGPS=1 and the
     # AT+CVAUXS antenna power feed are required every startup.
     gps.enable_gps()
+    try:
+        with gps.port_lock:
+            print(f"SIM health at startup: {read_sim_health()}")
+    except Exception as e:
+        print(f"SIM health at startup: check failed ({e})")
     threading.Thread(target=gps.poll_loop, daemon=True).start()
 
     threading.Thread(target=medicine_reminder_loop, args=(ser,), daemon=True).start()
@@ -957,6 +1434,14 @@ def main():
     threading.Thread(target=location_sync_loop, daemon=True).start()
     threading.Thread(target=sync_sim_number, daemon=True).start()
     threading.Thread(target=heartbeat_loop, daemon=True).start()
+    threading.Thread(target=battery_monitor_loop, args=(ser,), daemon=True).start()
+
+    global _elder_id
+    if _elder_id is None:
+        _elder_id = _load_cached_elder_id()
+        if _elder_id:
+            print(f"Using cached elder_id {_elder_id!r} until Firestore confirms it.")
+    threading.Thread(target=outbox_uploader_loop, daemon=True).start()
 
     print("ALISTO EMERGENCY SYSTEM READY")
     voice_listen_loop(ser)  # runs forever

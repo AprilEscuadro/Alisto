@@ -121,6 +121,58 @@ def send_sms(message=None, recipient=None):
         return False
 
 
+def read_sim_health():
+    """Snapshot of what the SIM/modem can currently do, for working out WHY
+    an SMS failed (and for a startup log line). Returns a dict:
+        sim         True/False -- AT+CPIN? says READY (False = missing/locked)
+        registered  True/False -- attached to the cellular network (CREG/CEREG)
+        csq, dbm    signal quality 0-31 and the dBm it means (None = unknown)
+        error       set only if the modem itself didn't answer
+    Caller must hold gps.port_lock -- same single AT port as send_sms()."""
+    result = {"sim": None, "registered": None, "csq": None, "dbm": None}
+    try:
+        ser = serial.Serial(SIM_PORT, SIM_BAUD, timeout=1)
+        time.sleep(0.5)
+        try:
+            if "OK" not in _send_at(ser, "AT", wait_s=3):
+                result["error"] = "modem not responding"
+                return result
+            result["sim"] = "READY" in _send_at(ser, "AT+CPIN?", wait_s=3)
+
+            match = re.search(r"\+CSQ:\s*(\d+),", _send_at(ser, "AT+CSQ", wait_s=3))
+            if match and int(match.group(1)) != 99:  # 99 = not known/detectable
+                result["csq"] = int(match.group(1))
+                result["dbm"] = -113 + 2 * result["csq"]
+
+            registered = False
+            for cmd, tag in (("AT+CREG?", "CREG"), ("AT+CEREG?", "CEREG")):
+                match = re.search(rf"\+{tag}:\s*\d+,\s*(\d+)", _send_at(ser, cmd, wait_s=3))
+                # 1 = registered (home), 5 = registered (roaming)
+                if match and int(match.group(1)) in (1, 5):
+                    registered = True
+            result["registered"] = registered
+        finally:
+            ser.close()
+    except Exception as e:
+        result["error"] = str(e)
+    return result
+
+
+def sms_failure_reason(health):
+    """Best guess at why an SMS just failed, from read_sim_health():
+    MODEM (not answering), SIM (missing/locked), SIGNAL (not on the
+    network), else LOAD -- registered with a working SIM but the carrier
+    still refused/never delivered it, which for a prepaid SIM is almost
+    always no load/credit."""
+    if health.get("error"):
+        return "MODEM"
+    if health.get("sim") is False:
+        return "SIM"
+    if health.get("registered") is False:
+        return "SIGNAL"
+    return "LOAD"
+
+
 def read_own_sim_number():
     """Attempts to read this SIM's own phone number via AT+CNUM. Many
     prepaid SIMs (the common case for PH telcos -- Globe/Smart/TNT/TM)

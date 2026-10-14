@@ -41,6 +41,10 @@ WIFI_OUTPUT_RAW = "/home/alisto/alisto_audio/wifi_announce.raw"  # own file,
 # close in time to an emergency or reminder, so it gets its own path.
 PAIRED_OUTPUT_RAW = "/home/alisto/alisto_audio/paired_announce.raw"  # own
 # file too, same reasoning as above.
+SMS_FAILED_OUTPUT_RAW = "/home/alisto/alisto_audio/sms_failed_announce.raw"  # own
+# file too, same reasoning as above.
+LOW_BATTERY_OUTPUT_RAW = "/home/alisto/alisto_audio/low_battery_announce.raw"  # own
+# file too, same reasoning as above.
 
 # volume > 1.0 boosts loudness, but normalize_audio=True already maxes
 # peaks to full scale by default -- pushing volume much past ~1.6-1.7 just
@@ -52,7 +56,18 @@ PAIRED_OUTPUT_RAW = "/home/alisto/alisto_audio/paired_announce.raw"  # own
 # speaker -- real testing confirmed the speaker itself (3W, 4 ohm, a small
 # unit) is the actual ceiling on absolute loudness at this point, not the
 # amp or software settings.
-SYN_CONFIG = SynthesisConfig(volume=1.6)
+# Real measurement of a generated reminder file (peak 32767, 1.48% of ALL
+# samples at/near full scale, DC and <150Hz energy both negligible) showed
+# volume=1.6 on top of normalize_audio's full-scale peaks was hard-clipping
+# the waveform -- the harsh "knock" heard on the speaker, every time. Volume
+# stays at 1.0 here (peaks already at full scale) and loudness comes from
+# _soft_limit() below instead, which saturates smoothly rather than
+# flat-topping, so it's as loud (slightly louder in simulation) without the
+# hard clipping.
+SYN_CONFIG = SynthesisConfig(volume=1.0)
+
+SOFT_LIMIT_DRIVE = 2.0   # higher = louder/more compressed; 1.5 is gentler
+SOFT_LIMIT_CEILING = 0.95  # leaves a little headroom under full scale
 
 ANNOUNCEMENTS = {
     "FIRE": "Fire emergency detected. Sending SMS in 5 seconds.",
@@ -84,11 +99,29 @@ def preload():
 
 FADE_MS = 15  # short enough to be inaudible as an effect of its own, long
 # enough to remove the instant jump between full-volume speech and true
-# digital silence that a repeated reminder needs between repeats -- that
-# jump was audible as a "knocking"/popping sound on the MAX98357A amp each
-# time a repeat started or ended. The single-shot emergency announcement
-# (repeats=1, no gap) never hit this, which is why only reminders "knocked."
+# digital silence -- audible as a "knocking"/popping sound on the
+# MAX98357A amp. Originally only applied between a repeated reminder's
+# repeats (repeats > 1), on the theory that a one-shot announcement
+# never bordered a silence GAP the way a repeat does. Real testing found
+# that wrong: EVERY utterance borders true digital silence on both ends --
+# either the gap between repeats, or simply the silence before/after a
+# one-shot clip -- so a one-shot announcement (WiFi-connected,
+# device-paired) knocked exactly the same way, just less noticed than a
+# reminder since it isn't repeated. Fixed by applying the fade to every
+# utterance's both edges unconditionally (see _synthesize_to_file())
+# instead of only when repeats > 1.
 FADE_SAMPLES = int(16000 * FADE_MS / 1000)
+
+
+def _soft_limit(pcm_bytes):
+    """tanh soft limiter on 16-bit mono PCM: quiet parts get boosted a bit,
+    peaks are rounded off smoothly and never exceed SOFT_LIMIT_CEILING of
+    full scale -- unlike a plain volume multiplier, which hard-clips
+    anything past full scale (audible as a knock/crackle on the small
+    speaker)."""
+    samples = np.frombuffer(pcm_bytes, dtype=np.int16).astype(np.float32) / 32768.0
+    limited = np.tanh(SOFT_LIMIT_DRIVE * samples) / np.tanh(SOFT_LIMIT_DRIVE) * SOFT_LIMIT_CEILING
+    return (limited * 32767.0).astype(np.int16).tobytes()
 
 
 def _apply_fade(pcm_bytes, fade_in, fade_out):
@@ -119,8 +152,11 @@ def _synthesize_to_file(text, output_path, repeats=1, gap_s=0.7):
     each -- for reminders that should behave like an alarm (repeat until
     noticed) rather than a one-shot announcement. Silence for 16-bit PCM is
     just zero bytes, so no separate silence-generation step is needed --
-    but each repeat's own edges get a short fade (see _apply_fade()) so
-    that silence starts and ends smoothly instead of clicking."""
+    but every utterance's own edges get a short fade (see _apply_fade()),
+    repeats=1 included, so silence starts and ends smoothly instead of
+    clicking/knocking against the MAX98357A amp (see FADE_MS's doc
+    comment for why this used to be gated on repeats > 1 and shouldn't
+    be)."""
     try:
         voice = _get_voice()
         os.makedirs(os.path.dirname(output_path), exist_ok=True)
@@ -131,9 +167,8 @@ def _synthesize_to_file(text, output_path, repeats=1, gap_s=0.7):
                     chunk.audio_int16_bytes
                     for chunk in voice.synthesize(text, syn_config=SYN_CONFIG)
                 )
-                if repeats > 1:
-                    utterance = _apply_fade(
-                        utterance, fade_in=(i > 0), fade_out=(i < repeats - 1))
+                utterance = _soft_limit(utterance)
+                utterance = _apply_fade(utterance, fade_in=True, fade_out=True)
                 out.write(utterance)
                 if i < repeats - 1:
                     out.write(gap_bytes)
@@ -170,6 +205,26 @@ def synthesize_reminder(medicine, dosage=None):
     return _synthesize_to_file(text, REMINDER_OUTPUT_RAW, repeats=3)
 
 
+# "sim" is deliberately lowercase: Piper spells an all-caps word out letter by
+# letter ("S, I, M"), which is how the first real test heard it. "S M S" is
+# spaced on purpose for the same reason.
+SMS_FAILURE_TEXT = {
+    "SIM": "Alert S M S failed. Please check the sim card.",
+    "SIGNAL": "Alert S M S failed. No mobile signal.",
+    "LOAD": "Alert S M S failed. Please check the sim load.",
+    "MODEM": "Alert S M S failed. The modem is not responding.",
+}
+
+
+def synthesize_sms_failure(reason):
+    """Said when the emergency SMS failed for every contact, so whoever is
+    at the device knows nothing was sent and why -- without it a prepaid SIM
+    with no load fails completely silently. `reason` is one of
+    alisto_sms.sms_failure_reason()'s values."""
+    text = SMS_FAILURE_TEXT.get(reason, SMS_FAILURE_TEXT["LOAD"])
+    return _synthesize_to_file(text, SMS_FAILED_OUTPUT_RAW)
+
+
 def synthesize_wifi_connected():
     """Said once, right after the app's WiFi setup flow successfully
     connects the Pi to the customer's home network -- the setup process has
@@ -186,3 +241,12 @@ def synthesize_device_paired(name):
     device_pairing_watcher_loop)."""
     text = f"Congratulations {name}, your device is connected successfully."
     return _synthesize_to_file(text, PAIRED_OUTPUT_RAW)
+
+
+def synthesize_low_battery():
+    """Said when running off a power bank that's about to brown out -- see
+    alisto_main.py's battery_monitor_loop() for why this is a late,
+    software-only warning (no fuel-gauge sensor, so no real percentage to
+    report, just "about to die")."""
+    text = "Low battery. Please charge Alisto now."
+    return _synthesize_to_file(text, LOW_BATTERY_OUTPUT_RAW)

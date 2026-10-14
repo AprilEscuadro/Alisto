@@ -15,6 +15,13 @@ WorkingDirectory=/home/alisto
 ExecStart=/usr/bin/python3 -u /home/alisto/alisto_main.py
 Restart=always
 RestartSec=5
+# Watchdog: alisto_main.py pings systemd (WATCHDOG=1) every 10s, but only while
+# its voice loop is actually making progress. If the pings stop -- the program
+# hung, or the whole interpreter froze -- systemd kills and restarts it.
+# Restart=always alone only covers a crash, not a hang. NotifyAccess=main is
+# what lets a Type=simple service send those pings.
+WatchdogSec=120
+NotifyAccess=main
 
 [Install]
 WantedBy=multi-user.target
