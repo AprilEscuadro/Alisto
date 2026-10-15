@@ -6,6 +6,9 @@ from admin_routes import admin_bp
 # module import too -- the auto-backup loop below calls its _run_backup()/_system_settings()
 import admin_routes
 from bhw_routes import bhw_bp
+from inbox_routes import inbox_bp
+import inbox_service as inbox
+import valid_id_store
 from firebase_admin import firestore, auth as firebase_auth
 from datetime import datetime, timedelta, timezone
 import alerts_common as ac
@@ -26,6 +29,7 @@ app = Flask(__name__)
 app.secret_key = os.environ['SECRET_KEY']
 app.register_blueprint(admin_bp)  # admin panel at /admin
 app.register_blueprint(bhw_bp)    # BHW portal at /bhw
+app.register_blueprint(inbox_bp)  # inbox JSON API at /inbox/api
 
 db = firestore.client()
 
@@ -38,8 +42,7 @@ YEARS_OF_SERVICE_OPTIONS = [
     'Less than 1 year', '1-3 years', '4-6 years', '7-10 years', 'More than 10 years'
 ]
 VALID_ID_EXTENSIONS = {'jpg', 'jpeg', 'png', 'pdf'}
-VALID_ID_MAX_BYTES = 2 * 1024 * 1024
-VALID_ID_UPLOAD_FOLDER = os.path.join(app.root_path, 'uploads', 'bhw_ids')
+VALID_ID_MAX_BYTES = valid_id_store.MAX_BYTES
 
 
 def _verify_firebase_password(email, password):
@@ -359,30 +362,24 @@ def _register_bhw(full_name, email, password, contact_number, barangay_assigned)
         return jsonify(success=False, message='This BHW ID number is already registered.'), 400
 
     valid_id_filename = None
-    stored_path = None
+    valid_id_bytes = None
+    ext = ''
     if valid_id and valid_id.filename:
         ext = valid_id.filename.rsplit(
             '.', 1)[-1].lower() if '.' in valid_id.filename else ''
         if ext not in VALID_ID_EXTENSIONS:
             return jsonify(success=False, message='Valid ID must be a JPG, PNG, or PDF file.'), 400
 
-        valid_id.stream.seek(0, os.SEEK_END)
-        size = valid_id.stream.tell()
-        valid_id.stream.seek(0)
-        if size > VALID_ID_MAX_BYTES:
-            return jsonify(success=False, message='Valid ID must be 2MB or smaller.'), 400
-
+        valid_id_bytes = valid_id.read(VALID_ID_MAX_BYTES + 1)
+        if len(valid_id_bytes) > VALID_ID_MAX_BYTES:
+            return jsonify(success=False, message='Valid ID must be 700 KB or smaller.'), 400
+        if not valid_id_bytes:
+            valid_id_bytes = None
         valid_id_filename = secure_filename(
             valid_id.filename) or f'valid_id.{ext}'
-        os.makedirs(VALID_ID_UPLOAD_FOLDER, exist_ok=True)
-        stored_name = f'{uuid.uuid4().hex}.{ext}'
-        stored_path = os.path.join(VALID_ID_UPLOAD_FOLDER, stored_name)
 
+    user_ref = db.collection('user_account').document()
     try:
-        if stored_path:
-            valid_id.save(stored_path)
-
-        user_ref = db.collection('user_account').document()
         user_ref.set({
             'full_name': full_name, 'email': email,
             'password_hash': generate_password_hash(password),
@@ -391,6 +388,13 @@ def _register_bhw(full_name, email, password, contact_number, barangay_assigned)
             'created_at': firestore.SERVER_TIMESTAMP, 'deleted_at': None, 'is_archived': 0
         })
 
+        # The ID goes to Firestore (bhw_valid_id/<user id>), not a local folder,
+        # so it opens on every computer and on Vercel.
+        stored_as = None
+        if valid_id_bytes:
+            stored_as = valid_id_store.save(
+                user_ref.id, valid_id_bytes, valid_id_filename, ext)
+
         db.collection('bhw_profile').add({
             'user_id': user_ref.id,
             'barangay_assigned': barangay_assigned,
@@ -398,13 +402,17 @@ def _register_bhw(full_name, email, password, contact_number, barangay_assigned)
             'health_center': health_center,
             'years_of_service': years_of_service,
             'bhw_id_number': bhw_id_number,
-            'valid_id_filename': valid_id_filename,
-            'valid_id_stored_as': os.path.basename(stored_path) if stored_path else None,
+            'valid_id_filename': valid_id_filename if stored_as else None,
+            'valid_id_stored_as': stored_as,
             'created_at': firestore.SERVER_TIMESTAMP,
         })
     except Exception as e:
-        if stored_path and os.path.exists(stored_path):
-            os.remove(stored_path)
+        # Don't leave half an account behind.
+        for cleanup in (lambda: valid_id_store.delete(user_ref.id), user_ref.delete):
+            try:
+                cleanup()
+            except Exception:
+                pass
         return jsonify(success=False, message=f'Error: {str(e)}'), 500
 
     return jsonify(success=True, message='Registration submitted. Your account is pending approval.')
@@ -2522,6 +2530,15 @@ def pay_care_plan():
         'created_at': firestore.SERVER_TIMESTAMP,
     })
 
+    payment_no = cps.new_payment_no(payment_ref.id)
+    inbox.payment_update(payment_ref.id, {
+        'payment_no': payment_no, 'elder_id': elder_id,
+        'elder_name': (elder_doc.to_dict() or {}).get('full_name', ''),
+        'paid_by_user_id': session['user_id'], 'paid_by_name': session.get('full_name'),
+    }, f"{session.get('full_name') or 'Family'} sent ₱{unit_price * months:,} for "
+        f"{months} month{'s' if months > 1 else ''} (GCash ref {reference_no}). "
+        "Waiting for admin review.", notify='admins')
+
     return jsonify(success=True,
                    message=f'Payment submitted ({payment_ref.id[:6].upper()}). '
                    'Waiting for admin approval.')
@@ -2856,31 +2873,23 @@ def _support_contact():
     return info
 
 
-def _ticket_row(doc_id, t):
-    status = t.get('status') or 'open'
-    return {
-        'id': doc_id,
-        'ticket_no': t.get('ticket_no') or doc_id[:8].upper(),
-        'type': t.get('type'),
-        'type_label': 'Problem Report' if t.get('type') == 'problem_report' else 'Support Message',
-        'subject': t.get('subject') or '—',
-        'message': t.get('message') or '',
-        'status': status,
-        'status_label': TICKET_STATUSES.get(status, status.title()),
-        'admin_reply': t.get('admin_reply') or '',
-        'created': _friendly_time(t.get('created_at')),
-        'updated': _friendly_time(t.get('updated_at')),
-        'sort_key': (_to_ph(t.get('created_at')).timestamp()
-                     if _to_ph(t.get('created_at')) else 0),
-    }
-
-
 def _my_tickets(limit=10):
+    """Support and problem-report threads this account started (from the inbox)."""
     rows = []
     try:
-        for doc in (db.collection('support_ticket')
-                    .where('user_id', '==', session['user_id']).stream()):
-            rows.append(_ticket_row(doc.id, doc.to_dict() or {}))
+        for t in inbox.list_threads(session['user_id']):
+            if t['type'] in ('support', 'report') and t['created_by'] == session['user_id']:
+                rows.append({
+                    'id': t['id'],
+                    'ticket_no': t['thread_no'],
+                    'subject': t['subject'],
+                    'status': t['status'],
+                    'status_label': 'Resolved' if t['status'] == 'resolved' else 'Open',
+                    'unread': t['unread'],
+                    'created': _friendly_time(datetime.fromtimestamp(t['created_at'] / 1000, PH_TZ))
+                    if t['created_at'] else '',
+                    'sort_key': t['created_at'] / 1000,
+                })
     except Exception as e:
         print(f'[help] could not read tickets: {e}')
     rows.sort(key=lambda r: r['sort_key'], reverse=True)
@@ -2888,37 +2897,25 @@ def _my_tickets(limit=10):
 
 
 def _create_ticket(fields):
-    """Saves one ticket. Returns (ticket_no, error)."""
-    user_doc = db.collection('user_account').document(session['user_id']).get()
-    user = (user_doc.to_dict() or {}) if user_doc.exists else {}
-
-    # Simple spam guard.
-    _, mine = _my_tickets()
+    """Starts a support / problem-report conversation in the inbox.
+    Returns (ticket_no, error)."""
+    _, mine = _my_tickets(limit=1000)
     recent_cutoff = datetime.now(PH_TZ).timestamp() - 600
     if sum(1 for r in mine if r['sort_key'] >= recent_cutoff) >= TICKET_MAX_PER_10_MIN:
         return None, 'You sent several requests just now. Please wait a few minutes.'
 
-    ref = db.collection('support_ticket').document()
-    ticket_no = f'TCK-{ref.id[:6].upper()}'
-    ref.set({
-        **fields,
-        'ticket_no': ticket_no,
-        'status': 'open',
-        'user_id': session['user_id'],
-        'user_name': user.get('full_name') or session.get('full_name') or '',
-        'user_email': user.get('email') or '',
-        'user_role': user.get('role') or session.get('role') or '',
-        'user_contact_number': user.get('contact_number') or '',
-        'admin_reply': '',
-        'admin_notes': '',
-        'handled_by': None,
-        'handled_by_name': '',
-        'source': 'web',
-        'created_at': firestore.SERVER_TIMESTAMP,
-        'updated_at': firestore.SERVER_TIMESTAMP,
-        'resolved_at': None,
-    })
-    return ticket_no, None
+    me = {'id': session['user_id'], 'key': session['user_id'],
+          'name': session.get('full_name') or 'User', 'role': session.get('role') or 'family'}
+    support = {'key': inbox.ADMIN_KEY,
+               'name': inbox.ADMIN_NAME, 'role': 'admin'}
+    thread_type = 'report' if fields.get(
+        'type') == 'problem_report' else 'support'
+    meta = {k: v for k, v in fields.items()
+            if k not in ('type', 'subject', 'message') and v not in (None, '')}
+    thread_id = inbox.create_thread(thread_type, fields['subject'][:inbox.SUBJECT_MAX],
+                                    fields['message'], me, support, meta=meta)
+    doc = db.collection(inbox.THREADS).document(thread_id).get()
+    return (doc.to_dict() or {}).get('thread_no') or thread_id, None
 
 
 @app.route('/help-support')
@@ -2945,6 +2942,28 @@ def help_support():
         my_tickets=my_tickets,
         user_email=user.get('email') or '',
         user_full_name=user.get('full_name') or session['full_name'],
+        notification_count=len(open_alerts),
+        current_year=datetime.now().year,
+    )
+
+
+@app.route('/inbox')
+def inbox_page():
+    if 'user_id' not in session:
+        flash('Please log in first.', 'error')
+        return redirect(url_for('login'))
+    if session.get('role') == 'bhw':
+        return redirect(url_for('bhw.dashboard'))
+    if session.get('role') == 'admin':
+        return redirect(url_for('admin.inbox', **request.args))
+
+    elders = _linked_elders_for_dashboard()
+    open_alerts = [a for a in _alerts_for_elders(
+        elders) if _is_open_alert(a['data'])]
+    return render_template(
+        'family/inbox.html',
+        full_name=session['full_name'], role=session['role'],
+        care_plan=_get_care_plan(),
         notification_count=len(open_alerts),
         current_year=datetime.now().year,
     )
@@ -2992,7 +3011,7 @@ def submit_problem_report():
         return jsonify(success=False, message=error), 429
 
     return jsonify(success=True, ticket_no=ticket_no,
-                   message=f'Problem reported. Your ticket number is {ticket_no}.')
+                   message=f'Problem reported ({ticket_no}). Replies will show in your Inbox.')
 
 
 @app.route('/help-support/contact', methods=['POST'])
@@ -3030,7 +3049,7 @@ def submit_contact_support():
 
     info = _support_contact()
     return jsonify(success=True, ticket_no=ticket_no,
-                   message=f"Message sent ({ticket_no}). We usually respond within {info['response_time']}.")
+                   message=f"Message sent ({ticket_no}). We usually reply within {info['response_time']}. Check your Inbox.")
 
 
 @app.route('/loved-ones/<elder_id>')
@@ -3393,7 +3412,7 @@ def dashboard():
     if session.get('role') == 'admin':
         return redirect(url_for('admin.dashboard'))
     if session.get('role') == 'bhw':
-        return redirect(url_for('bhw.dashboard'))
+        return redirect(url_for('bhw.inbox', **request.args))
 
     elders = _linked_elders_for_dashboard()
     all_alerts = _alerts_for_elders(elders)

@@ -1,0 +1,39 @@
+{% extends 'bhw/base.html' %}
+{% block title %}Inbox{% endblock %}
+
+{% block head %}
+<link rel="stylesheet" href="{{ url_for('static', filename='css/inbox.css') }}" />
+<style>
+  /* The top bar is 68px; give the inbox the rest of the screen. */
+  .bhw-inbox .inbox { height: calc(100vh - 230px); }
+  @media (max-width: 900px) {
+    .bhw-inbox .inbox { height: calc(100dvh - 260px); }
+  }
+  .bhw-inbox .admin-page-header .ibx-btns { display: flex; gap: 10px; flex-wrap: wrap; }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="bhw-inbox">
+  <div class="admin-page-header">
+    <div>
+      <h1>Inbox</h1>
+      <p>Messages with families in {{ bhw_barangay or 'your barangay' }} and with ALISTO Support.</p>
+    </div>
+    <div class="ibx-btns">
+      <button type="button" class="ibx-btn ibx-btn-ghost" id="newAnnouncementBtn">
+        <i data-lucide="megaphone"></i> New announcement
+      </button>
+      <button type="button" class="ibx-btn ibx-btn-primary" id="newMessageBtn">
+        <i data-lucide="square-pen"></i> New message
+      </button>
+    </div>
+  </div>
+
+  {% with show_status_filter=False %}{% include 'inbox/_panes.html' %}{% endwith %}
+</div>
+{% endblock %}
+
+{% block scripts %}
+{% with can_announce=True, inbox_role='bhw' %}{% include 'inbox/_modals.html' %}{% endwith %}
+{% endblock %}

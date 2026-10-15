@@ -735,6 +735,11 @@
             <i data-lucide="history"></i>
             <span>History</span>
           </a>
+          <a href="{{ url_for('inbox_page') }}" class="nav-item">
+            <i data-lucide="inbox"></i>
+            <span>Inbox</span>
+            <span class="nav-badge" data-inbox-badge{% if not inbox_unread %} hidden{% endif %}>{{ inbox_unread or 0 }}</span>
+          </a>
           <a href="{{ url_for('settings') }}" class="nav-item">
             <i data-lucide="settings"></i>
             <span>Settings</span>
@@ -990,30 +995,24 @@
             </div>
           </section>
 
-          <!-- ---- MY REQUESTS (support_ticket in Firestore) ---- -->
-          <h3 class="section-heading">My Requests</h3>
+          <!-- ---- MY REQUESTS (support threads in the Inbox) ---- -->
+          <div class="section-heading-row">
+            <h3 class="section-heading">My Requests</h3>
+            <a class="panel-link" href="{{ url_for('inbox_page') }}">
+              Open Inbox <i data-lucide="chevron-right"></i>
+            </a>
+          </div>
           <section class="panel my-requests">
             {% for t in my_tickets %}
-            <details class="request-item">
-              <summary>
-                <span class="request-no">{{ t.ticket_no }}</span>
-                <span class="request-subject">{{ t.subject }}</span>
-                <span class="request-status {{ t.status }}"
-                  >{{ t.status_label }}</span
-                >
-                <span class="request-date">{{ t.created }}</span>
-              </summary>
-              <div class="request-body">
-                <p class="request-label">{{ t.type_label }}</p>
-                <p class="request-text">{{ t.message }}</p>
-                {% if t.admin_reply %}
-                <p class="request-label">Reply from ALISTO Support</p>
-                <p class="request-text request-reply">{{ t.admin_reply }}</p>
-                {% else %}
-                <p class="request-waiting">No reply yet. We'll respond here.</p>
-                {% endif %}
-              </div>
-            </details>
+            <a class="request-item request-row" href="{{ url_for('inbox_page', t=t.id) }}">
+              <span class="request-no">{{ t.ticket_no }}</span>
+              <span class="request-subject">{{ t.subject }}</span>
+              {% if t.unread %}
+              <span class="request-new">{{ t.unread }} new</span>
+              {% endif %}
+              <span class="request-status {{ t.status }}">{{ t.status_label }}</span>
+              <span class="request-date">{{ t.created }}</span>
+            </a>
             {% else %}
             <p class="request-empty">
               You haven't sent any reports or messages yet.

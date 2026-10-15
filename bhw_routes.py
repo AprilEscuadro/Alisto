@@ -50,7 +50,8 @@ def bhw_required(view):
         user = doc.to_dict() if doc.exists else None
         if not user or user.get('deleted_at') or user.get('approval_status') != 'approved':
             session.clear()
-            flash('Your BHW account is not active. Please contact the system administrator.', 'error')
+            flash(
+                'Your BHW account is not active. Please contact the system administrator.', 'error')
             return redirect(url_for('login'))
 
         g.bhw_user = user
@@ -63,7 +64,8 @@ def bhw_required(view):
 # ---------- SMALL HELPERS ----------
 
 def _bhw_profile(user_id):
-    matches = list(db.collection('bhw_profile').where('user_id', '==', user_id).limit(1).stream())
+    matches = list(db.collection('bhw_profile').where(
+        'user_id', '==', user_id).limit(1).stream())
     return (matches[0].to_dict() or {}) if matches else {}
 
 
@@ -153,7 +155,8 @@ def _device_state(device):
     elif 'is_online' in device:
         online = bool(device['is_online'])
     elif hasattr(last_seen, 'timestamp'):
-        seen = last_seen if last_seen.tzinfo else last_seen.replace(tzinfo=timezone.utc)
+        seen = last_seen if last_seen.tzinfo else last_seen.replace(
+            tzinfo=timezone.utc)
         online = datetime.now(timezone.utc) - seen < ONLINE_WINDOW
     else:
         online = False
@@ -184,7 +187,8 @@ def _devices_by_elder():
     for doc in db.collection('device').stream():
         device = doc.to_dict() or {}
         if device.get('elder_id'):
-            by_elder.setdefault(device['elder_id'], []).append((doc.id, device))
+            by_elder.setdefault(device['elder_id'],
+                                []).append((doc.id, device))
     return by_elder
 
 
@@ -204,7 +208,8 @@ def _alerts_for(elder_ids, since=None):
         out.append(alert)
 
     oldest = datetime.min.replace(tzinfo=ac.PH_TIME)
-    out.sort(key=lambda a: ac.local(a.get('date_triggered')) or oldest, reverse=True)
+    out.sort(key=lambda a: ac.local(
+        a.get('date_triggered')) or oldest, reverse=True)
     return out
 
 
@@ -213,7 +218,8 @@ def _alert_rows(alerts, elders):
     location/phrase/sms-count lookups once for the whole list instead of
     3 Firestore round trips PER alert -- that N+1 pattern was clearly
     noticeable once there was more than a handful of alerts."""
-    locations = ac.alert_locations_bulk(db, (a.get('location_id') for a in alerts))
+    locations = ac.alert_locations_bulk(
+        db, (a.get('location_id') for a in alerts))
     phrases = ac.alert_phrases_bulk(db, (a.get('phrase_id') for a in alerts))
     sms_counts = ac.sms_sent_counts_bulk(db, (a.get('id') for a in alerts))
 
@@ -225,7 +231,8 @@ def _alert_rows(alerts, elders):
         # The device only ever writes real emergencies -- the paper's
         # EMERGENCY_ALERT table has no per-category type column at all.
         type_key = 'emergency'
-        lat, lng, _address = locations.get(alert.get('location_id'), (None, None, None))
+        lat, lng, _address = locations.get(
+            alert.get('location_id'), (None, None, None))
         trigger = (alert.get('trigger_type') or 'VOICE').lower()
 
         rows.append({
@@ -316,16 +323,19 @@ def _elderly_rows(elders, open_alerts_by_elder=None):
             'open_alert': open_alert,
             'details': [
                 ['Full Name', name],
-                ['Age', _age(elder.get('date_of_birth')) if elder.get('date_of_birth') else '—'],
+                ['Age', _age(elder.get('date_of_birth'))
+                 if elder.get('date_of_birth') else '—'],
                 ['Date of Birth', elder.get('date_of_birth') or '—'],
                 ['Address', _address_text(elder.get('address'))],
-                ['Device ID', ', '.join(d_id for d_id, _ in devices) or 'No device'],
+                ['Device ID', ', '.join(
+                    d_id for d_id, _ in devices) or 'No device'],
                 ['Last Update', _fmt_datetime(last_seen)],
             ],
         })
 
     # Residents needing attention first, then alphabetical.
-    rows.sort(key=lambda r: (r['current_status'] != 'emergency', r['name'].casefold()))
+    rows.sort(key=lambda r: (r['current_status'] !=
+              'emergency', r['name'].casefold()))
     return rows
 
 
@@ -434,7 +444,8 @@ def update_alert(alert_id, action):
             false_alarm=(action == 'false-alarm'),
             notes=request.form.get('resolution_note'),
         )
-        flash('Alert marked as a false alarm.' if action == 'false-alarm' else 'Alert resolved.', 'success')
+        flash('Alert marked as a false alarm.' if action ==
+              'false-alarm' else 'Alert resolved.', 'success')
 
     return redirect(url_for('bhw.alerts', alert=alert_id))
 
@@ -520,7 +531,8 @@ def _report_data(range_key):
     rows = _alert_rows(_alerts_for(set(elders), since=start), elders)
     residents = _elderly_rows(elders, _open_alerts_by_elder(elders))
 
-    answered = [r['response_minutes'] for r in rows if r['response_minutes'] is not None]
+    answered = [r['response_minutes']
+                for r in rows if r['response_minutes'] is not None]
     avg_minutes = round(sum(answered) / len(answered)) if answered else None
 
     # Four buckets across the selected range, oldest first.
@@ -591,7 +603,8 @@ def download_report(report):
         return redirect(url_for('bhw.reports'))
 
     range_key = request.args.get('range', 'this_month')
-    data = _report_data(range_key if range_key in REPORT_RANGES else 'this_month')
+    data = _report_data(
+        range_key if range_key in REPORT_RANGES else 'this_month')
 
     buffer = io.StringIO()
     writer = csv.writer(buffer)
@@ -603,7 +616,8 @@ def download_report(report):
             writer.writerow([r['name'], r['age'] or '', r['type_label'], r['status_label'],
                              r['full_time'], r['address'], r['device'], r['notes']])
     elif report == 'response':
-        writer.writerow(['Resident', 'Alert Type', 'Date & Time', 'Status', 'Response Time (minutes)'])
+        writer.writerow(['Resident', 'Alert Type', 'Date & Time',
+                        'Status', 'Response Time (minutes)'])
         for r in data['rows']:
             writer.writerow([r['name'], r['type_label'], r['full_time'], r['status_label'],
                              '' if r['response_minutes'] is None else round(r['response_minutes'])])
@@ -625,7 +639,16 @@ def download_report(report):
 
 # ---------- SETTINGS ----------
 
-SETTING_KEYS = ('emergency_alerts', 'resident_status_alerts', 'daily_summary', 'map_updates')
+SETTING_KEYS = ('emergency_alerts', 'resident_status_alerts',
+                'daily_summary', 'map_updates')
+
+
+@bhw_bp.route('/inbox')
+@bhw_required
+def inbox():
+    """Messages with families in this barangay and with ALISTO Support,
+    plus announcements. The page talks to the JSON API in inbox_routes.py."""
+    return render_template('bhw/inbox.html', active_page='inbox')
 
 
 @bhw_bp.route('/settings')
@@ -653,9 +676,11 @@ def save_settings():
 
 PASSWORD_RULES = [
     (lambda p: len(p) >= 8, 'at least 8 characters'),
-    (lambda p: re.search(r'[a-z]', p) and re.search(r'[A-Z]', p), 'uppercase and lowercase letters'),
+    (lambda p: re.search(
+        r'[a-z]', p) and re.search(r'[A-Z]', p), 'uppercase and lowercase letters'),
     (lambda p: re.search(r'\d', p), 'at least one number'),
-    (lambda p: re.search(r'[^A-Za-z0-9]', p), 'at least one special character'),
+    (lambda p: re.search(r'[^A-Za-z0-9]', p),
+     'at least one special character'),
 ]
 
 

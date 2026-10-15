@@ -212,6 +212,7 @@
   .cp-reject strong { display:block; color:#b91c1c; font-size:13.5px; margin-bottom:2px; }
   .cp-reject p { margin:0; color:#374151; white-space:pre-wrap; }
   .cp-reject small { display:block; margin-top:6px; color:#6b7280; font-size:12px; }
+  .cp-reject-link { display:inline-block; margin-top:8px; color:#b91c1c; font-weight:700; font-size:12.5px; text-decoration:underline; }
 
   /* ---------- phones: stack ---------- */
   @media (max-width: 760px) {
@@ -262,6 +263,9 @@
         <strong id="cpRejectTitle"></strong>
         <p id="cpRejectMsg"></p>
         <small id="cpRejectMeta"></small>
+        <a class="cp-reject-link" id="cpRejectLink" href="{{ url_for('inbox_page') }}">
+          Think this is a mistake? Reply in Inbox
+        </a>
       </div>
 
       <form id="carePlanForm" novalidate>
@@ -365,6 +369,7 @@
       cp('cpRejectMsg').textContent = r.message;
       cp('cpRejectMeta').textContent =
         (r.payment_no ? r.payment_no + ' · ' : '') + (r.months ? cpPlanText(r.months) + ' · ' : '') + r.date;
+      cp('cpRejectLink').href = "{{ url_for('inbox_page') }}" + (r.thread_id ? '?t=' + encodeURIComponent(r.thread_id) : '');
       box.classList.add('show');
     } catch (err) { /* banner is optional */ }
   }

@@ -24,6 +24,7 @@
       ('emergency_logs', 'admin.emergency_logs', 'bell', 'Emergency Logs'),
       ('reports', 'admin.reports', 'chart-column', 'Reports'),
       ('subscriptions', 'admin.subscriptions', 'receipt-text', 'Subscriptions'),
+      ('inbox', 'admin.inbox', 'inbox', 'Inbox'),
       ('settings', 'admin.settings', 'settings', 'Settings'),
     ] %}
 
@@ -46,6 +47,9 @@
         >
           <i data-lucide="{{ icon }}"></i>
           <span>{{ label }}</span>
+          {% if key == 'inbox' %}
+          <span class="admin-nav-badge" data-inbox-badge{% if not inbox_unread %} hidden{% endif %}>{{ inbox_unread or 0 }}</span>
+          {% endif %}
         </a>
         {% endfor %}
       </nav>
@@ -178,6 +182,26 @@
     </div>
 
     <script src="{{ url_for('static', filename='js/admin.js') }}"></script>
-    {% block scripts %}{% endblock %}
+    {% block scripts %}{% endblock %} 
+        <script>
+      // Inbox badge in the sidebar: checked every 30 seconds while the tab is open.
+      (function () {
+        const badges = document.querySelectorAll("[data-inbox-badge]");
+        if (!badges.length || document.getElementById("inbox")) return; // the Inbox page updates it itself
+        async function refresh() {
+          if (document.hidden) return;
+          try {
+            const res = await fetch("/inbox/api/unread");
+            const data = await res.json();
+            if (!data.success) return;
+            badges.forEach((b) => {
+              b.textContent = data.unread > 99 ? "99+" : String(data.unread);
+              b.hidden = !data.unread;
+            });
+          } catch (e) { /* keep the last count */ }
+        }
+        setInterval(refresh, 30000);
+      })();
+    </script>
   </body>
 </html>

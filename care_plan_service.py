@@ -32,7 +32,7 @@ from datetime import datetime, timedelta, timezone
 
 from firebase_admin import firestore
 
-from database import db
+import inbox_service
 
 PH_TZ = timezone(timedelta(hours=8))
 EXPIRING_SOON_DAYS = 5
@@ -272,6 +272,15 @@ def apply_approved_payment(payment_ref, payment, reviewer_id, reviewer_name, adm
         'period_start': start,
         'period_end': end,
     })
+
+    months_text = f"{months} month{'s' if months > 1 else ''}"
+    note = f"\nNote from admin: {admin_note}" if admin_note else ''
+    inbox_service.payment_update(
+        payment_ref.id, payment,
+        f"Payment {payment.get('payment_no') or ''} approved. The care plan for "
+        f"{payment.get('elder_name') or 'your loved one'} is extended by {months_text}, "
+        f"until {fmt_date(end)}.{note}", status='resolved')
+
     return start, end
 
 
@@ -414,6 +423,12 @@ def reject_payment(payment_ref, payment, reviewer_id, reviewer_name, reason_key,
         'reviewed_by_name': reviewer_name,
         'reviewed_at': firestore.SERVER_TIMESTAMP,
     })
+
+    inbox_service.payment_update(
+        payment_ref.id, payment,
+        f"Payment {payment.get('payment_no') or ''} was rejected: {reason['label']}.\n"
+        f"{message}\n\nReply here if you think this is a mistake.", status='open')
+
     return True, ''
 
 
@@ -426,7 +441,7 @@ def latest_rejection(elder_ids):
                 data = doc.to_dict() or {}
                 created = to_ph(data.get('created_at'))
                 if created and (latest is None or created > latest[0]):
-                    latest = (created, data)
+                    latest = (created, data, doc.id)
         except Exception as e:
             print(f'[care plan] could not read payments for {elder_id}: {e}')
     if not latest or latest[1].get('status') != 'rejected':
@@ -438,4 +453,5 @@ def latest_rejection(elder_ids):
         'reason': data.get('reject_reason') or 'Payment rejected',
         'message': data.get('admin_note') or '',
         'date': fmt_date(data.get('reviewed_at') or data.get('created_at')),
+        'thread_id': f'pay_{latest[2]}',
     }

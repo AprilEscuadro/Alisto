@@ -21,6 +21,7 @@
       ('elderly_users', 'bhw.elderly_users', 'users-round', 'Elderly Users'),
       ('map_view', 'bhw.map_view', 'map-pin', 'Map View'),
       ('reports', 'bhw.reports', 'chart-column', 'Reports'),
+      ('inbox', 'bhw.inbox', 'inbox', 'Inbox'),
       ('settings', 'bhw.settings', 'settings', 'Settings'),
     ] %}
 
@@ -42,6 +43,9 @@
           <span>{{ label }}</span>
           {% if key == 'alerts' and active_alert_count %}
           <span class="nav-badge">{{ active_alert_count }}</span>
+          {% endif %}
+          {% if key == 'inbox' %}
+          <span class="nav-badge" data-inbox-badge{% if not inbox_unread %} hidden{% endif %}>{{ inbox_unread or 0 }}</span>
           {% endif %}
         </a>
         {% endfor %}
@@ -116,5 +120,27 @@
 
     <script src="{{ url_for('static', filename='js/admin.js') }}"></script>
     {% block scripts %}{% endblock %}
+
+    <script>
+      // Inbox badge in the sidebar: checked every 30 seconds while the tab is open.
+      (function () {
+        const badges = document.querySelectorAll("[data-inbox-badge]");
+        if (!badges.length || document.getElementById("inbox")) return; // the Inbox page updates it itself
+        async function refresh() {
+          if (document.hidden) return;
+          try {
+            const res = await fetch("/inbox/api/unread");
+            const data = await res.json();
+            if (!data.success) return;
+            badges.forEach((b) => {
+              b.textContent = data.unread > 99 ? "99+" : String(data.unread);
+              b.hidden = !data.unread;
+            });
+          } catch (e) { /* keep the last count */ }
+        }
+        setInterval(refresh, 30000);
+      })();
+    </script>
+    
   </body>
 </html>

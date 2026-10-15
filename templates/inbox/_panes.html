@@ -1,0 +1,40 @@
+{# Inbox list + conversation panes. Shared by the family, BHW, and admin
+   Inbox pages. Expects: show_status_filter (bool). #}
+<section class="inbox" id="inbox">
+  <!-- ---- LEFT: tabs + list ---- -->
+  <div class="inbox-side">
+    <div class="inbox-tabs" role="tablist" aria-label="Filter conversations">
+      <button type="button" class="inbox-tab active" data-filter="all" role="tab" aria-selected="true">
+        All <span class="tab-count" data-count="all" hidden></span>
+      </button>
+      <button type="button" class="inbox-tab" data-filter="support" role="tab" aria-selected="false">
+        Support <span class="tab-count" data-count="support" hidden></span>
+      </button>
+      <button type="button" class="inbox-tab" data-filter="care_plan" role="tab" aria-selected="false">
+        Care plan <span class="tab-count" data-count="care_plan" hidden></span>
+      </button>
+      <button type="button" class="inbox-tab" data-filter="direct" role="tab" aria-selected="false">
+        Messages <span class="tab-count" data-count="direct" hidden></span>
+      </button>
+      <button type="button" class="inbox-tab" data-filter="announcement" role="tab" aria-selected="false">
+        Announcements <span class="tab-count" data-count="announcement" hidden></span>
+      </button>
+    </div>
+    {% if show_status_filter %}
+    <div class="inbox-status" id="statusBar">
+      <label for="statusFilter">Show</label>
+      <select id="statusFilter">
+        <option value="open" selected>Open requests</option>
+        <option value="resolved">Resolved requests</option>
+        <option value="all">All requests</option>
+      </select>
+    </div>
+    {% endif %}
+    <div class="inbox-list" id="threadList" aria-live="polite">
+      <p class="list-empty">Loading…</p>
+    </div>
+  </div>
+
+  <!-- ---- RIGHT: conversation ---- -->
+  <div class="inbox-main" id="pane"></div>
+</section>

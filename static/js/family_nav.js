@@ -14,9 +14,36 @@ document.addEventListener('DOMContentLoaded', () => {
   // Tapping anywhere outside the open drawer closes it again.
   document.addEventListener('click', (e) => {
     if (sidebar.classList.contains('open') &&
-        !sidebar.contains(e.target) &&
-        !toggle.contains(e.target)) {
+      !sidebar.contains(e.target) &&
+      !toggle.contains(e.target)) {
       sidebar.classList.remove('open');
     }
   });
 });
+
+// Inbox badge in the sidebar: refreshed every 30 seconds while the tab is
+// visible, so new replies show up without reloading the page.
+(function () {
+  const badges = () => document.querySelectorAll('[data-inbox-badge]');
+  if (!badges().length) return;
+
+  window.setInboxBadge = function (count) {
+    badges().forEach((b) => {
+      b.textContent = count > 99 ? '99+' : String(count);
+      b.hidden = !count;
+    });
+  };
+
+  async function refresh() {
+    if (document.hidden) return;
+    try {
+      const res = await fetch('/inbox/api/unread', { headers: { Accept: 'application/json' } });
+      if (!res.ok) return;
+      const data = await res.json();
+      if (data.success) window.setInboxBadge(data.unread);
+    } catch (e) { /* offline: keep the last count */ }
+  }
+
+  setInterval(refresh, 30000);
+  document.addEventListener('visibilitychange', refresh);
+})();

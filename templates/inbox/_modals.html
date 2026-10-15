@@ -1,0 +1,122 @@
+{# New message / new announcement windows, the toast, and the script.
+   Shared by the family, BHW, and admin Inbox pages.
+   Expects: can_announce (bool), inbox_role ('family' | 'bhw' | 'admin'). #}
+
+<!-- ============ NEW MESSAGE ============ -->
+<div class="ibx-modal" id="composeModal" aria-hidden="true">
+  <div class="ibx-modal-card" role="dialog" aria-modal="true" aria-labelledby="composeTitle">
+    <div class="ibx-modal-head">
+      <h2 class="ibx-modal-title" id="composeTitle">New message</h2>
+      <button type="button" class="ibx-modal-close" data-close-modal aria-label="Close">
+        <i data-lucide="x"></i>
+      </button>
+    </div>
+    <form id="composeForm" novalidate>
+      <div class="ibx-modal-body">
+        <div class="ibx-error" id="composeError" role="alert"></div>
+
+        <div class="ibx-field">
+          <label for="composeTo">To</label>
+          <select id="composeTo" required>
+            <option value="">Loading…</option>
+          </select>
+          <small id="composeToNote"></small>
+        </div>
+
+        <div class="ibx-field" id="composeTypeField" hidden>
+          <label for="composeType">Topic</label>
+          <select id="composeType"></select>
+        </div>
+
+        <div class="ibx-field" id="composeElderField" hidden>
+          <label for="composeElder">About <span style="font-weight: 400">(optional)</span></label>
+          <select id="composeElder">
+            <option value="">No one in particular</option>
+          </select>
+        </div>
+
+        <div class="ibx-field">
+          <label for="composeSubject">Subject</label>
+          <input id="composeSubject" type="text" maxlength="120" required />
+        </div>
+
+        <div class="ibx-field">
+          <label for="composeBody">Message</label>
+          <textarea id="composeBody" maxlength="2000" required></textarea>
+        </div>
+      </div>
+      <div class="ibx-modal-foot">
+        <button type="button" class="ibx-btn ibx-btn-ghost" data-close-modal>Cancel</button>
+        <button type="submit" class="ibx-btn ibx-btn-primary" id="composeSend">
+          <i data-lucide="send"></i> Send message
+        </button>
+      </div>
+    </form>
+  </div>
+</div>
+
+{% if can_announce %}
+<!-- ============ NEW ANNOUNCEMENT ============ -->
+<div class="ibx-modal" id="announceModal" aria-hidden="true">
+  <div class="ibx-modal-card" role="dialog" aria-modal="true" aria-labelledby="announceTitleLabel">
+    <div class="ibx-modal-head">
+      <h2 class="ibx-modal-title" id="announceTitleLabel">New announcement</h2>
+      <button type="button" class="ibx-modal-close" data-close-modal aria-label="Close">
+        <i data-lucide="x"></i>
+      </button>
+    </div>
+    <form id="announceForm" novalidate>
+      <div class="ibx-modal-body">
+        <div class="ibx-error" id="announceError" role="alert"></div>
+
+        {% if inbox_role == 'admin' %}
+        <div class="ibx-field">
+          <label for="announceAudience">Send to</label>
+          <select id="announceAudience">
+            <option value="family">Families</option>
+            <option value="bhw">Barangay health workers</option>
+            <option value="both">Families and barangay health workers</option>
+          </select>
+        </div>
+        <div class="ibx-field">
+          <label for="announceBarangay">Barangay</label>
+          <select id="announceBarangay">
+            <option value="">All barangays</option>
+          </select>
+        </div>
+        {% else %}
+        <p style="margin: 0; font-size: 13px; color: var(--ibx-text-soft)">
+          Families with a loved one in your barangay will see this in their Inbox.
+        </p>
+        {% endif %}
+
+        <div class="ibx-field">
+          <label for="announceTitle">Title</label>
+          <input id="announceTitle" type="text" maxlength="120" required />
+        </div>
+        <div class="ibx-field">
+          <label for="announceBody">Message</label>
+          <textarea id="announceBody" maxlength="2000" required></textarea>
+        </div>
+      </div>
+      <div class="ibx-modal-foot">
+        <button type="button" class="ibx-btn ibx-btn-ghost" data-close-modal>Cancel</button>
+        <button type="submit" class="ibx-btn ibx-btn-primary" id="announceSend">
+          <i data-lucide="megaphone"></i> Post announcement
+        </button>
+      </div>
+    </form>
+  </div>
+</div>
+{% endif %}
+
+<div class="ibx-toast" id="ibxToast" role="status"></div>
+
+<script>
+  window.INBOX = {
+    meId: {{ session['user_id']|tojson }},
+    role: {{ inbox_role|tojson }},
+    canAnnounce: {{ 'true' if can_announce else 'false' }},
+  };
+</script>
+<script src="{{ url_for('static', filename='js/inbox.js') }}"></script>

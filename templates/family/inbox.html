@@ -1,0 +1,288 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Inbox - ALISTO</title>
+    <link
+      href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Nunito:wght@400;600;700;800&display=swap"
+      rel="stylesheet"
+    />
+    <script src="https://unpkg.com/lucide@latest/dist/umd/lucide.js"></script>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/dashboard.css') }}" />
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/inbox.css') }}" />
+    <style>
+      /* Family page frame (the inbox itself is styled by inbox.css) */
+      .main { background: var(--ibx-page); padding: 28px 32px 24px; }
+      .inbox-page-head { display: flex; align-items: flex-end; justify-content: space-between; gap: 16px; margin-bottom: 18px; }
+      .page-title { font-family: "Nunito", sans-serif; font-size: 26px; font-weight: 800; margin: 0 0 4px; color: var(--ibx-text); }
+      .page-subtitle { margin: 0; color: var(--ibx-text-soft); font-size: 14.5px; }
+
+      .confirm-overlay { position: fixed; inset: 0; z-index: 1100; display: none; align-items: center; justify-content: center; padding: 16px; background: rgba(31, 36, 48, 0.4); }
+      .confirm-overlay.open { display: flex; }
+      .confirm-dialog { width: 100%; max-width: 380px; padding: 24px; text-align: center; background: #fff; border-radius: 16px; }
+      .confirm-icon { width: 48px; height: 48px; margin: 0 auto 14px; border-radius: 50%; background: #fef2f2; color: #dc2626; display: flex; align-items: center; justify-content: center; }
+      .confirm-icon svg { width: 22px; height: 22px; }
+      .confirm-title { margin: 0 0 8px; font-size: 16px; font-weight: 700; }
+      .confirm-text { margin: 0 0 18px; font-size: 13px; line-height: 1.6; color: var(--ibx-text-soft); }
+      .confirm-actions { display: flex; gap: 10px; }
+      .confirm-actions button { flex: 1; padding: 10px 14px; border-radius: 8px; font: inherit; font-size: 13px; font-weight: 600; cursor: pointer; }
+      .confirm-actions .btn-ghost { border: 1px solid var(--ibx-border); background: #fff; color: var(--ibx-text); }
+      .confirm-actions .btn-danger-action { border: none; background: #dc2626; color: #fff; }
+      .confirm-actions .btn-danger-action:disabled { opacity: 0.6; }
+
+      @media (max-width: 900px) { .main { padding: 20px 14px; } }
+      @media (max-width: 560px) {
+        .inbox-page-head { flex-direction: column; align-items: stretch; }
+      }
+    </style>
+  </head>
+  <body>
+    <div class="app-shell">
+      <!-- ============ SIDEBAR ============ -->
+      <aside class="sidebar">
+        <a href="{{ url_for('dashboard') }}" class="sidebar-logo">
+          <img
+            src="{{ url_for('static', filename='images/alistoLogo.png') }}"
+            alt="ALISTO Logo"
+            class="logo-mark-img"
+          />
+        </a>
+
+        <nav class="sidebar-nav">
+          <a href="{{ url_for('dashboard') }}" class="nav-item">
+            <i data-lucide="layout-dashboard"></i>
+            <span>Dashboard</span>
+          </a>
+          <a href="{{ url_for('my_loved_ones') }}" class="nav-item">
+            <i data-lucide="users-round"></i>
+            <span>My Loved Ones</span>
+          </a>
+          <a href="{{ url_for('alerts') }}" class="nav-item">
+            <i data-lucide="bell-ring"></i>
+            <span>Alerts</span>
+          </a>
+          <a href="{{ url_for('medication_reminders') }}" class="nav-item">
+            <i data-lucide="pill"></i>
+            <span>Medication Reminders</span>
+          </a>
+          <a href="{{ url_for('history') }}" class="nav-item">
+            <i data-lucide="history"></i>
+            <span>History</span>
+          </a>
+          <a href="{{ url_for('inbox_page') }}" class="nav-item active" aria-current="page">
+            <i data-lucide="inbox"></i>
+            <span>Inbox</span>
+            <span class="nav-badge" data-inbox-badge{% if not inbox_unread %} hidden{% endif %}>{{ inbox_unread or 0 }}</span>
+          </a>
+          <a href="{{ url_for('settings') }}" class="nav-item">
+            <i data-lucide="settings"></i>
+            <span>Settings</span>
+          </a>
+          <a href="{{ url_for('help_support') }}" class="nav-item">
+            <i data-lucide="circle-help"></i>
+            <span>Help &amp; Support</span>
+          </a>
+        </nav>
+
+        <div class="care-plan-card">
+          <div class="care-plan-top">
+            <span class="care-plan-title">Alisto Care Plan</span>
+            <span class="badge badge-active">
+              <i data-lucide="check-circle-2"></i> Active
+            </span>
+          </div>
+          <div class="care-plan-row">
+            <i data-lucide="calendar-clock"></i>
+            <span
+              >Renews in {{ care_plan.days_left }} days<br /><small
+                >{{ care_plan.renew_date }}</small
+              ></span
+            >
+          </div>
+          <div class="care-plan-price">
+            ₱{{ care_plan.price }} <span>/ month</span>
+          </div>
+          <button
+            type="button"
+            class="care-plan-btn"
+            onclick="openCarePlanModal()"
+          >
+            <i data-lucide="credit-card"></i> Pay / Renew Now
+          </button>
+        </div>
+      </aside>
+
+      <!-- ============ MAIN ============ -->
+      <main class="main-wrapper">
+        <!-- ---- TOP HEADER ---- -->
+        <header class="top-header">
+          <div class="header-left">
+            <button class="menu-toggle">
+              <i data-lucide="menu"></i>
+            </button>
+            <div class="header-breadcrumb">
+              <span class="org-name">Emergency Response System</span>
+              <h2 class="system-title">ALISTO</h2>
+            </div>
+          </div>
+
+          <div class="header-right">
+            <a href="{{ url_for('alerts') }}" class="icon-btn" aria-label="Notifications">
+              <i data-lucide="bell"></i>
+              {% if notification_count %}
+              <span class="notif-dot">{{ notification_count }}</span>
+              {% endif %}
+            </a>
+
+            <button
+              type="button"
+              class="profile-pill"
+              id="profilePill"
+              aria-haspopup="true"
+              aria-expanded="false"
+            >
+              <span class="avatar">
+                {% if account.photo_base64 %}
+                <img
+                  src="data:image/jpeg;base64,{{ account.photo_base64 }}"
+                  alt=""
+                />
+                {% else %}{{ account.initials }}{% endif %}
+              </span>
+              <span class="profile-text">
+                <strong>{{ account.full_name }}</strong>
+                <small>{{ account.role|capitalize }}</small>
+              </span>
+              <i data-lucide="chevron-down"></i>
+            </button>
+
+            <!-- ---- PROFILE DROPDOWN ---- -->
+            <div class="profile-menu" id="profileMenu" role="menu">
+              <div class="profile-menu-head">
+                <strong>{{ account.full_name }}</strong>
+                <small>{{ account.role|capitalize }}</small>
+              </div>
+              <a
+                class="profile-menu-item"
+                role="menuitem"
+                href="{{ url_for('my_profile') }}"
+              >
+                <i data-lucide="user-round"></i>
+                <span>My Profile</span>
+              </a>
+              <button
+                type="button"
+                class="profile-menu-item danger"
+                role="menuitem"
+                id="profileLogoutBtn"
+              >
+                <i data-lucide="log-out"></i>
+                <span>Log out</span>
+              </button>
+            </div>
+          </div>
+        </header>
+
+        <!-- ---- MAIN CONTENT ---- -->
+        <div class="main">
+          <div class="inbox-page-head">
+            <div>
+              <h1 class="page-title">Inbox</h1>
+              <p class="page-subtitle">
+                Your requests, care plan updates, and messages with ALISTO Support
+                and your barangay health worker.
+              </p>
+            </div>
+            <button type="button" class="ibx-btn ibx-btn-primary" id="newMessageBtn">
+              <i data-lucide="square-pen"></i> New message
+            </button>
+          </div>
+
+          {% with show_status_filter=False %}{% include 'inbox/_panes.html' %}{% endwith %}
+
+          <footer class="main-footer">
+            &copy; {{ current_year }} Alisto. All rights reserved.
+          </footer>
+        </div>
+      </main>
+    </div>
+
+    <!-- ============ LOGOUT CONFIRMATION ============ -->
+    <div class="confirm-overlay" id="logoutConfirm" aria-hidden="true">
+      <div class="confirm-dialog" role="dialog" aria-modal="true">
+        <div class="confirm-icon"><i data-lucide="log-out"></i></div>
+        <h2 class="confirm-title">Are you sure you want to log out?</h2>
+        <p class="confirm-text">
+          You will need to sign in again to view your loved ones and receive
+          alerts on this device.
+        </p>
+        <div class="confirm-actions">
+          <button type="button" class="btn-ghost" id="logoutCancel">
+            Cancel
+          </button>
+          <button type="button" class="btn-danger-action" id="logoutConfirmBtn">
+            Log out
+          </button>
+        </div>
+      </div>
+    </div>
+
+    {% with can_announce=False, inbox_role='family' %}{% include 'inbox/_modals.html' %}{% endwith %}
+    <script>
+      // Profile dropdown + logout (same behaviour as the other family pages)
+      (function () {
+        const pill = document.getElementById("profilePill");
+        const menu = document.getElementById("profileMenu");
+        const overlay = document.getElementById("logoutConfirm");
+        const logoutBtn = document.getElementById("profileLogoutBtn");
+        const cancelBtn = document.getElementById("logoutCancel");
+        const confirmBtn = document.getElementById("logoutConfirmBtn");
+        if (!pill || !menu) return;
+
+        const closeMenu = () => {
+          menu.classList.remove("open");
+          pill.setAttribute("aria-expanded", "false");
+        };
+        const closeConfirm = () => {
+          overlay.classList.remove("open");
+          overlay.setAttribute("aria-hidden", "true");
+          document.body.classList.remove("modal-open");
+        };
+
+        pill.addEventListener("click", (e) => {
+          e.stopPropagation();
+          const open = !menu.classList.contains("open");
+          menu.classList.toggle("open", open);
+          pill.setAttribute("aria-expanded", String(open));
+        });
+        document.addEventListener("click", (e) => {
+          if (!menu.contains(e.target) && !pill.contains(e.target)) closeMenu();
+        });
+        logoutBtn.addEventListener("click", () => {
+          closeMenu();
+          overlay.classList.add("open");
+          overlay.setAttribute("aria-hidden", "false");
+          document.body.classList.add("modal-open");
+          setTimeout(() => confirmBtn.focus(), 60);
+        });
+        cancelBtn.addEventListener("click", closeConfirm);
+        overlay.addEventListener("click", (e) => {
+          if (e.target === overlay) closeConfirm();
+        });
+        confirmBtn.addEventListener("click", () => {
+          confirmBtn.disabled = true;
+          confirmBtn.textContent = "Logging out...";
+          window.location.href = "{{ url_for('logout') }}";
+        });
+        document.addEventListener("keydown", (e) => {
+          if (e.key !== "Escape") return;
+          if (overlay.classList.contains("open")) closeConfirm();
+          else closeMenu();
+        });
+      })();
+    </script>
+    {% include 'family/_care_plan_modal.html' %}
+    <script src="{{ url_for('static', filename='js/family_nav.js') }}"></script>
+  </body>
+</html>

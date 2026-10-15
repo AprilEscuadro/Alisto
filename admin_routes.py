@@ -27,6 +27,7 @@ from werkzeug.security import check_password_hash, generate_password_hash
 
 import alerts_common as ac
 import care_plan_service as cps
+import valid_id_store
 # One source of truth for reading addresses and working out whether a device is
 # online. Both portals show the same thing, so they share the same helpers.
 from bhw_routes import (PASSWORD_RULES, _address_parts, _address_text,
@@ -742,15 +743,31 @@ def archive_user(user_id):
 @admin_bp.route('/users/<user_id>/valid-id')
 @admin_required
 def bhw_valid_id(user_id):
-    """Serve a BHW's uploaded ID to admins only (the file is not in /static)."""
+    """Show a BHW's uploaded ID to admins only (never a public link)."""
     matches = list(db.collection('bhw_profile').where(
         'user_id', '==', user_id).limit(1).stream())
     stored = (matches[0].to_dict() or {}).get(
         'valid_id_stored_as') if matches else None
     if not stored:
         abort(404)
+
+    if valid_id_store.is_firestore_path(stored):
+        found = valid_id_store.load(user_id)
+        if not found:
+            abort(404)
+        raw, content_type, filename = found
+        return Response(raw, mimetype=content_type, headers={
+            'Content-Disposition': f'inline; filename="{filename}"',
+            'Cache-Control': 'private, no-store',
+            'X-Content-Type-Options': 'nosniff',
+        })
+
+    # Older sign-ups whose file is still in the local uploads folder
+    # (run migrate_bhw_ids.py on that computer to move them to Firestore).
     folder = os.path.join(current_app.root_path, 'uploads', 'bhw_ids')
-    return send_from_directory(folder, stored)
+    if not os.path.exists(os.path.join(folder, os.path.basename(stored))):
+        abort(404)
+    return send_from_directory(folder, os.path.basename(stored))
 
 
 # Mirrors app.py's own BHW_REGISTRATION_SETTINGS -- kept as a separate copy
@@ -1545,6 +1562,14 @@ def _pending_payments():
         })
     rows.sort(key=lambda r: r['sort'], reverse=True)
     return rows
+
+
+@admin_bp.route('/inbox')
+@admin_required
+def inbox():
+    """Support tickets, problem reports, care plan payments, messages, and
+    announcements. The page talks to the JSON API in inbox_routes.py."""
+    return render_template('admin/inbox.html', active_page='inbox')
 
 
 @admin_bp.route('/subscriptions')

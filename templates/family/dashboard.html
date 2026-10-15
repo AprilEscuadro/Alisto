@@ -57,6 +57,11 @@
             <i data-lucide="history"></i>
             <span>History</span>
           </a>
+          <a href="{{ url_for('inbox_page') }}" class="nav-item">
+            <i data-lucide="inbox"></i>
+            <span>Inbox</span>
+            <span class="nav-badge" data-inbox-badge{% if not inbox_unread %} hidden{% endif %}>{{ inbox_unread or 0 }}</span>
+          </a>
           <a href="{{ url_for('settings') }}" class="nav-item">
             <i data-lucide="settings"></i>
             <span>Settings</span>

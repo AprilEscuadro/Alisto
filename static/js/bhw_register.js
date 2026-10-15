@@ -11,7 +11,7 @@
 (function () {
   const BHW_DOT_COUNT = 3; // account, professional info, review
   const DOT_FOR_STEP = { '1': 1, 'bhw-info': 2, 'bhw-review': 3 };
-  const MAX_ID_SIZE = 2 * 1024 * 1024; // 2MB
+  const MAX_ID_SIZE = 700 * 1024; // 700 KB (stored in Firestore, 1 MB per document)
   const ALLOWED_ID_EXT = ['jpg', 'jpeg', 'png', 'pdf'];
 
   const $ = (id) => document.getElementById(id);
@@ -110,7 +110,7 @@
     if (!file) return null; // optional
     const ext = file.name.split('.').pop().toLowerCase();
     if (!ALLOWED_ID_EXT.includes(ext)) return 'Valid ID must be a JPG, PNG, or PDF file.';
-    if (file.size > MAX_ID_SIZE) return 'Valid ID must be 2MB or smaller.';
+    if (file.size > MAX_ID_SIZE) return 'Valid ID must be 700 KB or smaller. Try a smaller photo or a screenshot of the ID.';
     return null;
   }
 
@@ -123,7 +123,7 @@
   function renderFile(file) {
     const zone = $('validIdDropzone');
     $('validIdTitle').textContent = file ? file.name : 'Click to upload or drag and drop';
-    $('validIdHint').textContent = file ? formatSize(file.size) : 'JPG, PNG, PDF (Max 2MB)';
+    $('validIdHint').textContent = file ? formatSize(file.size) : 'JPG, PNG, PDF (Max 700 KB)';
     zone.classList.toggle('has-file', !!file);
     $('validIdRemove').style.display = file ? '' : 'none';
   }

@@ -1,0 +1,39 @@
+{% extends 'admin/base.html' %}
+{% block title %}Inbox{% endblock %}
+
+{% block head %}
+<link rel="stylesheet" href="{{ url_for('static', filename='css/inbox.css') }}" />
+<style>
+  /* The admin top bar is 68px; give the inbox the rest of the screen. */
+  .admin-inbox .inbox { height: calc(100vh - 230px); }
+  @media (max-width: 900px) {
+    .admin-inbox .inbox { height: calc(100dvh - 260px); }
+  }
+  .admin-inbox .admin-page-header .ibx-btns { display: flex; gap: 10px; flex-wrap: wrap; }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="admin-inbox">
+  <div class="admin-page-header">
+    <div>
+      <h1>Inbox</h1>
+      <p>Support requests, problem reports, care plan payments, and messages from families and BHWs.</p>
+    </div>
+    <div class="ibx-btns">
+      <button type="button" class="ibx-btn ibx-btn-ghost" id="newAnnouncementBtn">
+        <i data-lucide="megaphone"></i> New announcement
+      </button>
+      <button type="button" class="ibx-btn ibx-btn-primary" id="newMessageBtn">
+        <i data-lucide="square-pen"></i> New message
+      </button>
+    </div>
+  </div>
+
+  {% with show_status_filter=True %}{% include 'inbox/_panes.html' %}{% endwith %}
+</div>
+{% endblock %}
+
+{% block scripts %}
+{% with can_announce=True, inbox_role='admin' %}{% include 'inbox/_modals.html' %}{% endwith %}
+{% endblock %}
