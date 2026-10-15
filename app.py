@@ -2953,7 +2953,7 @@ def inbox_page():
         flash('Please log in first.', 'error')
         return redirect(url_for('login'))
     if session.get('role') == 'bhw':
-        return redirect(url_for('bhw.dashboard'))
+        return redirect(url_for('bhw.inbox', **request.args))
     if session.get('role') == 'admin':
         return redirect(url_for('admin.inbox', **request.args))
 
