@@ -19,7 +19,7 @@ from datetime import datetime, timedelta, timezone
 from functools import wraps
 
 from flask import (Blueprint, render_template, session, redirect, url_for,
-                   flash, request, g, Response)
+                   flash, request, g, Response, jsonify)
 from firebase_admin import firestore
 from werkzeug.security import check_password_hash, generate_password_hash
 
@@ -352,6 +352,7 @@ def _bhw_layout_context():
         'bhw_name': user.get('full_name') or 'BHW',
         'bhw_initials': _initials(user.get('full_name')),
         'bhw_barangay': g.barangay,
+        'bhw_phone': user.get('contact_number') or '',
         'active_alert_count': open_count,
         'now_year': datetime.now().year,
     }
@@ -415,6 +416,23 @@ def alerts():
         'bhw/alerts.html', active_page='alerts',
         rows=rows, stats=stats, detail=detail,
     )
+
+
+@bhw_bp.route('/alerts/poll')
+@bhw_required
+def alerts_poll():
+    """Unanswered emergencies in this BHW's barangay. bhw_alert_watch.js asks
+    for this every few seconds on every BHW page to ring the alarm."""
+    elders = _elders_in_barangay(g.barangay)
+    open_alerts = [a for a in _alerts_for(set(elders))
+                   if ac.row_status(a) in ac.OPEN_STATUSES]
+    return jsonify(success=True, count=len(open_alerts), alerts=[{
+        'id': a['id'],
+        'resident': (elders.get(a.get('elder_id')) or {}).get('full_name') or 'A resident',
+        'time': ac.fmt_time(a.get('date_triggered')),
+        'trigger': (a.get('trigger_type') or 'VOICE').lower(),
+        'url': url_for('bhw.alerts', alert=a['id']),
+    } for a in open_alerts[:20]])
 
 
 @bhw_bp.route('/alerts/<alert_id>/<action>', methods=['POST'])
@@ -658,6 +676,8 @@ def settings():
     return render_template(
         'bhw/settings.html', active_page='settings',
         settings={key: bool(saved.get(key, True)) for key in SETTING_KEYS},
+        user_email=g.bhw_user.get('email') or '',
+        user_full_name=g.bhw_user.get('full_name') or '',
     )
 
 

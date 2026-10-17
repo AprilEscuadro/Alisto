@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="en">
+<html lang="en" data-theme="light">
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
@@ -12,6 +12,8 @@
     <!-- Shared layout/components, then the BHW look on top -->
     <link rel="stylesheet" href="{{ url_for('static', filename='css/admin_css/admin.css') }}" />
     <link rel="stylesheet" href="{{ url_for('static', filename='css/bhw_css/bhw.css') }}" />
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/bhw_css/bhw.css') }}" />
+    <script src="{{ url_for('static', filename='js/bhw_prefs.js') }}"></script>
     {% block head %}{% endblock %}
   </head>
   <body class="admin-body bhw-portal">
@@ -119,6 +121,8 @@
     </div>
 
     <script src="{{ url_for('static', filename='js/admin.js') }}"></script>
+    <div id="bhwWatch" data-url="{{ url_for('bhw.alerts_poll') }}" hidden></div>
+    <script src="{{ url_for('static', filename='js/bhw_alert_watch.js') }}"></script>
     {% block scripts %}{% endblock %}
 
     <script>

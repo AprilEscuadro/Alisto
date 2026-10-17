@@ -3137,6 +3137,44 @@ REPORT_CATEGORIES = {
     'other': ('Other', {}),
 }
 
+# Problem-report choices shown to Barangay Health Workers. The values must
+# match the CATEGORIES list in static/js/bhw_help.js.
+REPORT_CATEGORIES_BHW = {
+    'app': ('App Issue', {
+        'crash': 'App crashes or freezes',
+        'buttons': 'Buttons or links not working',
+        'slow': 'App is slow',
+        'other_app': 'Other app issue',
+    }),
+    'alert': ('Alert Issue', {
+        'not_received': "I didn't receive an alert",
+        'late': 'Alert arrived late',
+        'cant_respond': "Can't acknowledge or resolve an alert",
+        'wrong_location': 'Location was incorrect',
+        'other_alert': 'Other alert issue',
+    }),
+    'resident': ('Resident or Device Issue', {
+        'missing': 'A resident or device is missing from my list',
+        'wrong_info': 'Resident information is wrong',
+        'offline': 'Device shows offline but it is on',
+        'other_resident': 'Other resident issue',
+    }),
+    'map': ('Map Issue', {
+        'not_loading': "Map isn't loading",
+        'pin_wrong': 'A pin is in the wrong place',
+        'status_wrong': 'Device status is wrong',
+        'other_map': 'Other map issue',
+    }),
+    'account': ('Account Issue', {
+        'login': "Can't log in",
+        'reset_password': "Can't reset password",
+        'profile_info': 'Profile info is wrong',
+        'barangay': 'My assigned barangay is wrong',
+        'other_account': 'Other account issue',
+    }),
+    'other': ('Other', {}),
+}
+
 TICKET_MAX_PER_10_MIN = 5
 EMAIL_RE = re.compile(r'^[^@\s]+@[^@\s]+\.[^@\s]+$')
 
@@ -3277,9 +3315,11 @@ def submit_problem_report():
     description = (data.get('description') or '').strip()
     reply_email = (data.get('email') or '').strip().lower()
 
-    if category not in REPORT_CATEGORIES:
+    categories = (REPORT_CATEGORIES_BHW if session.get('role') == 'bhw'
+                  else REPORT_CATEGORIES)
+    if category not in categories:
         return jsonify(success=False, message='Please choose a category.'), 400
-    category_label, subcategories = REPORT_CATEGORIES[category]
+    category_label, subcategories = categories[category]
     if subcategories and subcategory not in subcategories:
         return jsonify(success=False, message='Please choose what best describes the problem.'), 400
     subcategory_label = subcategories.get(

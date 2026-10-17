@@ -2,64 +2,160 @@
 {% block title %}Settings{% endblock %}
 
 {% block content %}
-<form method="POST" action="{{ url_for('bhw.save_settings') }}">
-  <div class="settings-head">
-    <div>
-      <p class="settings-welcome">Welcome, {{ bhw_name }} <span aria-hidden="true">👋</span></p>
-      <p class="text-muted">Manage your BHW account and alert preferences.</p>
-    </div>
-    <button type="submit" class="btn btn-primary btn-lg">
-      <i data-lucide="save"></i> Save Changes
-    </button>
+<div class="prefs-page">
+
+<div class="admin-page-header">
+  <div>
+    <h1>Settings</h1>
+    <p>Customize Alisto based on your role.</p>
+  </div>
+</div>
+
+<div class="prefs-wrap">
+
+  <!-- ============ LEFT COLUMN ============ -->
+  <div class="prefs-col">
+
+    <!-- NOTIFICATIONS -->
+    <h2 class="settings-group">Notifications</h2>
+    <section class="admin-card prefs-card">
+      <div class="pref-row">
+        <span class="setting-icon tint-red"><i data-lucide="bell"></i></span>
+        <span class="setting-text">
+          <strong>Emergency alerts</strong>
+          <small>SMS to {{ bhw_phone or 'your registered number' }} + alert on this website</small>
+        </span>
+        <span class="pref-locked"><i data-lucide="lock"></i> Always on</span>
+      </div>
+
+      <div class="pref-row">
+        <span class="setting-icon tint-blue"><i data-lucide="volume-2"></i></span>
+        <span class="setting-text">
+          <strong>Alert sound on this computer</strong>
+          <small>Play a sound when a new emergency comes in</small>
+        </span>
+        <button type="button" class="pref-test" id="prefTestSound" title="Play a test alarm">
+          <i data-lucide="play"></i> <span id="prefTestLabel">Test</span>
+        </button>
+        <label class="switch-wrap">
+          <input type="checkbox" class="switch-input" id="prefSound" />
+          <span class="switch" aria-hidden="true"></span>
+        </label>
+      </div>
+
+      <label class="pref-row">
+        <span class="setting-icon tint-purple"><i data-lucide="monitor"></i></span>
+        <span class="setting-text">
+          <strong>Desktop notifications</strong>
+          <small>Show a pop-up even when ALISTO is in another tab</small>
+        </span>
+        <input type="checkbox" class="switch-input" id="prefDesktop" />
+        <span class="switch" aria-hidden="true"></span>
+      </label>
+    </section>
+
+    <!-- DISPLAY -->
+    <h2 class="settings-group">Display</h2>
+    <section class="admin-card prefs-card">
+      <div class="pref-row">
+        <span class="setting-icon tint-orange"><i data-lucide="sun-moon"></i></span>
+        <span class="setting-text"><strong>Theme</strong></span>
+        <div class="seg" role="radiogroup" aria-label="Theme" data-pref="theme">
+          <button type="button" role="radio" data-value="light">Light</button>
+          <button type="button" role="radio" data-value="dark">Dark</button>
+          <button type="button" role="radio" data-value="system">System</button>
+        </div>
+      </div>
+
+      <div class="pref-row">
+        <span class="setting-icon tint-blue"><i data-lucide="a-large-small"></i></span>
+        <span class="setting-text"><strong>Text size</strong></span>
+        <div class="seg" role="radiogroup" aria-label="Text size" data-pref="textSize">
+          <button type="button" role="radio" data-value="default">Default</button>
+          <button type="button" role="radio" data-value="large">Large</button>
+          <button type="button" role="radio" data-value="larger">Larger</button>
+        </div>
+      </div>
+
+      <div class="pref-row">
+        <span class="setting-icon tint-purple"><i data-lucide="clock"></i></span>
+        <span class="setting-text"><strong>Time format</strong></span>
+        <div class="seg" role="radiogroup" aria-label="Time format" data-pref="timeFormat">
+          <button type="button" role="radio" data-value="12">12-hour</button>
+          <button type="button" role="radio" data-value="24">24-hour</button>
+        </div>
+      </div>
+    </section>
+
   </div>
 
-  <div class="admin-page-header">
-    <div>
-      <h1>Settings</h1>
-      <p>Customize Alisto based on your role.</p>
-    </div>
+  <!-- ============ RIGHT COLUMN ============ -->
+  <div class="prefs-col">
+
+    <!-- ACCOUNT -->
+    <h2 class="settings-group">Account</h2>
+    <section class="admin-card prefs-card">
+      <a href="{{ url_for('bhw.profile') }}" class="pref-row pref-link">
+        <span class="setting-icon tint-blue"><i data-lucide="user"></i></span>
+        <span class="setting-text">
+          <strong>My profile</strong>
+          <small>Name, phone number, password</small>
+        </span>
+        <i data-lucide="chevron-right"></i>
+      </a>
+      <div class="pref-row">
+        <span class="setting-icon tint-red"><i data-lucide="map-pin"></i></span>
+        <span class="setting-text"><strong>Assigned barangay</strong></span>
+        <span class="pref-value">{{ bhw_barangay or '—' }}</span>
+      </div>
+    </section>
+
+    <!-- HELP & SUPPORT -->
+    <h2 class="settings-group">Help &amp; Support</h2>
+    <section class="admin-card prefs-card">
+      <button type="button" class="pref-row" id="hsGuideBtn">
+        <span class="setting-icon tint-blue"><i data-lucide="book-open"></i></span>
+        <span class="setting-text">
+          <strong>User Guide</strong>
+          <small>How to respond to alerts as a BHW</small>
+        </span>
+        <i data-lucide="chevron-right"></i>
+      </button>
+      <button type="button" class="pref-row" id="hsReportBtn">
+        <span class="setting-icon tint-red"><i data-lucide="flag"></i></span>
+        <span class="setting-text">
+          <strong>Report a Problem</strong>
+          <small>Something not working? Tell the ALISTO admin</small>
+        </span>
+        <i data-lucide="chevron-right"></i>
+      </button>
+      <button type="button" class="pref-row" id="hsContactBtn">
+        <span class="setting-icon tint-green"><i data-lucide="message-circle"></i></span>
+        <span class="setting-text">
+          <strong>Contact Support</strong>
+          <small>Send a message. Replies show in your Inbox</small>
+        </span>
+        <i data-lucide="chevron-right"></i>
+      </button>
+      <button type="button" class="pref-row" id="hsAboutBtn">
+        <span class="setting-icon tint-purple"><i data-lucide="info"></i></span>
+        <span class="setting-text">
+          <strong>About ALISTO</strong>
+          <small>Version 1.0</small>
+        </span>
+        <i data-lucide="chevron-right"></i>
+      </button>
+    </section>
+
   </div>
+</div>
 
-  <h2 class="settings-group">Notifications</h2>
+</div>
 
-  {% set toggles = [
-    ('emergency_alerts', 'bell', 'red', 'Emergency Alerts', 'Get notified for new emergency cases'),
-    ('resident_status_alerts', 'users-round', 'blue', 'Resident Status Alerts', 'Updates when monitored elderly go offline or need attention'),
-    ('daily_summary', 'file-text', 'orange', 'Daily Summary', 'Receive end-of-day alert summaries'),
-  ] %}
-  {% for key, icon, tint, title, description in toggles %}
-  <label class="setting-row admin-card">
-    <span class="setting-icon tint-{{ tint }}"><i data-lucide="{{ icon }}"></i></span>
-    <span class="setting-text">
-      <strong>{{ title }}</strong>
-      <small>{{ description }}</small>
-    </span>
-    <input type="checkbox" name="{{ key }}" class="switch-input" {% if settings[key] %}checked{% endif %} />
-    <span class="switch" aria-hidden="true"></span>
-  </label>
-  {% endfor %}
+{% include 'bhw/_help_modals.html' %}
+{% endblock %}
 
-  <h2 class="settings-group">App &amp; Data</h2>
-
-  <label class="setting-row admin-card">
-    <span class="setting-icon tint-purple"><i data-lucide="map-pin"></i></span>
-    <span class="setting-text">
-      <strong>Map Updates</strong>
-      <small>Allow live status updates on the monitoring map</small>
-    </span>
-    <input type="checkbox" name="map_updates" class="switch-input" {% if settings.map_updates %}checked{% endif %} />
-    <span class="switch" aria-hidden="true"></span>
-  </label>
-
-  <h2 class="settings-group">Security</h2>
-
-  <a href="{{ url_for('bhw.profile') }}" class="setting-row admin-card setting-link">
-    <span class="setting-icon tint-blue"><i data-lucide="lock"></i></span>
-    <span class="setting-text">
-      <strong>Change Password</strong>
-      <small>Update your account password</small>
-    </span>
-    <i data-lucide="chevron-right"></i>
-  </a>
-</form>
+{% block scripts %}
+<script src="{{ url_for('static', filename='js/bhw_settings.js') }}"></script>
+<script src="{{ url_for('static', filename='js/bhw_help.js') }}"></script>
 {% endblock %}

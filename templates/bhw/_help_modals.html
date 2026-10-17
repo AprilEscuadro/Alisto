@@ -1,0 +1,199 @@
+{# BHW Help & Support modals. Included at the bottom of bhw/settings.html #}
+<div id="hsRoot"
+     data-report-url="{{ url_for('submit_problem_report') }}"
+     data-contact-url="{{ url_for('submit_contact_support') }}"
+     data-inbox-url="{{ url_for('bhw.inbox') }}"></div>
+
+<!-- ============ USER GUIDE ============ -->
+<div class="hs-overlay" id="hsGuideModal" role="dialog" aria-modal="true" aria-labelledby="hsGuideTitle">
+  <div class="hs-modal">
+    <div class="hs-head">
+      <h2 class="hs-title" id="hsGuideTitle">How to Use ALISTO as a BHW</h2>
+      <button type="button" class="hs-close" data-hs-close aria-label="Close"><i data-lucide="x"></i></button>
+    </div>
+    <div class="hs-body">
+      <div class="hs-steps">
+        <div class="hs-step">
+          <div class="hs-step-no">1</div>
+          <div><h4>Receive the Alert</h4>
+            <p>When a resident in your barangay triggers an emergency, you get an SMS on your registered number and the alert appears on your Alerts page. The bell on the top bar shows how many are still open.</p></div>
+        </div>
+        <div class="hs-step">
+          <div class="hs-step-no">2</div>
+          <div><h4>Check the Details</h4>
+            <p>Open the alert to see the resident's name, age, address, how it was triggered (voice or button), and the last known location. Use Map View to see where the device is.</p></div>
+        </div>
+        <div class="hs-step">
+          <div class="hs-step-no">3</div>
+          <div><h4>Acknowledge It</h4>
+            <p>Press Acknowledge so the family and the admin can see that someone is already responding. Do this first, even before you arrive.</p></div>
+        </div>
+        <div class="hs-step">
+          <div class="hs-step-no">4</div>
+          <div><h4>Respond and Coordinate</h4>
+            <p>Go to the resident, or contact the family through your Inbox. Families linked to residents in your barangay can message you there.</p></div>
+        </div>
+        <div class="hs-step">
+          <div class="hs-step-no">5</div>
+          <div><h4>Resolve or Mark as False Alarm</h4>
+            <p>When the situation is handled, press Resolve and add a short note. If it was triggered by accident, mark it as a false alarm so it doesn't count as a real emergency.</p></div>
+        </div>
+        <div class="hs-step">
+          <div class="hs-step-no">6</div>
+          <div><h4>Monitor Residents and Reports</h4>
+            <p>Elderly Users shows each resident's device status (online or offline). Reports lets you export alert and resident records as CSV for your barangay.</p></div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ============ REPORT A PROBLEM ============ -->
+<div class="hs-overlay" id="hsReportModal" role="dialog" aria-modal="true" aria-labelledby="hsReportTitle">
+  <div class="hs-modal">
+    <div class="hs-head hs-head-center">
+      <button type="button" class="hs-back" id="hsReportBack" aria-label="Back" style="visibility:hidden"><i data-lucide="arrow-left"></i></button>
+      <h2 class="hs-title" id="hsReportTitle">Report a Problem</h2>
+      <button type="button" class="hs-close" data-hs-close aria-label="Close"><i data-lucide="x"></i></button>
+    </div>
+    <div class="hs-body">
+      <div class="hs-rstep" data-step="1">
+        <p class="hs-step-label">Why are you reporting this?</p>
+        <div class="hs-list" id="hsCategoryList"></div>
+      </div>
+      <div class="hs-rstep" data-step="2" hidden>
+        <p class="hs-step-label">Which best describes the problem?</p>
+        <div class="hs-list" id="hsSubList"></div>
+      </div>
+      <div class="hs-rstep" data-step="3" hidden>
+        <form class="hs-form" id="hsReportForm" novalidate>
+          <div class="hs-field">
+            <label class="hs-label" for="hsProblemText">Describe the problem</label>
+            <textarea id="hsProblemText" class="hs-input" placeholder="Tell us what happened..." maxlength="2000" required></textarea>
+          </div>
+          <div class="hs-field">
+            <label class="hs-label" for="hsProblemEmail">Your email (optional)</label>
+            <input type="email" id="hsProblemEmail" class="hs-input" placeholder="you@example.com" value="{{ user_email }}" />
+          </div>
+        </form>
+      </div>
+      <div class="hs-rstep" data-step="4" hidden>
+        <p class="hs-step-label">You're about to submit a report</p>
+        <div class="hs-review"><span>Category</span><strong id="hsRevCat">—</strong></div>
+        <div class="hs-review"><span>Problem type</span><strong id="hsRevSub">—</strong></div>
+        <div class="hs-review"><span>Description</span><strong id="hsRevDesc">—</strong></div>
+      </div>
+    </div>
+    <div class="hs-foot" id="hsReportFoot" style="display:none">
+      <button type="button" class="hs-btn hs-btn-light" data-hs-close>Cancel</button>
+      <button type="button" class="hs-btn hs-btn-primary" id="hsReportNext">Continue</button>
+    </div>
+  </div>
+</div>
+
+<!-- ============ ABOUT ALISTO ============ -->
+<div class="hs-overlay" id="hsAboutModal" role="dialog" aria-modal="true" aria-labelledby="hsAboutTitle">
+  <div class="hs-modal">
+    <div class="hs-head">
+      <h2 class="hs-title" id="hsAboutTitle">About ALISTO</h2>
+      <button type="button" class="hs-close" data-hs-close aria-label="Close"><i data-lucide="x"></i></button>
+    </div>
+    <div class="hs-body">
+      <div class="hs-about">
+        <div class="hs-about-sec">
+          <h3><i data-lucide="stethoscope"></i> What is ALISTO?</h3>
+          <p>ALISTO is an offline emergency response system designed specifically to help elderly individuals during emergencies. It detects emergency voice commands in Cebuano (Bisaya) without requiring an internet connection.</p>
+        </div>
+
+        <div class="hs-about-sec hs-about-bhw">
+          <h3><i data-lucide="heart-pulse"></i> A Message for Barangay Health Workers</h3>
+          <p>Kamo ang unang tubag sa komunidad. When a resident in {{ bhw_barangay or 'your barangay' }} calls for help, ALISTO tells you right away so you can reach them quickly. Thank you for looking after our elderly. Your response is what turns an alert into real help.</p>
+        </div>
+
+        <div class="hs-about-sec">
+          <h3><i data-lucide="sparkles"></i> Key Features</h3>
+          <ul class="hs-about-list">
+            <li>Offline voice detection</li>
+            <li>Emergency phrase recognition</li>
+            <li>Android mobile application</li>
+            <li>Emergency alert notifications</li>
+            <li>Multiple emergency contacts</li>
+            <li>Alert history tracking</li>
+            <li>5-second false alarm cancellation</li>
+          </ul>
+        </div>
+
+        <div class="hs-about-sec">
+          <h3><i data-lucide="zap"></i> How It Works</h3>
+          <ol class="hs-about-list">
+            <li>Device listens for emergency voice commands</li>
+            <li>AI analyzes speech locally</li>
+            <li>5-second cancellation timer starts</li>
+            <li>If not canceled, sends emergency alert</li>
+            <li>Contacts receive notification instantly</li>
+            <li>Emergency saved in alert history</li>
+          </ol>
+        </div>
+
+        <div class="hs-about-sec">
+          <h3><i data-lucide="wrench"></i> Technologies Used</h3>
+          <ul class="hs-about-list">
+            <li>Android Studio</li>
+            <li>Visual Studio Code</li>
+            <li>HTML, CSS, JavaScript</li>
+            <li>Python</li>
+            <li>SQLite3</li>
+            <li>ESP32</li>
+          </ul>
+        </div>
+
+        <div class="hs-team">
+          <div class="hs-team-title">Development Team</div>
+          <ul>
+            <li>April Dianne D. Escuadro</li>
+            <li>Engel B. Bellita</li>
+            <li>Josh Neo Ylaya</li>
+            <li>Lemuel Alonso</li>
+          </ul>
+          <p>Bachelor of Science in Information Technology<br />University of Cebu - Main Campus</p>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ============ CONTACT SUPPORT ============ -->
+<div class="hs-overlay" id="hsContactModal" role="dialog" aria-modal="true" aria-labelledby="hsContactTitle">
+  <div class="hs-modal">
+    <div class="hs-head">
+      <h2 class="hs-title" id="hsContactTitle">Contact Support</h2>
+      <button type="button" class="hs-close" data-hs-close aria-label="Close"><i data-lucide="x"></i></button>
+    </div>
+    <div class="hs-body">
+      <form class="hs-form" id="hsContactForm">
+        <div class="hs-field">
+          <label class="hs-label" for="hsName">Full Name</label>
+          <input type="text" id="hsName" class="hs-input" placeholder="Your full name" value="{{ user_full_name }}" required />
+        </div>
+        <div class="hs-field">
+          <label class="hs-label" for="hsEmail">Email Address</label>
+          <input type="email" id="hsEmail" class="hs-input" placeholder="your@email.com" value="{{ user_email }}" required />
+        </div>
+        <div class="hs-field">
+          <label class="hs-label" for="hsSubject">Subject</label>
+          <input type="text" id="hsSubject" class="hs-input" placeholder="What do you need help with?" maxlength="150" required />
+        </div>
+        <div class="hs-field">
+          <label class="hs-label" for="hsMessage">Message</label>
+          <textarea id="hsMessage" class="hs-input" placeholder="Tell us more..." maxlength="2000" style="min-height:100px" required></textarea>
+        </div>
+      </form>
+    </div>
+    <div class="hs-foot">
+      <button type="button" class="hs-btn hs-btn-light" data-hs-close>Cancel</button>
+      <button type="submit" class="hs-btn hs-btn-primary" id="hsContactSend" form="hsContactForm">
+        <i data-lucide="send"></i> Send
+      </button>
+    </div>
+  </div>
+</div>
