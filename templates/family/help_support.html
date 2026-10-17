@@ -753,15 +753,15 @@
         <div class="care-plan-card">
           <div class="care-plan-top">
             <span class="care-plan-title">Alisto Care Plan</span>
-            <span class="badge badge-active">
-              <i data-lucide="check-circle-2"></i> Active
+            <span class="badge badge-{{ care_plan.badge }}">
+              <i data-lucide="{{ care_plan.icon }}"></i> {{ care_plan.status }}
             </span>
           </div>
           <div class="care-plan-row">
             <i data-lucide="calendar-clock"></i>
             <span
-              >Renews in {{ care_plan.days_left }} days<br /><small
-                >{{ care_plan.renew_date }}</small
+              >{{ care_plan.headline }}<br /><small
+                >{{ care_plan.subline }}</small
               ></span
             >
           </div>
@@ -994,32 +994,6 @@
               </div>
             </div>
           </section>
-
-          <!-- ---- MY REQUESTS (support threads in the Inbox) ---- -->
-          <div class="section-heading-row">
-            <h3 class="section-heading">My Requests</h3>
-            <a class="panel-link" href="{{ url_for('inbox_page') }}">
-              Open Inbox <i data-lucide="chevron-right"></i>
-            </a>
-          </div>
-          <section class="panel my-requests">
-            {% for t in my_tickets %}
-            <a class="request-item request-row" href="{{ url_for('inbox_page', t=t.id) }}">
-              <span class="request-no">{{ t.ticket_no }}</span>
-              <span class="request-subject">{{ t.subject }}</span>
-              {% if t.unread %}
-              <span class="request-new">{{ t.unread }} new</span>
-              {% endif %}
-              <span class="request-status {{ t.status }}">{{ t.status_label }}</span>
-              <span class="request-date">{{ t.created }}</span>
-            </a>
-            {% else %}
-            <p class="request-empty">
-              You haven't sent any reports or messages yet.
-            </p>
-            {% endfor %}
-          </section>
-
           <footer class="main-footer">
             &copy; {{ current_year }} Alisto. All rights reserved.
           </footer>

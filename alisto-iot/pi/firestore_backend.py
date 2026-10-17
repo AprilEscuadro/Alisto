@@ -205,7 +205,8 @@ def set_device_sim_number(serial, sim_number):
     manually in the app's Device Information screen instead."""
     try:
         db = _get_db()
-        db.collection("device").document(serial).update({"simNumber": sim_number})
+        db.collection("device").document(
+            serial).update({"simNumber": sim_number})
     except Exception as e:
         print(f"firestore: failed to set SIM number: {e}")
 
@@ -287,7 +288,7 @@ def get_or_create_phrase(phrase_text, category):
 
 
 def write_voice_detection_log(device_id, alert_id, detected_phrase, is_emergency,
-                               confidence_score=None, noise_level=None):
+                              confidence_score=None, noise_level=None):
     """One row per recognized utterance. confidence_score/noise_level are
     passed through as-is (currently always None -- see module docstring)
     rather than faked, so the field is honest about what's actually
@@ -326,8 +327,8 @@ def write_status_history(alert_id, status, remarks=None):
 
 
 def write_emergency_alert(elder_id, device_id, title, lines, trigger_type="VOICE",
-                           location_id=None, phrase_id=None, alert_status="PENDING",
-                           resolution_note=None):
+                          location_id=None, phrase_id=None, alert_status="PENDING",
+                          resolution_note=None):
     """Logs one emergency into emergency_alert so it shows up in the app's
     History screen, the Home screen's alert count/last-alert card, and
     the BHW/family website. `lines` is a list of short strings shown as
@@ -384,7 +385,8 @@ def update_emergency_alert(alert_id, **fields):
         db = _get_db()
         db.collection("emergency_alert").document(alert_id).update(fields)
         if fields.get("alert_status") == "CANCELLED":
-            write_status_history(alert_id, "CANCELLED", remarks=fields.get("resolution_note"))
+            write_status_history(alert_id, "CANCELLED",
+                                 remarks=fields.get("resolution_note"))
     except Exception as e:
         print(f"firestore: failed to update alert {alert_id}: {e}")
 
@@ -503,10 +505,12 @@ def get_active_medicine_reminders(elder_id):
             with open(MEDICINE_CACHE_PATH, "w") as f:
                 json.dump(reminders, f)
         except OSError as e:
-            print(f"firestore: failed to cache medicine reminders locally: {e}")
+            print(
+                f"firestore: failed to cache medicine reminders locally: {e}")
         return reminders
     except Exception as e:
-        print(f"firestore: failed to read medicine reminders ({e}) -- falling back to local cache")
+        print(
+            f"firestore: failed to read medicine reminders ({e}) -- falling back to local cache")
         try:
             with open(MEDICINE_CACHE_PATH) as f:
                 return json.load(f)
@@ -525,7 +529,8 @@ def mark_medicine_notified(reminder_id):
             "updated_at": firestore.SERVER_TIMESTAMP,
         })
     except Exception as e:
-        print(f"firestore: failed to mark reminder {reminder_id} notified: {e}")
+        print(
+            f"firestore: failed to mark reminder {reminder_id} notified: {e}")
 
 
 # ---------------------------------------------------------------------
@@ -559,7 +564,8 @@ def get_family_fcm_tokens(elder_id):
             family_user_id = link.to_dict().get("family_user_id")
             if not family_user_id:
                 continue
-            user_doc = db.collection("user_account").document(family_user_id).get()
+            user_doc = db.collection(
+                "user_account").document(family_user_id).get()
             if user_doc.exists:
                 token = user_doc.to_dict().get("fcm_token")
                 if token and token not in seen:
@@ -648,18 +654,24 @@ def get_emergency_contacts(elder_id):
             .get()
         )
         contacts = [
-            {"contact_id": d.id, "contact_num": _normalize_ph_number(d.to_dict().get("contact_num"))}
+            {"contact_id": d.id, "contact_num": _normalize_ph_number(
+                d.to_dict().get("contact_num"))}
             for d in docs
             if d.to_dict().get("contact_num")
+            # Contacts removed in the web app are only archived (soft delete).
+            and not d.to_dict().get("deleted_at")
+            and d.to_dict().get("status") != "INACTIVE"
         ]
         try:
             with open(EMERGENCY_CONTACTS_CACHE_PATH, "w") as f:
                 json.dump(contacts, f)
         except OSError as e:
-            print(f"firestore: failed to cache emergency contacts locally: {e}")
+            print(
+                f"firestore: failed to cache emergency contacts locally: {e}")
         return contacts
     except Exception as e:
-        print(f"firestore: failed to read emergency contacts ({e}) -- falling back to local cache")
+        print(
+            f"firestore: failed to read emergency contacts ({e}) -- falling back to local cache")
         try:
             with open(EMERGENCY_CONTACTS_CACHE_PATH) as f:
                 return json.load(f)

@@ -307,7 +307,7 @@ def get_plan_qr_codes():
 
     # Falls back to this until the admin sets a different QR per plan length
     # in /admin/subscriptions.
-    default_gcash_name = 'ALISTO CHUCHU'
+    default_gcash_name = 'ALISTO'
     default_qr_image = '/static/images/alisto_qr.jpg'
 
     for months in PLAN_MONTH_OPTIONS:

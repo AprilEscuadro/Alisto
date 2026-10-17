@@ -1492,3 +1492,24 @@ body.modal-open {
   background: var(--white);
   color: var(--blue);
 }
+
+/* Care plan status badges (sidebar card) */
+.badge-warning {
+  background: var(--amber-bg);
+  color: var(--amber);
+}
+
+.badge-danger {
+  background: var(--red-bg);
+  color: #dc2626;
+}
+
+.badge-info {
+  background: var(--blue-light);
+  color: var(--blue);
+}
+
+.badge-muted {
+  background: var(--bg);
+  color: var(--muted);
+}

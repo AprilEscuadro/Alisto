@@ -80,8 +80,9 @@ def inject_account():
     }
 
 
-# AFTER (tinuod na, Firestore + auto-picks the family's elder):
 def _get_care_plan(elder_id=None):
+    """Care plan card in the family sidebar: the real status of the plan
+    (Active, Expiring, Expired, Pending, No Plan), not a fixed "Active"."""
     if elder_id is None and 'user_id' in session:
         elders = _linked_elders_for_dashboard()
         elder_id = next(iter(elders), None)
@@ -90,9 +91,23 @@ def _get_care_plan(elder_id=None):
     if elder_id:
         doc = db.collection('subscription').document(elder_id).get()
         sub = doc.to_dict() or {} if doc.exists else {}
-    state = cps.subscription_state(sub)
+    has_pending = bool(
+        elder_id) and elder_id in cps.pending_elder_ids([elder_id])
+    state = cps.subscription_state(sub, has_pending=has_pending)
+
+    if state['label'] == 'Pending':
+        subline = 'Waiting for admin approval'
+    elif state['status'] in ('active', 'expiring'):
+        subline = f"Until {state['paid_until']}"
+    elif state['status'] == 'expired':
+        subline = f"Ended {state['paid_until']}"
+    else:
+        subline = 'Pay to start a plan'
+
     return {
-        'status': state['label'], 'days_left': state['days_left'],
+        'status': state['label'], 'badge': state['badge'], 'icon': state['icon'],
+        'headline': state['headline'], 'subline': subline,
+        'days_left': state['days_left'],
         'renew_date': state['paid_until'], 'price': plan['price'],
         'currency': plan.get('currency', 'PHP'),
     }
@@ -736,8 +751,110 @@ def my_loved_ones():
         current_year=datetime.now().year,
     )
 
+# ---------- ADD A LOVED ONE: device first ----------
+#
+# The "Add a loved one" window starts with the Device ID (typed or scanned).
+#   - device already registered to an elder -> show that elder and let this
+#     family member link to them (POST /loved-ones/join)
+#   - device free, or no device yet        -> fill in the elder's details
+#     (POST /loved-ones/add)
+
+
+@app.route('/loved-ones/check-device', methods=['POST'])
+def loved_one_check_device():
+    if 'user_id' not in session:
+        return jsonify(success=False, message='Please log in first.'), 401
+    serial = _clean_device_id(
+        (request.get_json(silent=True) or {}).get('device_id'))
+    if not serial:
+        return jsonify(success=False, message='Enter the Device ID.'), 400
+
+    doc = db.collection('device').document(serial).get()
+    if not doc.exists:
+        return jsonify(success=False,
+                       message='No matching Device ID found. Check the sticker or scan the QR again.'), 404
+    device = doc.to_dict() or {}
+    if not device.get('is_registered'):
+        return jsonify(success=True, status='new', device_id=serial)
+
+    elder_id = device.get('elder_id')
+    elder_doc = db.collection('elder_profile').document(
+        elder_id).get() if elder_id else None
+    elder = (elder_doc.to_dict() or {}
+             ) if elder_doc and elder_doc.exists else {}
+    if not elder or elder.get('deleted_at'):
+        return jsonify(success=False,
+                       message='This device can\'t be linked right now. Please contact ALISTO Support.'), 409
+
+    already = list(db.collection('family_elder_link')
+                   .where('family_user_id', '==', session['user_id'])
+                   .where('elder_id', '==', elder_id).limit(1).stream())
+    if already:
+        return jsonify(success=False,
+                       message=f"{elder.get('full_name') or 'This loved one'} is already in your list."), 409
+
+    count = _family_link_count(elder_id)
+    if count >= MAX_FAMILY_PER_DEVICE:
+        return jsonify(success=False,
+                       message=f'This device already has the maximum of {MAX_FAMILY_PER_DEVICE} family members.'), 409
+
+    return jsonify(success=True, status='existing', device_id=serial, elder={
+        'name': elder.get('full_name') or 'Unnamed',
+        'initials': _initials(elder.get('full_name') or '?'),
+        'date_of_birth': elder.get('date_of_birth') or '',
+        'family_count': count,
+        'family_limit': MAX_FAMILY_PER_DEVICE,
+    })
+
+
+@app.route('/loved-ones/join', methods=['POST'])
+def loved_one_join():
+    """Link this family account to the elder who already uses the device."""
+    if 'user_id' not in session:
+        return jsonify(success=False, message='Please log in first.'), 401
+    data = request.get_json(silent=True) or {}
+    serial = _clean_device_id(data.get('device_id'))
+    relationship = (data.get('relationship') or '').strip()
+    if relationship == 'Other':
+        relationship = (data.get('relationship_other') or '').strip()
+    if not relationship:
+        return jsonify(success=False, field='relationship',
+                       message='Choose how you are related to them.'), 400
+
+    doc = db.collection('device').document(serial).get() if serial else None
+    device = (doc.to_dict() or {}) if doc and doc.exists else {}
+    elder_id = device.get('elder_id') if device.get('is_registered') else None
+    elder_doc = db.collection('elder_profile').document(
+        elder_id).get() if elder_id else None
+    if not elder_doc or not elder_doc.exists or (elder_doc.to_dict() or {}).get('deleted_at'):
+        return jsonify(success=False, message='This device is no longer linked to anyone. Check it again.'), 409
+
+    if list(db.collection('family_elder_link')
+            .where('family_user_id', '==', session['user_id'])
+            .where('elder_id', '==', elder_id).limit(1).stream()):
+        return jsonify(success=False, message='This loved one is already in your list.'), 409
+    if _family_link_count(elder_id) >= MAX_FAMILY_PER_DEVICE:
+        return jsonify(success=False,
+                       message=f'This device already has the maximum of {MAX_FAMILY_PER_DEVICE} family members.'), 409
+
+    name = (elder_doc.to_dict() or {}).get('full_name') or 'Loved one'
+    db.collection('family_elder_link').add({
+        'family_user_id': session['user_id'],
+        'elder_id': elder_id,
+        'relationship': relationship[:60],
+        'created_at': firestore.SERVER_TIMESTAMP,
+    })
+    _log_activity(
+        elder_id, 'device',
+        title=f"{session.get('full_name') or 'A family member'} joined {name}'s ALISTO",
+        detail=f'Linked through device {serial}',
+        badge='Linked', badge_class='success',
+        device_id=serial, actor_user_id=session['user_id'],
+    )
+    return jsonify(success=True, name=name, message=f'{name} has been added to your loved ones.')
 
 # ---------- ADD LOVED ONE ----------
+
 
 @app.route('/loved-ones/add', methods=['POST'])
 def add_loved_one():
@@ -755,6 +872,7 @@ def add_loved_one():
     province = request.form.get('province', '').strip()
     zip_code = request.form.get('zip_code', '').strip()
     device_id = _clean_device_id(request.form.get('device_id'))
+    occupation = request.form.get('occupation', '').strip()[:80]
 
     if not full_name:
         return jsonify(success=False, field='full_name',
@@ -794,6 +912,7 @@ def add_loved_one():
             'full_name': full_name,
             'date_of_birth': dob or None,
             'address': address,
+            'occupation': occupation or None,
             'photo_url': None,
             'created_at': firestore.SERVER_TIMESTAMP,
             'created_by': session['user_id'],
@@ -823,7 +942,8 @@ def add_loved_one():
             actor_user_id=session['user_id'],
         )
 
-        return jsonify(success=True, message=f'{full_name} has been added to your loved ones.')
+        return jsonify(success=True, name=full_name,
+                       message=f'{full_name} has been added to your loved ones.')
 
     except Exception as e:
         return jsonify(success=False, message=f'Error: {str(e)}'), 500
@@ -881,6 +1001,187 @@ def loved_one_details_json(elder_id):
     elder = _loved_one_snapshot(
         elder_id, elder_data, link_data, has_open_alert)
     return jsonify(success=True, elder=elder)
+
+# ---------- EMERGENCY CONTACTS ----------
+#
+# emergency_contact/{id} (ERD: EMERGENCY_CONTACT)
+#   elder_id, full_name, relationship, contact_num ('09XXXXXXXXX'),
+#   email_add, contact_type ('FAMILY' | 'BHW' | 'OTHER'), status ('ACTIVE' |
+#   'INACTIVE'), created_by, created_at, updated_at, deleted_at, is_archived
+#
+# The ALISTO device (alisto-iot/pi) texts every ACTIVE contact of the elder
+# during an emergency, so the field names here must match what it reads
+# (full_name, contact_num). Deleting only archives the contact (soft delete).
+
+
+CONTACT_TYPES = ('FAMILY', 'BHW', 'OTHER')
+MAX_CONTACTS_PER_ELDER = 10
+
+
+def _clean_ph_mobile(raw):
+    """'0917 123 4567' / '+639171234567' / '639171234567' -> '09171234567'.
+    Returns None if it isn't a PH mobile number."""
+    digits = ''.join(ch for ch in (raw or '') if ch.isdigit())
+    if digits.startswith('63') and len(digits) == 12:
+        digits = '0' + digits[2:]
+    if len(digits) == 11 and digits.startswith('09'):
+        return digits
+    return None
+
+
+def _active_contacts(elder_id):
+    """[(doc_id, data)] for the elder's contacts that the device will text."""
+    rows = []
+    for doc in db.collection('emergency_contact').where('elder_id', '==', elder_id).stream():
+        c = doc.to_dict() or {}
+        if c.get('deleted_at') or c.get('is_archived') or c.get('status') == 'INACTIVE':
+            continue
+        rows.append((doc.id, c))
+    rows.sort(key=lambda r: ((r[1].get('full_name') or '').lower()))
+    return rows
+
+
+def _contact_view(doc_id, c):
+    return {
+        'id': doc_id,
+        'full_name': c.get('full_name') or '',
+        'relationship': c.get('relationship') or '',
+        'contact_num': c.get('contact_num') or '',
+        'email_add': c.get('email_add') or '',
+        'contact_type': c.get('contact_type') or 'OTHER',
+    }
+
+
+def _bhws_for_address(address):
+    """Approved BHWs assigned to the barangay in this address."""
+    from bhw_routes import _in_barangay
+    barangays = {}
+    for doc in db.collection('bhw_profile').stream():
+        p = doc.to_dict() or {}
+        if p.get('user_id') and p.get('barangay_assigned'):
+            barangays[p['user_id']] = p
+    rows = []
+    for doc in db.collection('user_account').where('role', '==', 'bhw').stream():
+        u = doc.to_dict() or {}
+        p = barangays.get(doc.id)
+        if (not p or u.get('deleted_at') or u.get('is_archived')
+                or u.get('approval_status') != 'approved'):
+            continue
+        if _in_barangay(address, p['barangay_assigned']):
+            rows.append({'id': doc.id, 'full_name': u.get('full_name') or 'BHW',
+                         'contact_num': u.get('contact_number') or '',
+                         'barangay': p['barangay_assigned'],
+                         'health_center': p.get('health_center') or ''})
+    return rows
+
+
+def _contact_form():
+    """Validated fields from the JSON body, or (None, error message)."""
+    data = request.get_json(silent=True) or {}
+    full_name = (data.get('full_name') or '').strip()[:100]
+    relationship = (data.get('relationship') or '').strip()[:60]
+    number = _clean_ph_mobile(data.get('contact_num'))
+    email = (data.get('email_add') or '').strip()[:120]
+    contact_type = (data.get('contact_type') or 'OTHER').upper()
+    if not full_name:
+        return None, 'Enter the contact\'s full name.'
+    if not number:
+        return None, 'Enter a valid mobile number, like 09171234567.'
+    if email and ('@' not in email or '.' not in email.split('@')[-1]):
+        return None, 'Enter a valid email address, or leave it blank.'
+    if contact_type not in CONTACT_TYPES:
+        contact_type = 'OTHER'
+    return {'full_name': full_name, 'relationship': relationship,
+            'contact_num': number, 'email_add': email,
+            'contact_type': contact_type}, None
+
+
+@app.route('/loved-ones/<elder_id>/contacts')
+def loved_one_contacts(elder_id):
+    if 'user_id' not in session:
+        return jsonify(success=False, message='Please log in first.'), 401
+    elder_doc, _ = _get_elder_if_linked(elder_id)
+    if not elder_doc:
+        return jsonify(success=False, message='Loved one not found.'), 404
+    try:
+        contacts = [_contact_view(i, c) for i, c in _active_contacts(elder_id)]
+        bhws = _bhws_for_address((elder_doc.to_dict() or {}).get('address'))
+    except Exception as e:
+        return jsonify(success=False, message=f'Error: {str(e)}'), 500
+    return jsonify(success=True, contacts=contacts, bhws=bhws,
+                   max_contacts=MAX_CONTACTS_PER_ELDER)
+
+
+@app.route('/loved-ones/<elder_id>/contacts/add', methods=['POST'])
+def loved_one_contact_add(elder_id):
+    if 'user_id' not in session:
+        return jsonify(success=False, message='Please log in first.'), 401
+    if not _get_elder_if_linked(elder_id)[0]:
+        return jsonify(success=False, message='Loved one not found.'), 404
+    fields, error = _contact_form()
+    if error:
+        return jsonify(success=False, message=error), 400
+
+    existing = _active_contacts(elder_id)
+    if len(existing) >= MAX_CONTACTS_PER_ELDER:
+        return jsonify(success=False,
+                       message=f'You can add up to {MAX_CONTACTS_PER_ELDER} contacts.'), 400
+    if any(c.get('contact_num') == fields['contact_num'] for _, c in existing):
+        return jsonify(success=False, message='That number is already a contact.'), 409
+
+    db.collection('emergency_contact').add({
+        **fields, 'elder_id': elder_id, 'status': 'ACTIVE',
+        'created_by': session['user_id'],
+        'created_at': firestore.SERVER_TIMESTAMP,
+        'updated_at': firestore.SERVER_TIMESTAMP,
+        'deleted_at': None, 'is_archived': False,
+    })
+    return jsonify(success=True, message='Contact added.')
+
+
+def _contact_of_elder(elder_id, contact_id):
+    ref = db.collection('emergency_contact').document(contact_id)
+    doc = ref.get()
+    c = (doc.to_dict() or {}) if doc.exists else {}
+    if c.get('elder_id') != elder_id or c.get('deleted_at'):
+        return None
+    return ref
+
+
+@app.route('/loved-ones/<elder_id>/contacts/<contact_id>/update', methods=['POST'])
+def loved_one_contact_update(elder_id, contact_id):
+    if 'user_id' not in session:
+        return jsonify(success=False, message='Please log in first.'), 401
+    if not _get_elder_if_linked(elder_id)[0]:
+        return jsonify(success=False, message='Loved one not found.'), 404
+    ref = _contact_of_elder(elder_id, contact_id)
+    if not ref:
+        return jsonify(success=False, message='Contact not found.'), 404
+    fields, error = _contact_form()
+    if error:
+        return jsonify(success=False, message=error), 400
+    if any(i != contact_id and c.get('contact_num') == fields['contact_num']
+           for i, c in _active_contacts(elder_id)):
+        return jsonify(success=False, message='That number is already a contact.'), 409
+
+    ref.update({**fields, 'updated_at': firestore.SERVER_TIMESTAMP})
+    return jsonify(success=True, message='Contact updated.')
+
+
+@app.route('/loved-ones/<elder_id>/contacts/<contact_id>/delete', methods=['POST'])
+def loved_one_contact_delete(elder_id, contact_id):
+    if 'user_id' not in session:
+        return jsonify(success=False, message='Please log in first.'), 401
+    if not _get_elder_if_linked(elder_id)[0]:
+        return jsonify(success=False, message='Loved one not found.'), 404
+    ref = _contact_of_elder(elder_id, contact_id)
+    if not ref:
+        return jsonify(success=False, message='Contact not found.'), 404
+    # Soft delete: kept for the record, but the device stops texting it.
+    ref.update({'status': 'INACTIVE', 'is_archived': True,
+                'deleted_at': firestore.SERVER_TIMESTAMP,
+                'updated_at': firestore.SERVER_TIMESTAMP})
+    return jsonify(success=True, message='Contact removed.')
 
 
 @app.route('/loved-ones/<elder_id>/link-device', methods=['POST'])
@@ -2416,13 +2717,11 @@ def _notify_list(elder_id, key):
 
         if key == 'emergency_alerts':
             numbers = {p['contact_number'] for p in people}
-            for doc in (db.collection('emergency_contact')
-                        .where('elder_id', '==', elder_id).stream()):
-                c = doc.to_dict() or {}
-                if c.get('contact_number') and c['contact_number'] not in numbers:
-                    numbers.add(c['contact_number'])
-                    people.append({'name': c.get('contact_name') or '',
-                                   'contact_number': c['contact_number'],
+            for _, c in _active_contacts(elder_id):
+                if c.get('contact_num') and c['contact_num'] not in numbers:
+                    numbers.add(c['contact_num'])
+                    people.append({'name': c.get('full_name') or '',
+                                   'contact_number': c['contact_num'],
                                    'type': 'emergency_contact'})
     except Exception as e:
         print(f'[settings] could not build notify list for {elder_id}: {e}')
@@ -2927,7 +3226,6 @@ def help_support():
     user_doc = db.collection('user_account').document(session['user_id']).get()
     user = (user_doc.to_dict() or {}) if user_doc.exists else {}
     faqs = _help_faqs()
-    my_tickets, _ = _my_tickets(limit=5)
 
     elders = _linked_elders_for_dashboard()
     open_alerts = [a for a in _alerts_for_elders(
@@ -2939,7 +3237,6 @@ def help_support():
         care_plan=_get_care_plan(),
         faqs=faqs, top_faqs=faqs[:4],
         contact_info=_support_contact(),
-        my_tickets=my_tickets,
         user_email=user.get('email') or '',
         user_full_name=user.get('full_name') or session['full_name'],
         notification_count=len(open_alerts),

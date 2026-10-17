@@ -1,0 +1,1142 @@
+/* ==========================================================================
+   My Loved Ones: "Add a loved one" and "Loved one details" windows.
+   iOS-inspired, landscape layout. Everything is scoped to the two windows
+   (#addLovedOneModal, #viewLovedOneModal) and lo-* classes, so the rest of
+   the page keeps its own styles.
+   ========================================================================== */
+
+#addLovedOneModal,
+#viewLovedOneModal {
+    --lo-accent: #2563eb;
+    --lo-accent-soft: rgba(37, 99, 235, 0.1);
+    --lo-accent-ring: rgba(37, 99, 235, 0.18);
+    --lo-ink: #111827;
+    --lo-text: #1f2937;
+    --lo-muted: #6b7280;
+    --lo-faint: #9ca3af;
+    --lo-fill: #f2f4f7;
+    --lo-fill-strong: #eceff3;
+    --lo-group: #f7f8fa;
+    --lo-hair: rgba(17, 24, 39, 0.08);
+    --lo-green: #16a34a;
+    --lo-green-soft: rgba(22, 163, 74, 0.1);
+    --lo-red: #dc2626;
+    --lo-red-soft: rgba(220, 38, 38, 0.08);
+    --lo-radius-sheet: 28px;
+    --lo-radius-group: 18px;
+    --lo-radius-field: 12px;
+    --lo-shadow: 0 1px 1px rgba(17, 24, 39, 0.04), 0 30px 80px -20px rgba(17, 24, 39, 0.35);
+    --lo-ease: cubic-bezier(0.2, 0.8, 0.2, 1);
+
+    padding: 32px;
+    background: rgba(17, 24, 39, 0.28);
+    -webkit-backdrop-filter: blur(14px) saturate(140%);
+    backdrop-filter: blur(14px) saturate(140%);
+    color: var(--lo-text);
+}
+
+/* ---------------- the sheet ---------------- */
+.lo-sheet {
+    position: relative;
+    width: 100%;
+    max-height: calc(100vh - 64px);
+    background: rgba(255, 255, 255, 0.96);
+    border-radius: var(--lo-radius-sheet);
+    box-shadow: var(--lo-shadow);
+    overflow: hidden;
+    display: flex;
+}
+
+.lo-sheet-add {
+    max-width: 960px;
+    min-height: 580px;
+}
+
+.lo-sheet-view {
+    max-width: 1040px;
+    flex-direction: column;
+}
+
+@media (prefers-reduced-motion: no-preference) {
+    .modal-overlay.open .lo-sheet {
+        animation: lo-rise 0.32s var(--lo-ease);
+    }
+
+    .lo-pane:not([hidden]) {
+        animation: lo-fade 0.24s var(--lo-ease);
+    }
+}
+
+@keyframes lo-rise {
+    from {
+        opacity: 0;
+        transform: translateY(16px) scale(0.985);
+    }
+
+    to {
+        opacity: 1;
+        transform: none;
+    }
+}
+
+@keyframes lo-fade {
+    from {
+        opacity: 0;
+        transform: translateX(8px);
+    }
+
+    to {
+        opacity: 1;
+        transform: none;
+    }
+}
+
+.lo-visually-hidden {
+    position: absolute !important;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip: rect(0 0 0 0);
+    white-space: nowrap;
+}
+
+/* close button: small grey circle with an x */
+.lo-close {
+    position: absolute;
+    top: 18px;
+    right: 18px;
+    z-index: 2;
+    width: 32px;
+    height: 32px;
+    border: none;
+    border-radius: 50%;
+    background: var(--lo-fill);
+    color: var(--lo-muted);
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    transition: background 0.15s, color 0.15s, transform 0.1s;
+}
+
+.lo-close:hover {
+    background: var(--lo-fill-strong);
+    color: var(--lo-ink);
+}
+
+.lo-close:active {
+    transform: scale(0.94);
+}
+
+.lo-close svg {
+    width: 16px;
+    height: 16px;
+}
+
+#addLovedOneModal :focus-visible,
+#viewLovedOneModal :focus-visible {
+    outline: 2px solid var(--lo-accent);
+    outline-offset: 2px;
+}
+
+/* fields already show a soft focus ring, so no extra outline on them */
+#addLovedOneModal .lo-input:focus-visible,
+#viewLovedOneModal .view-lo-edit-input:focus-visible,
+#viewLovedOneModal .link-device-input:focus-visible,
+#viewLovedOneModal .ec-field input:focus-visible,
+#viewLovedOneModal .ec-field select:focus-visible {
+    outline: none;
+}
+
+/* ---------------- buttons ---------------- */
+.lo-btn {
+    height: 44px;
+    padding: 0 22px;
+    border: none;
+    border-radius: 999px;
+    font-family: inherit;
+    font-size: 14.5px;
+    font-weight: 600;
+    letter-spacing: -0.01em;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    cursor: pointer;
+    transition: background 0.15s, box-shadow 0.15s, transform 0.1s, opacity 0.15s;
+}
+
+.lo-btn:active:not(:disabled) {
+    transform: scale(0.97);
+}
+
+.lo-btn:disabled {
+    cursor: progress;
+    opacity: 0.75;
+}
+
+.lo-btn[hidden] {
+    display: none;
+}
+
+.lo-btn-primary {
+    min-width: 160px;
+    background: var(--lo-accent);
+    color: #fff;
+    box-shadow: 0 8px 20px -8px rgba(37, 99, 235, 0.6);
+}
+
+.lo-btn-primary:hover:not(:disabled) {
+    background: #1d4ed8;
+}
+
+.lo-btn-ghost {
+    background: transparent;
+    color: var(--lo-muted);
+}
+
+.lo-btn-ghost:hover {
+    background: var(--lo-fill);
+    color: var(--lo-ink);
+}
+
+.lo-btn-glass {
+    background: rgba(255, 255, 255, 0.18);
+    color: #fff;
+    -webkit-backdrop-filter: blur(10px);
+    backdrop-filter: blur(10px);
+}
+
+.lo-link {
+    align-self: flex-start;
+    margin-top: 14px;
+    padding: 6px 0;
+    border: none;
+    background: none;
+    color: var(--lo-accent);
+    font-family: inherit;
+    font-size: 13.5px;
+    font-weight: 600;
+    cursor: pointer;
+}
+
+.lo-link:hover {
+    text-decoration: underline;
+}
+
+/* ---------------- alerts ---------------- */
+.lo-alert,
+#viewLovedOneModal .lo-alert-legacy {
+    display: none;
+    margin-bottom: 16px;
+    padding: 11px 14px;
+    border-radius: var(--lo-radius-field);
+    font-size: 13px;
+    font-weight: 600;
+    line-height: 1.45;
+}
+
+.lo-alert.show,
+#viewLovedOneModal .lo-alert-legacy.show {
+    display: block;
+}
+
+.lo-alert.error,
+#viewLovedOneModal .lo-alert-legacy.error {
+    background: var(--lo-red-soft);
+    color: #b91c1c;
+}
+
+.lo-alert.success,
+#viewLovedOneModal .lo-alert-legacy.success {
+    background: var(--lo-green-soft);
+    color: #15803d;
+}
+
+/* ============================ ADD A LOVED ONE ============================ */
+
+/* left rail */
+.lo-rail {
+    flex: 0 0 280px;
+    padding: 36px 30px 30px;
+    background:
+        radial-gradient(120% 60% at 0% 0%, rgba(37, 99, 235, 0.1), transparent 60%),
+        linear-gradient(180deg, #f6f8fc, #eef2f8);
+    border-right: 1px solid var(--lo-hair);
+    display: flex;
+    flex-direction: column;
+}
+
+.lo-rail-icon {
+    width: 44px;
+    height: 44px;
+    border-radius: 14px;
+    background: #fff;
+    color: var(--lo-accent);
+    box-shadow: 0 6px 16px -8px rgba(17, 24, 39, 0.25);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    margin-bottom: 18px;
+}
+
+.lo-rail-icon svg {
+    width: 22px;
+    height: 22px;
+}
+
+.lo-rail-title {
+    margin: 0 0 6px;
+    font-family: "Nunito", "Inter", sans-serif;
+    font-size: 23px;
+    font-weight: 800;
+    letter-spacing: -0.02em;
+    color: var(--lo-ink);
+}
+
+.lo-rail-sub {
+    margin: 0 0 30px;
+    font-size: 13.5px;
+    line-height: 1.5;
+    color: var(--lo-muted);
+}
+
+.lo-steps {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+
+.lo-step {
+    position: relative;
+    display: flex;
+    align-items: flex-start;
+    gap: 12px;
+    padding: 10px 8px;
+    border-radius: 14px;
+    color: var(--lo-faint);
+    transition: background 0.2s, color 0.2s;
+}
+
+.lo-step strong {
+    display: block;
+    font-size: 14px;
+    font-weight: 600;
+    color: inherit;
+}
+
+.lo-step small {
+    display: block;
+    margin-top: 2px;
+    font-size: 12px;
+    color: var(--lo-faint);
+}
+
+.lo-step-dot {
+    flex: 0 0 28px;
+    height: 28px;
+    border-radius: 50%;
+    background: #fff;
+    box-shadow: inset 0 0 0 1.5px #d5dbe5;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 12.5px;
+    font-weight: 700;
+    color: var(--lo-faint);
+    transition: background 0.2s, box-shadow 0.2s, color 0.2s;
+}
+
+.lo-step-dot svg {
+    display: none;
+    width: 14px;
+    height: 14px;
+}
+
+.lo-step.is-current {
+    background: rgba(255, 255, 255, 0.75);
+    color: var(--lo-ink);
+}
+
+.lo-step.is-current small {
+    color: var(--lo-muted);
+}
+
+.lo-step.is-current .lo-step-dot {
+    background: var(--lo-accent);
+    box-shadow: none;
+    color: #fff;
+}
+
+.lo-step.is-done {
+    color: var(--lo-text);
+}
+
+.lo-step.is-done .lo-step-dot {
+    background: var(--lo-green);
+    box-shadow: none;
+    color: #fff;
+}
+
+.lo-step.is-done .lo-step-dot svg {
+    display: block;
+}
+
+.lo-step.is-done .lo-step-dot b {
+    display: none;
+}
+
+.lo-rail-note {
+    margin: auto 0 0;
+    padding-top: 24px;
+    display: flex;
+    gap: 8px;
+    font-size: 12px;
+    line-height: 1.5;
+    color: var(--lo-muted);
+}
+
+.lo-rail-note svg {
+    flex-shrink: 0;
+    width: 15px;
+    height: 15px;
+    margin-top: 1px;
+    color: var(--lo-green);
+}
+
+/* right side */
+.lo-main {
+    position: relative;
+    flex: 1;
+    min-width: 0;
+    padding: 40px 40px 28px;
+    display: flex;
+    flex-direction: column;
+    overflow-y: auto;
+}
+
+.lo-pane {
+    display: flex;
+    flex-direction: column;
+}
+
+.lo-pane[hidden] {
+    display: none;
+}
+
+.lo-title {
+    margin: 0 0 6px;
+    font-family: "Nunito", "Inter", sans-serif;
+    font-size: 22px;
+    font-weight: 800;
+    letter-spacing: -0.02em;
+    color: var(--lo-ink);
+}
+
+.lo-sub {
+    margin: 0 0 26px;
+    max-width: 52ch;
+    font-size: 14px;
+    line-height: 1.55;
+    color: var(--lo-muted);
+}
+
+.lo-title-row {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 16px;
+    padding-right: 40px;
+}
+
+.lo-actions {
+    margin-top: auto;
+    padding-top: 28px;
+    display: flex;
+    justify-content: flex-end;
+    align-items: center;
+    gap: 8px;
+}
+
+.lo-actions #addLovedOneBack {
+    margin-right: auto;
+}
+
+/* fields */
+.lo-label {
+    display: block;
+    margin-bottom: 7px;
+    font-size: 12.5px;
+    font-weight: 600;
+    color: var(--lo-muted);
+}
+
+.lo-label em {
+    font-style: normal;
+    font-weight: 500;
+    color: var(--lo-faint);
+    margin-left: 4px;
+}
+
+.lo-input {
+    width: 100%;
+    height: 46px;
+    padding: 0 14px;
+    border: 1px solid transparent;
+    border-radius: var(--lo-radius-field);
+    background: var(--lo-fill);
+    font-family: inherit;
+    font-size: 14.5px;
+    color: var(--lo-ink);
+    outline: none;
+    transition: background 0.15s, border-color 0.15s, box-shadow 0.15s;
+    -webkit-appearance: none;
+    appearance: none;
+}
+
+select.lo-input {
+    padding-right: 36px;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%236b7280' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");
+    background-repeat: no-repeat;
+    background-position: right 14px center;
+}
+
+.lo-input::placeholder {
+    color: var(--lo-faint);
+}
+
+.lo-input:hover {
+    background-color: var(--lo-fill-strong);
+}
+
+.lo-input:focus {
+    background-color: #fff;
+    border-color: var(--lo-accent);
+    box-shadow: 0 0 0 4px var(--lo-accent-ring);
+}
+
+.lo-field.has-error .lo-input,
+.lo-input.has-error {
+    background-color: #fff;
+    border-color: var(--lo-red);
+    box-shadow: 0 0 0 4px var(--lo-red-soft);
+}
+
+/* device input with the scan button inside (like the registration page) */
+.lo-input-wrap {
+    position: relative;
+    display: flex;
+    align-items: center;
+    max-width: 520px;
+}
+
+.lo-input-wrap>svg {
+    position: absolute;
+    left: 16px;
+    width: 18px;
+    height: 18px;
+    color: var(--lo-faint);
+    pointer-events: none;
+}
+
+.lo-input-wrap .lo-input {
+    height: 56px;
+    padding: 0 60px 0 46px;
+    font-size: 16px;
+    font-weight: 600;
+    letter-spacing: 0.02em;
+    border-radius: 16px;
+}
+
+.lo-input-wrap.has-error .lo-input {
+    background: #fff;
+    border-color: var(--lo-red);
+    box-shadow: 0 0 0 4px var(--lo-red-soft);
+}
+
+.lo-scan-btn {
+    position: absolute;
+    right: 8px;
+    width: 40px;
+    height: 40px;
+    border: none;
+    border-radius: 12px;
+    background: var(--lo-accent-soft);
+    color: var(--lo-accent);
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    transition: background 0.15s, transform 0.1s;
+}
+
+.lo-scan-btn:hover {
+    background: rgba(37, 99, 235, 0.16);
+}
+
+.lo-scan-btn:active {
+    transform: scale(0.94);
+}
+
+.lo-scan-btn svg {
+    width: 20px;
+    height: 20px;
+}
+
+/* camera */
+.lo-scanner {
+    position: relative;
+    margin-top: 16px;
+    max-width: 520px;
+    aspect-ratio: 16 / 10;
+    border-radius: 20px;
+    overflow: hidden;
+    background: #0b0f17;
+    display: flex;
+    align-items: flex-end;
+    justify-content: center;
+}
+
+.lo-scanner[hidden] {
+    display: none;
+}
+
+.lo-scanner video {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+}
+
+.lo-scan-frame {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    width: 46%;
+    aspect-ratio: 1;
+    transform: translate(-50%, -58%);
+    border-radius: 22px;
+    box-shadow: 0 0 0 2px rgba(255, 255, 255, 0.9), 0 0 0 999px rgba(0, 0, 0, 0.35);
+}
+
+.lo-scan-hint {
+    position: relative;
+    margin: 0 auto 10px;
+    font-size: 12.5px;
+    color: #fff;
+    text-shadow: 0 1px 2px rgba(0, 0, 0, 0.5);
+}
+
+.lo-scanner .lo-btn {
+    position: absolute;
+    top: 12px;
+    right: 12px;
+    height: 34px;
+    padding: 0 14px;
+    font-size: 12.5px;
+}
+
+/* device already has an owner */
+.lo-found {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    padding: 18px 20px;
+    margin-bottom: 24px;
+    border-radius: var(--lo-radius-group);
+    background: #fff;
+    box-shadow: 0 0 0 1px var(--lo-hair), 0 12px 30px -18px rgba(17, 24, 39, 0.35);
+}
+
+.lo-found-avatar {
+    flex: 0 0 56px;
+    height: 56px;
+    border-radius: 50%;
+    background: var(--lo-accent-soft);
+    color: var(--lo-accent);
+    font-size: 18px;
+    font-weight: 800;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.lo-found strong {
+    display: block;
+    font-size: 17px;
+    letter-spacing: -0.01em;
+    color: var(--lo-ink);
+}
+
+.lo-found small {
+    display: block;
+    margin-top: 3px;
+    font-size: 13px;
+    color: var(--lo-muted);
+}
+
+.lo-found-badge {
+    margin-left: auto;
+    padding: 6px 10px;
+    border-radius: 999px;
+    background: var(--lo-green-soft);
+    color: #15803d;
+    font-size: 12px;
+    font-weight: 600;
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    white-space: nowrap;
+}
+
+.lo-found-badge svg {
+    width: 14px;
+    height: 14px;
+}
+
+/* new loved one: two grouped columns */
+.lo-columns-2 {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 18px;
+}
+
+.lo-group {
+    margin: 0;
+    padding: 18px;
+    border: none;
+    border-radius: var(--lo-radius-group);
+    background: var(--lo-group);
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 14px 12px;
+    align-content: start;
+    min-width: 0;
+}
+
+.lo-group .lo-input {
+    background-color: #fff;
+    box-shadow: 0 0 0 1px var(--lo-hair);
+}
+
+.lo-group .lo-input:focus {
+    box-shadow: 0 0 0 4px var(--lo-accent-ring);
+}
+
+.lo-group-label {
+    grid-column: 1 / -1;
+    float: left;
+    /* lets the legend sit inside the grouped box */
+    width: 100%;
+    margin: 0 0 2px;
+    padding: 0;
+    font-size: 11.5px;
+    font-weight: 700;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: var(--lo-faint);
+}
+
+.lo-field {
+    min-width: 0;
+}
+
+.lo-field[hidden] {
+    display: none;
+}
+
+.lo-span-2 {
+    grid-column: 1 / -1;
+}
+
+.lo-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 14px 12px;
+    max-width: 560px;
+}
+
+.lo-device-chip {
+    flex-shrink: 0;
+    padding: 7px 12px;
+    border-radius: 999px;
+    background: var(--lo-green-soft);
+    color: #15803d;
+    font-size: 12.5px;
+    font-weight: 600;
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    white-space: nowrap;
+}
+
+.lo-device-chip.is-pending {
+    background: var(--lo-fill);
+    color: var(--lo-muted);
+}
+
+.lo-device-chip svg {
+    width: 14px;
+    height: 14px;
+}
+
+/* done */
+.lo-pane-done {
+    flex: 1;
+    align-items: center;
+    justify-content: center;
+    text-align: center;
+}
+
+.lo-pane-done .lo-sub {
+    margin-bottom: 0;
+}
+
+.lo-done-icon {
+    width: 72px;
+    height: 72px;
+    margin-bottom: 18px;
+    border-radius: 50%;
+    background: var(--lo-green-soft);
+    color: var(--lo-green);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.lo-done-icon svg {
+    width: 34px;
+    height: 34px;
+    stroke-width: 2.5;
+}
+
+/* ============================ LOVED ONE DETAILS ============================ */
+
+.lo-view-head {
+    position: relative;
+    height: 0;
+}
+
+.lo-view-body {
+    flex: 1;
+    overflow-y: auto;
+    padding: 36px 36px 28px;
+}
+
+.lo-view-columns {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    gap: 32px;
+}
+
+/* hero: avatar + name */
+.lo-hero {
+    display: flex;
+    align-items: center;
+    gap: 18px;
+    margin-bottom: 28px;
+    padding-right: 40px;
+}
+
+#viewLovedOneModal .lo-hero-avatar {
+    width: 84px;
+    height: 84px;
+    font-size: 26px;
+    overflow: visible;
+    /* keeps the camera button from being cut off */
+    box-shadow: 0 0 0 4px #fff, 0 10px 24px -12px rgba(17, 24, 39, 0.45);
+}
+
+#viewLovedOneModal .lo-hero-avatar img {
+    border-radius: 50%;
+}
+
+#viewLovedOneModal .view-lo-avatar-edit {
+    width: 30px;
+    height: 30px;
+    bottom: -2px;
+    right: -2px;
+    background: var(--lo-ink);
+    border: 3px solid #fff;
+}
+
+#viewLovedOneModal .view-lo-avatar-edit svg {
+    width: 14px;
+    height: 14px;
+}
+
+.lo-hero-text {
+    min-width: 0;
+}
+
+#viewLovedOneModal .view-lo-name {
+    margin: 0 0 2px;
+    font-family: "Nunito", "Inter", sans-serif;
+    font-size: 24px;
+    font-weight: 800;
+    letter-spacing: -0.02em;
+    color: var(--lo-ink);
+    overflow-wrap: anywhere;
+}
+
+#viewLovedOneModal .view-lo-relationship {
+    margin: 0 0 10px;
+    font-size: 14px;
+    color: var(--lo-muted);
+}
+
+#viewLovedOneModal .card-status svg {
+    width: 12px;
+    height: 12px;
+}
+
+#viewLovedOneModal .btn-danger-plain svg {
+    width: 16px;
+    height: 16px;
+}
+
+/* grouped list, like iOS Settings */
+#viewLovedOneModal .lo-group-label {
+    float: none;
+    margin: 0 0 8px 4px;
+}
+
+.lo-list {
+    margin-bottom: 24px;
+    border-radius: var(--lo-radius-group);
+    background: var(--lo-group);
+    overflow: hidden;
+}
+
+.lo-row {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 16px;
+    padding: 13px 16px;
+    font-size: 14px;
+}
+
+.lo-row+.lo-row {
+    box-shadow: inset 0 1px 0 var(--lo-hair);
+}
+
+.lo-row-label {
+    flex-shrink: 0;
+    color: var(--lo-muted);
+}
+
+.lo-row-value {
+    font-weight: 600;
+    color: var(--lo-ink);
+    text-align: right;
+    overflow-wrap: anywhere;
+}
+
+.lo-row-stack {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 4px;
+}
+
+.lo-row-stack .lo-row-value {
+    text-align: left;
+}
+
+#viewLovedOneModal .view-lo-note {
+    margin-top: 0;
+    font-size: 12.5px;
+}
+
+#viewLovedOneModal .view-lo-edit-input {
+    height: 40px;
+    border: 1px solid transparent;
+    border-radius: 10px;
+    background: #fff;
+    box-shadow: 0 0 0 1px var(--lo-hair);
+    font-size: 14px;
+}
+
+#viewLovedOneModal .view-lo-edit-input:focus {
+    border-color: var(--lo-accent);
+    box-shadow: 0 0 0 4px var(--lo-accent-ring);
+}
+
+#viewLovedOneModal .lo-row .view-lo-edit-input {
+    max-width: 240px;
+}
+
+#viewLovedOneModal .lo-row-stack .view-lo-edit-input {
+    max-width: none;
+}
+
+#viewLovedOneModal .link-device-controls {
+    margin-top: 6px;
+}
+
+#viewLovedOneModal .link-device-input {
+    height: 40px;
+    border-color: transparent;
+    box-shadow: 0 0 0 1px var(--lo-hair);
+}
+
+/* right column: the people who get notified */
+.lo-view-people {
+    padding: 22px;
+    border-radius: 22px;
+    background: linear-gradient(180deg, #f7f9fc, #f3f5f9);
+    align-self: start;
+}
+
+#viewLovedOneModal .ec-help {
+    margin: -2px 0 14px 4px;
+    font-size: 13px;
+}
+
+#viewLovedOneModal .ec-item {
+    border: none;
+    border-radius: 14px;
+    box-shadow: 0 0 0 1px var(--lo-hair);
+}
+
+#viewLovedOneModal .ec-list+.lo-group-label,
+#viewLovedOneModal .ec-form+.lo-group-label {
+    margin-top: 26px;
+}
+
+#viewLovedOneModal .ec-form {
+    background: #fff;
+    border: none;
+    box-shadow: 0 0 0 1px var(--lo-hair);
+}
+
+#viewLovedOneModal .ec-add-btn {
+    background: #fff;
+    border-style: solid;
+    border-color: transparent;
+    box-shadow: 0 0 0 1px var(--lo-hair);
+}
+
+/* footer */
+.lo-view-foot {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 14px 24px;
+    border-top: 1px solid var(--lo-hair);
+    background: rgba(250, 251, 252, 0.9);
+}
+
+#viewLovedOneModal .lo-danger {
+    margin: 0;
+    padding: 0;
+    border: none;
+}
+
+.lo-foot-actions {
+    display: flex;
+    gap: 8px;
+    margin-left: auto;
+}
+
+#viewLovedOneModal .btn-primary-pill {
+    height: 42px;
+    padding: 0 22px;
+    background: var(--lo-ink);
+}
+
+/* ============================ SMALL SCREENS ============================ */
+@media (max-width: 860px) {
+
+    #addLovedOneModal,
+    #viewLovedOneModal {
+        padding: 0;
+        align-items: flex-end;
+    }
+
+    .lo-sheet {
+        max-height: 94vh;
+        border-radius: 24px 24px 0 0;
+        flex-direction: column;
+    }
+
+    .lo-sheet-add {
+        min-height: 0;
+    }
+
+    .lo-rail {
+        flex: none;
+        padding: 22px 22px 14px;
+        border-right: none;
+        border-bottom: 1px solid var(--lo-hair);
+    }
+
+    .lo-rail-icon,
+    .lo-rail-sub,
+    .lo-rail-note,
+    .lo-step small {
+        display: none;
+    }
+
+    .lo-rail-title {
+        font-size: 19px;
+        margin-bottom: 12px;
+    }
+
+    .lo-steps {
+        flex-direction: row;
+        gap: 4px;
+    }
+
+    .lo-step {
+        flex: 1;
+        padding: 6px;
+        align-items: center;
+    }
+
+    .lo-main {
+        padding: 22px 22px 18px;
+    }
+
+    .lo-columns-2,
+    .lo-grid {
+        grid-template-columns: 1fr;
+    }
+
+    .lo-title-row {
+        flex-direction: column;
+        padding-right: 0;
+    }
+
+    .lo-view-body {
+        padding: 26px 20px 20px;
+    }
+
+    .lo-view-columns {
+        grid-template-columns: 1fr;
+        gap: 8px;
+    }
+
+    .lo-view-people {
+        padding: 18px;
+    }
+}
+
+@media (max-width: 480px) {
+    .lo-group {
+        grid-template-columns: 1fr;
+    }
+
+    .lo-actions {
+        flex-wrap: wrap;
+    }
+
+    .lo-btn-primary {
+        flex: 1;
+    }
+}

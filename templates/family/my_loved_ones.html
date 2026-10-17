@@ -17,6 +17,11 @@
       rel="stylesheet"
       href="{{ url_for('static', filename='css/my_loved_ones.css') }}"
     />
+        <link
+      rel="stylesheet"
+      href="{{ url_for('static', filename='css/loved_one_modals.css') }}"
+    />
+    <script src="https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.js"></script>
 
     <!-- ============ MODAL + DROPDOWN STYLES ============ -->
     <style>
@@ -632,15 +637,15 @@
         <div class="care-plan-card">
           <div class="care-plan-top">
             <span class="care-plan-title">Alisto Care Plan</span>
-            <span class="badge badge-active">
-              <i data-lucide="check-circle-2"></i> Active
+            <span class="badge badge-{{ care_plan.badge }}">
+              <i data-lucide="{{ care_plan.icon }}"></i> {{ care_plan.status }}
             </span>
           </div>
           <div class="care-plan-row">
             <i data-lucide="calendar-clock"></i>
             <span
-              >Renews in {{ care_plan.days_left }} days<br /><small
-                >{{ care_plan.renew_date }}</small
+              >{{ care_plan.headline }}<br /><small
+                >{{ care_plan.subline }}</small
               ></span
             >
           </div>
@@ -912,370 +917,353 @@
       </main>
     </div>
 
-    <!-- ============ ADD LOVED ONE MODAL ============ -->
-    <div class="modal-overlay" id="addLovedOneModal" aria-hidden="true">
-      <div
-        class="modal-dialog"
-        role="dialog"
-        aria-modal="true"
-        aria-labelledby="addLovedOneTitle"
-      >
-        <div class="modal-head">
-          <div>
-            <h2 class="modal-title" id="addLovedOneTitle">Add a loved one</h2>
-            <p class="modal-sub">
-              Register the person you want to monitor and link them to your
-              account.
-            </p>
-          </div>
-          <button
-            type="button"
-            class="modal-close"
-            id="addLovedOneClose"
-            aria-label="Close"
-          >
+    <!-- ============ ADD A LOVED ONE (device first, one window) ============ -->
+    <div class="modal-overlay lo-overlay" id="addLovedOneModal" aria-hidden="true">
+      <div class="lo-sheet lo-sheet-add" role="dialog" aria-modal="true" aria-labelledby="addLovedOneTitle">
+        <!-- Left rail: where you are in the flow -->
+        <aside class="lo-rail">
+          <div class="lo-rail-icon"><i data-lucide="heart-handshake"></i></div>
+          <h2 class="lo-rail-title" id="addLovedOneTitle">Add a loved one</h2>
+          <p class="lo-rail-sub">Connect the person you care for to your ALISTO account.</p>
+
+          <ol class="lo-steps" id="loSteps">
+            <li class="lo-step" data-step="device">
+              <span class="lo-step-dot"><i data-lucide="check"></i><b>1</b></span>
+              <span><strong>Device</strong><small>Type or scan the Device ID</small></span>
+            </li>
+            <li class="lo-step" data-step="details">
+              <span class="lo-step-dot"><i data-lucide="check"></i><b>2</b></span>
+              <span><strong>Loved one</strong><small>Confirm or fill in their details</small></span>
+            </li>
+            <li class="lo-step" data-step="done">
+              <span class="lo-step-dot"><i data-lucide="check"></i><b>3</b></span>
+              <span><strong>Done</strong><small>They'll appear in your list</small></span>
+            </li>
+          </ol>
+
+          <p class="lo-rail-note">
+            <i data-lucide="shield-check"></i>
+            Their details are only visible to family members linked to the same device.
+          </p>
+        </aside>
+
+        <!-- Right: the current step -->
+        <section class="lo-main">
+          <button type="button" class="lo-close" id="addLovedOneClose" aria-label="Close">
             <i data-lucide="x"></i>
           </button>
-        </div>
 
-        <div class="modal-body">
-          <div class="form-alert" id="lovedOneAlert" role="alert"></div>
+          <div class="lo-alert" id="lovedOneAlert" role="alert"></div>
 
-          <form id="addLovedOneForm" novalidate>
-            <!-- ---- Person ---- -->
-            <p class="form-section-title">Personal information</p>
+          <!-- STEP 1: DEVICE -->
+          <div class="lo-pane" data-pane="device">
+            <h3 class="lo-title">Enter the Device ID</h3>
+            <p class="lo-sub">You'll find it on the sticker under the ALISTO device, next to its QR code.</p>
 
-            <div class="form-grid">
-              <div class="form-field span-2">
-                <label for="lo_full_name">Full name</label>
-                <input
-                  type="text"
-                  id="lo_full_name"
-                  name="full_name"
-                  placeholder="Juan Dela Cruz"
-                  autocomplete="off"
-                  required
-                />
+            <label class="lo-label" for="lo_device_id">Device ID</label>
+            <div class="lo-input-wrap">
+              <i data-lucide="cpu"></i>
+              <input type="text" id="lo_device_id" class="lo-input" placeholder="e.g. ALISTO-0001"
+                     autocomplete="off" autocapitalize="characters" spellcheck="false" />
+              <button type="button" class="lo-scan-btn" id="loScanBtn" aria-label="Scan the QR code">
+                <i data-lucide="scan-line"></i>
+              </button>
+            </div>
+
+            <!-- Camera view, shown while scanning -->
+            <div class="lo-scanner" id="loScanner" hidden>
+              <video id="loQrVideo" autoplay playsinline muted></video>
+              <canvas id="loQrCanvas" hidden></canvas>
+              <span class="lo-scan-frame"></span>
+              <p class="lo-scan-hint" id="loScanHint">Point the camera at the QR code on the device.</p>
+              <button type="button" class="lo-btn lo-btn-glass" id="loScanStop">Cancel scan</button>
+            </div>
+
+            <button type="button" class="lo-link" id="loNoDeviceBtn">
+              I don't have the device with me yet
+            </button>
+          </div>
+
+          <!-- STEP 2a: DEVICE ALREADY HAS AN ELDER -->
+          <div class="lo-pane" data-pane="existing" hidden>
+            <h3 class="lo-title">This device already has an owner</h3>
+            <p class="lo-sub">Another family member set it up. Confirm it's your loved one to link them to your account.</p>
+
+            <div class="lo-found">
+              <span class="lo-found-avatar" id="loFoundInitials">?</span>
+              <div>
+                <strong id="loFoundName">—</strong>
+                <small id="loFoundMeta">—</small>
               </div>
+              <span class="lo-found-badge"><i data-lucide="badge-check"></i> Verified device</span>
+            </div>
 
-              <div class="form-field">
-                <label for="lo_relationship">Your relationship to them</label>
-                <select id="lo_relationship" name="relationship" required>
+            <div class="lo-grid">
+              <div class="lo-field">
+                <label class="lo-label" for="lo_join_relationship">Your relationship to them</label>
+                <select id="lo_join_relationship" class="lo-input">
                   <option value="">Select relationship</option>
-                  <option value="Son/Daughter">Son/Daughter</option>
-                  <option value="Spouse">Spouse</option>
-                  <option value="Sibling">Sibling</option>
-                  <option value="Grandchild">Grandchild</option>
-                  <option value="Caregiver">Caregiver</option>
-                  <option value="Other">Other</option>
+                  <option>Son/Daughter</option><option>Spouse</option><option>Sibling</option>
+                  <option>Grandchild</option><option>Caregiver</option><option>Other</option>
                 </select>
               </div>
-
-              <div class="form-field">
-                <label for="lo_dob">Date of birth</label>
-                <input type="date" id="lo_dob" name="date_of_birth" />
-              </div>
-
-              <div
-                class="form-field span-2"
-                id="lo_relationship_other_wrap"
-                style="display: none"
-              >
-                <label for="lo_relationship_other">Please specify</label>
-                <input
-                  type="text"
-                  id="lo_relationship_other"
-                  name="relationship_other"
-                  placeholder="e.g. Girlfriend, Boyfriend, Neighbor"
-                  autocomplete="off"
-                />
+              <div class="lo-field" id="lo_join_other_wrap" hidden>
+                <label class="lo-label" for="lo_join_other">Please specify</label>
+                <input type="text" id="lo_join_other" class="lo-input" maxlength="60" placeholder="e.g. Niece" />
               </div>
             </div>
+          </div>
 
-            <!-- ---- Address ---- -->
-            <p class="form-section-title">Home address</p>
-
-            <div class="form-grid">
-              <div class="form-field">
-                <label for="lo_house_no">House / unit no.</label>
-                <input
-                  type="text"
-                  id="lo_house_no"
-                  name="house_no"
-                  placeholder="123"
-                />
+          <!-- STEP 2b: NEW LOVED ONE -->
+          <form class="lo-pane" data-pane="new" id="addLovedOneForm" novalidate hidden>
+            <div class="lo-title-row">
+              <div>
+                <h3 class="lo-title">Tell us about your loved one</h3>
+                <p class="lo-sub">This is how they'll appear to you and to your barangay health worker.</p>
               </div>
-
-              <div class="form-field">
-                <label for="lo_street">Street</label>
-                <input
-                  type="text"
-                  id="lo_street"
-                  name="street"
-                  placeholder="Mahogany St."
-                />
-              </div>
-
-              <div class="form-field">
-                <label for="lo_barangay">Barangay</label>
-                <input
-                  type="text"
-                  id="lo_barangay"
-                  name="barangay"
-                  placeholder="Sudlon II"
-                />
-              </div>
-
-              <div class="form-field">
-                <label for="lo_city">City / municipality</label>
-                <input
-                  type="text"
-                  id="lo_city"
-                  name="city"
-                  placeholder="Cebu City"
-                />
-              </div>
-
-              <div class="form-field">
-                <label for="lo_province">Province</label>
-                <input
-                  type="text"
-                  id="lo_province"
-                  name="province"
-                  placeholder="Cebu"
-                />
-              </div>
-
-              <div class="form-field">
-                <label for="lo_zip">ZIP code</label>
-                <input
-                  type="text"
-                  id="lo_zip"
-                  name="zip_code"
-                  placeholder="6000"
-                  inputmode="numeric"
-                />
-              </div>
+              <span class="lo-device-chip" id="loDeviceChip"></span>
             </div>
 
-            <!-- ---- Device ---- -->
-            <p class="form-section-title">ALISTO device</p>
+            <div class="lo-columns-2">
+              <fieldset class="lo-group">
+                <legend class="lo-group-label">Personal information</legend>
+                <div class="lo-field lo-span-2">
+                  <label class="lo-label" for="lo_full_name">Full name</label>
+                  <input type="text" id="lo_full_name" name="full_name" class="lo-input" placeholder="Juan Dela Cruz" maxlength="100" />
+                </div>
+                <div class="lo-field">
+                  <label class="lo-label" for="lo_dob">Date of birth</label>
+                  <input type="date" id="lo_dob" name="date_of_birth" class="lo-input" />
+                </div>
+                <div class="lo-field">
+                  <label class="lo-label" for="lo_relationship">Relationship</label>
+                  <select id="lo_relationship" name="relationship" class="lo-input">
+                    <option value="">Select</option>
+                    <option>Son/Daughter</option><option>Spouse</option><option>Sibling</option>
+                    <option>Grandchild</option><option>Caregiver</option><option>Other</option>
+                  </select>
+                </div>
+                <div class="lo-field lo-span-2" id="lo_relationship_other_wrap" hidden>
+                  <label class="lo-label" for="lo_relationship_other">Please specify</label>
+                  <input type="text" id="lo_relationship_other" name="relationship_other" class="lo-input" maxlength="60" placeholder="e.g. Niece" />
+                </div>
+                <div class="lo-field lo-span-2">
+                  <label class="lo-label" for="lo_occupation">Occupation <em>Optional</em></label>
+                  <input type="text" id="lo_occupation" name="occupation" class="lo-input" maxlength="80" placeholder="e.g. Retired teacher" />
+                </div>
+              </fieldset>
 
-            <div class="form-grid">
-              <div class="form-field span-2">
-                <label for="lo_device_id">Device ID</label>
-                <input
-                  type="text"
-                  id="lo_device_id"
-                  name="device_id"
-                  placeholder="Serial number on the device or QR code"
-                  autocomplete="off"
-                />
-                <span class="form-hint">
-                  Leave this blank if the device is not with you yet. You can
-                  link it later.
-                </span>
-              </div>
+              <fieldset class="lo-group">
+                <legend class="lo-group-label">Home address</legend>
+                <div class="lo-field">
+                  <label class="lo-label" for="lo_house_no">House / unit no.</label>
+                  <input type="text" id="lo_house_no" name="house_no" class="lo-input" placeholder="123" />
+                </div>
+                <div class="lo-field">
+                  <label class="lo-label" for="lo_street">Street</label>
+                  <input type="text" id="lo_street" name="street" class="lo-input" placeholder="Mahogany St." />
+                </div>
+                <div class="lo-field">
+                  <label class="lo-label" for="lo_barangay">Barangay</label>
+                  <input type="text" id="lo_barangay" name="barangay" class="lo-input" placeholder="Sudlon II" />
+                </div>
+                <div class="lo-field">
+                  <label class="lo-label" for="lo_city">City / municipality</label>
+                  <input type="text" id="lo_city" name="city" class="lo-input" placeholder="Cebu City" />
+                </div>
+                <div class="lo-field">
+                  <label class="lo-label" for="lo_province">Province</label>
+                  <input type="text" id="lo_province" name="province" class="lo-input" placeholder="Cebu" />
+                </div>
+                <div class="lo-field">
+                  <label class="lo-label" for="lo_zip">ZIP code</label>
+                  <input type="text" id="lo_zip" name="zip_code" class="lo-input" placeholder="6000" inputmode="numeric" maxlength="4" />
+                </div>
+              </fieldset>
             </div>
           </form>
-        </div>
 
-        <div class="modal-foot">
-          <button type="button" class="btn-ghost" id="addLovedOneCancel">
-            Cancel
-          </button>
-          <button
-            type="button"
-            class="btn-primary-action"
-            id="addLovedOneSubmit"
-          >
-            <i data-lucide="user-plus"></i>
-            <span>Save loved one</span>
-          </button>
-        </div>
+          <!-- STEP 3: DONE -->
+          <div class="lo-pane lo-pane-done" data-pane="done" hidden>
+            <span class="lo-done-icon"><i data-lucide="check"></i></span>
+            <h3 class="lo-title" id="loDoneTitle">Added</h3>
+            <p class="lo-sub">Next, open their details to add the emergency contacts the device will text.</p>
+          </div>
+
+          <!-- Actions -->
+          <div class="lo-actions">
+            <button type="button" class="lo-btn lo-btn-ghost" id="addLovedOneBack" hidden>Back</button>
+            <button type="button" class="lo-btn lo-btn-ghost" id="addLovedOneCancel">Cancel</button>
+            <button type="button" class="lo-btn lo-btn-primary" id="addLovedOneSubmit">
+              <span>Continue</span>
+            </button>
+          </div>
+        </section>
       </div>
     </div>
 
-    <!-- ============ VIEW LOVED ONE MODAL ============ -->
-    <div class="modal-overlay" id="viewLovedOneModal" aria-hidden="true">
-      <div
-        class="modal-dialog"
-        role="dialog"
-        aria-modal="true"
-        aria-labelledby="viewLovedOneTitle"
-      >
-        <div class="modal-head">
-          <div>
-            <h2 class="modal-title" id="viewLovedOneTitle">
-              Loved one details
-            </h2>
-            <p class="modal-sub">
-              View and manage the information for this loved one.
-            </p>
-          </div>
-          <button
-            type="button"
-            class="modal-close"
-            id="viewLovedOneClose"
-            aria-label="Close"
-          >
+    <!-- ============ LOVED ONE DETAILS (landscape) ============ -->
+    <div class="modal-overlay lo-overlay" id="viewLovedOneModal" aria-hidden="true">
+      <div class="lo-sheet lo-sheet-view" role="dialog" aria-modal="true" aria-labelledby="viewLovedOneTitle">
+        <header class="lo-view-head">
+          <h2 class="lo-visually-hidden" id="viewLovedOneTitle">Loved one details</h2>
+          <button type="button" class="lo-close" id="viewLovedOneClose" aria-label="Close">
             <i data-lucide="x"></i>
           </button>
+        </header>
+
+        <div class="lo-view-body">
+          <div class="lo-alert-legacy form-alert" id="viewLovedOneAlert" role="alert"></div>
+
+          <div class="lo-view-columns">
+            <!-- LEFT: who they are + their device -->
+            <div class="lo-view-col">
+              <div id="viewLovedOneEditableSection">
+                <div class="lo-hero">
+                  <div class="view-lo-avatar lo-hero-avatar" id="viewLovedOneAvatar">
+                    <span id="viewLovedOneInitials"></span>
+                    <img id="viewLovedOneImg" src="" alt="" style="display: none" />
+                    <button type="button" class="view-lo-avatar-edit" id="viewLovedOnePhotoBtn" aria-label="Change photo">
+                      <i data-lucide="camera"></i>
+                    </button>
+                    <input type="file" id="viewLovedOnePhotoInput" accept="image/*" hidden />
+                  </div>
+                  <div class="lo-hero-text">
+                    <h3 class="view-lo-name" id="viewLovedOneName">&nbsp;</h3>
+                    <input type="text" class="view-lo-edit-input view-lo-name-input" id="viewLovedOneNameInput" placeholder="Full name" />
+                    <p class="view-lo-relationship" id="viewLovedOneRelationship">&nbsp;</p>
+                    <select class="view-lo-edit-input view-lo-relationship-input" id="viewLovedOneRelationshipInput">
+                      <option value="Son/Daughter">Son/Daughter</option>
+                      <option value="Spouse">Spouse</option>
+                      <option value="Sibling">Sibling</option>
+                      <option value="Grandchild">Grandchild</option>
+                      <option value="Caregiver">Caregiver</option>
+                      <option value="Other">Other</option>
+                    </select>
+                    <span class="card-status" id="viewLovedOneStatus"></span>
+                  </div>
+                </div>
+
+                <p class="lo-group-label">Personal information</p>
+                <div class="lo-list">
+                  <div class="lo-row">
+                    <span class="lo-row-label">Date of birth</span>
+                    <strong class="lo-row-value" id="viewLovedOneDob">—</strong>
+                    <input type="date" class="view-lo-edit-input" id="viewLovedOneDobInput" />
+                  </div>
+                  <div class="lo-row lo-row-stack">
+                    <span class="lo-row-label">Address</span>
+                    <strong class="lo-row-value" id="viewLovedOneAddress">—</strong>
+                    <input type="text" class="view-lo-edit-input" id="viewLovedOneAddressInput" placeholder="Full address" />
+                  </div>
+                </div>
+              </div>
+
+              <p class="lo-group-label">ALISTO device</p>
+              <div class="lo-list">
+                <div class="lo-row">
+                  <span class="lo-row-label">Device ID</span>
+                  <strong class="lo-row-value" id="viewLovedOneDeviceId">—</strong>
+                </div>
+                <div class="lo-row lo-row-stack link-device-row" id="linkDeviceRow" style="display: none">
+                  <span class="lo-row-label">Link an ALISTO device</span>
+                  <div class="link-device-controls">
+                    <input type="text" class="link-device-input" id="linkDeviceInput" placeholder="Serial number on the device" autocomplete="off" />
+                    <button type="button" class="btn-primary-pill" id="linkDeviceBtn"><span>Link</span></button>
+                  </div>
+                </div>
+                <div class="lo-row lo-row-stack">
+                  <span class="lo-row-label">Status</span>
+                  <strong class="lo-row-value" id="viewLovedOneDeviceStatus">—</strong>
+                  <small class="view-lo-note" id="viewLovedOneDeviceNote"></small>
+                </div>
+                <div class="lo-row">
+                  <span class="lo-row-label">Last check-in</span>
+                  <strong class="lo-row-value" id="viewLovedOneCheckin">—</strong>
+                </div>
+                <div class="lo-row">
+                  <span class="lo-row-label">Next reminder</span>
+                  <strong class="lo-row-value" id="viewLovedOneMedicine">—</strong>
+                </div>
+                <div class="lo-row">
+                  <span class="lo-row-label">Location</span>
+                  <strong class="lo-row-value" id="viewLovedOneLocation">—</strong>
+                </div>
+              </div>
+            </div>
+
+            <!-- RIGHT: the people who get notified -->
+            <div class="lo-view-col lo-view-people">
+                <!-- ---- EMERGENCY CONTACTS (emergency_contact in Firestore) ---- -->
+                <p class="lo-group-label">Emergency contacts</p>
+                <p class="ec-help">
+                  The ALISTO device sends an SMS to everyone on this list during an
+                  emergency.
+                </p>
+                <div class="ec-alert" id="ecAlert" role="alert"></div>
+                <ul class="ec-list" id="ecList"></ul>
+                <button type="button" class="ec-add-btn" id="ecAddBtn">
+                  <i data-lucide="user-plus"></i>
+                  <span>Add contact</span>
+                </button>
+
+                <form class="ec-form" id="ecForm" hidden novalidate>
+                  <p class="ec-form-title" id="ecFormTitle">Add contact</p>
+                  <div class="ec-grid">
+                    <label class="ec-field">
+                      <span>Full name</span>
+                      <input type="text" id="ecName" maxlength="100" autocomplete="off" />
+                    </label>
+                    <label class="ec-field">
+                      <span>Relationship</span>
+                      <input type="text" id="ecRelationship" maxlength="60" placeholder="e.g. Son, Neighbor" autocomplete="off" />
+                    </label>
+                    <label class="ec-field">
+                      <span>Mobile number</span>
+                      <input type="tel" id="ecNumber" maxlength="16" placeholder="09171234567" autocomplete="off" />
+                    </label>
+                    <label class="ec-field">
+                      <span>Type</span>
+                      <select id="ecType">
+                        <option value="FAMILY">Family</option>
+                        <option value="BHW">Barangay health worker</option>
+                        <option value="OTHER">Other</option>
+                      </select>
+                    </label>
+                    <label class="ec-field ec-span-2">
+                      <span>Email <em>(optional)</em></span>
+                      <input type="email" id="ecEmail" maxlength="120" autocomplete="off" />
+                    </label>
+                  </div>
+                  <div class="ec-form-actions">
+                    <button type="button" class="btn-ghost-pill" id="ecCancelBtn">Cancel</button>
+                    <button type="submit" class="btn-primary-pill" id="ecSaveBtn">
+                      <span>Save contact</span>
+                    </button>
+                  </div>
+                </form>
+
+                <!-- ---- BARANGAY HEALTH WORKER ---- -->
+                <p class="lo-group-label">Barangay health worker</p>
+                <ul class="ec-list" id="ecBhwList"></ul>
+            </div>
+          </div>
         </div>
 
-        <div class="modal-body">
-          <div class="form-alert" id="viewLovedOneAlert" role="alert"></div>
-
-          <div id="viewLovedOneEditableSection">
-            <div class="view-lo-avatar-row">
-              <div class="view-lo-avatar" id="viewLovedOneAvatar">
-                <span id="viewLovedOneInitials"></span>
-                <img id="viewLovedOneImg" src="" alt="" style="display: none" />
-                <button
-                  type="button"
-                  class="view-lo-avatar-edit"
-                  id="viewLovedOnePhotoBtn"
-                  aria-label="Change photo"
-                >
-                  <i data-lucide="camera"></i>
-                </button>
-                <input
-                  type="file"
-                  id="viewLovedOnePhotoInput"
-                  accept="image/*"
-                  hidden
-                />
-              </div>
-              <div>
-                <h3 class="view-lo-name" id="viewLovedOneName">&nbsp;</h3>
-                <input
-                  type="text"
-                  class="view-lo-edit-input view-lo-name-input"
-                  id="viewLovedOneNameInput"
-                  placeholder="Full name"
-                />
-
-                <p class="view-lo-relationship" id="viewLovedOneRelationship">
-                  &nbsp;
-                </p>
-                <select
-                  class="view-lo-edit-input view-lo-relationship-input"
-                  id="viewLovedOneRelationshipInput"
-                >
-                  <option value="Son/Daughter">Son/Daughter</option>
-                  <option value="Spouse">Spouse</option>
-                  <option value="Sibling">Sibling</option>
-                  <option value="Grandchild">Grandchild</option>
-                  <option value="Caregiver">Caregiver</option>
-                  <option value="Other">Other</option>
-                </select>
-
-                <span class="card-status" id="viewLovedOneStatus"></span>
-              </div>
-            </div>
-
-            <p class="form-section-title">Personal information</p>
-            <div class="view-lo-grid">
-              <div class="view-lo-field">
-                <span>Date of birth</span>
-                <strong id="viewLovedOneDob">—</strong>
-                <input
-                  type="date"
-                  class="view-lo-edit-input"
-                  id="viewLovedOneDobInput"
-                />
-              </div>
-              <div class="view-lo-field span-2">
-                <span>Address</span>
-                <strong id="viewLovedOneAddress">—</strong>
-                <input
-                  type="text"
-                  class="view-lo-edit-input"
-                  id="viewLovedOneAddressInput"
-                  placeholder="Full address"
-                />
-              </div>
-            </div>
-          </div>
-
-          <p class="form-section-title">ALISTO device</p>
-          <div class="view-lo-grid">
-            <div class="view-lo-field">
-              <span>Device ID</span>
-              <strong id="viewLovedOneDeviceId">—</strong>
-            </div>
-            <div
-              class="view-lo-field span-2 link-device-row"
-              id="linkDeviceRow"
-              style="display: none"
-            >
-              <span>Link an ALISTO device</span>
-              <div class="link-device-controls">
-                <input
-                  type="text"
-                  class="link-device-input"
-                  id="linkDeviceInput"
-                  placeholder="Serial number on the device or QR code"
-                  autocomplete="off"
-                />
-                <button
-                  type="button"
-                  class="btn-primary-pill"
-                  id="linkDeviceBtn"
-                >
-                  <span>Link device</span>
-                </button>
-              </div>
-            </div>
-            <div class="view-lo-field">
-              <span>Device status</span>
-              <strong id="viewLovedOneDeviceStatus">—</strong>
-              <small class="view-lo-note" id="viewLovedOneDeviceNote"></small>
-            </div>
-            <div class="view-lo-field">
-              <span>Last check-in</span>
-              <strong id="viewLovedOneCheckin">—</strong>
-            </div>
-            <div class="view-lo-field">
-              <span>Next medicine reminder</span>
-              <strong id="viewLovedOneMedicine">—</strong>
-            </div>
-            <div class="view-lo-field span-2">
-              <span>Location</span>
-              <strong id="viewLovedOneLocation">—</strong>
-            </div>
-          </div>
-
-          <div class="danger-zone" id="viewLovedOneDangerZone">
-            <button
-              type="button"
-              class="btn-danger-plain"
-              id="viewLovedOneDeleteBtn"
-            >
+        <footer class="lo-view-foot modal-foot-apple" id="viewLovedOneFoot">
+          <div class="danger-zone lo-danger" id="viewLovedOneDangerZone">
+            <button type="button" class="btn-danger-plain" id="viewLovedOneDeleteBtn">
               <i data-lucide="trash-2"></i>
               <span>Delete loved one</span>
             </button>
           </div>
-        </div>
-
-        <div class="modal-foot modal-foot-apple" id="viewLovedOneFoot">
-          <button
-            type="button"
-            class="btn-ghost-pill"
-            id="viewLovedOneCancelBtn"
-            style="display: none"
-          >
-            Cancel
-          </button>
-          <button
-            type="button"
-            class="btn-primary-pill"
-            id="viewLovedOneEditSaveBtn"
-            data-mode="edit"
-          >
-            <span>Edit</span>
-          </button>
-        </div>
+          <div class="lo-foot-actions">
+            <button type="button" class="btn-ghost-pill" id="viewLovedOneCancelBtn" style="display: none">Cancel</button>
+            <button type="button" class="btn-primary-pill" id="viewLovedOneEditSaveBtn" data-mode="edit">
+              <span>Edit</span>
+            </button>
+          </div>
+        </footer>
       </div>
     </div>
 
@@ -1408,145 +1396,328 @@
         setTimeout(() => note.remove(), 5000);
       }
 
-      // ---- Add Loved One modal ----
+      // ---- Add a loved one (device first, one window) ----
+      //   device  -> /loved-ones/check-device
+      //   existing (device already has an elder) -> /loved-ones/join
+      //   new (free device, or no device yet)    -> /loved-ones/add
       (function () {
         const modal = document.getElementById("addLovedOneModal");
-        const form = document.getElementById("addLovedOneForm");
-        const alertBox = document.getElementById("lovedOneAlert");
-        const submitBtn = document.getElementById("addLovedOneSubmit");
+        if (!modal) return;
+        const $ = (id) => document.getElementById(id);
+        const alertBox = $("lovedOneAlert");
+        const submitBtn = $("addLovedOneSubmit");
         const submitLabel = submitBtn.querySelector("span");
+        const backBtn = $("addLovedOneBack");
+        const cancelBtn = $("addLovedOneCancel");
+        const deviceInput = $("lo_device_id");
+        const form = $("addLovedOneForm");
 
-        const relationshipSelect = document.getElementById("lo_relationship");
-        const otherWrap = document.getElementById("lo_relationship_other_wrap");
-        const otherInput = document.getElementById("lo_relationship_other");
+        const state = { pane: "device", deviceId: "", found: null, busy: false, changed: false };
 
-        const openers = [
-          document.getElementById("addLovedOneBtn"),
-          document.getElementById("emptyAddBtn"),
-        ].filter(Boolean);
-
-        const closers = [
-          document.getElementById("addLovedOneClose"),
-          document.getElementById("addLovedOneCancel"),
-        ].filter(Boolean);
-
+        // ---------- helpers ----------
         function showAlert(message, type) {
-          alertBox.textContent = message;
-          alertBox.className = "form-alert show " + type;
+          alertBox.textContent = message || "";
+          alertBox.className = "lo-alert" + (message ? " show " + (type || "error") : "");
+        }
+        function setBusy(on, label) {
+          state.busy = on;
+          submitBtn.disabled = on;
+          if (label) submitLabel.textContent = label;
+        }
+        async function postJson(url, body) {
+          const res = await fetch(url, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(body),
+          });
+          const data = await res.json().catch(() => ({}));
+          if (!res.ok || !data.success) {
+            const err = new Error(data.message || "Something went wrong. Try again.");
+            err.field = data.field;
+            throw err;
+          }
+          return data;
+        }
+        function toggleOther(select, wrap, input) {
+          const on = select.value === "Other";
+          wrap.hidden = !on;
+          if (!on) input.value = "";
         }
 
-        function clearAlert() {
-          alertBox.textContent = "";
-          alertBox.className = "form-alert";
-        }
+        // ---------- panes ----------
+        const STEP_OF = { device: "device", existing: "details", new: "details", done: "done" };
+        const ORDER = ["device", "details", "done"];
+        const LABEL = { device: "Continue", existing: "Link to my account", new: "Save loved one", done: "Done" };
 
-        function toggleRelationshipOther() {
-          const isOther = relationshipSelect.value === "Other";
-          otherWrap.style.display = isOther ? "" : "none";
-          if (!isOther) otherInput.value = "";
+        function show(pane) {
+          state.pane = pane;
+          stopScan();
+          modal.querySelectorAll(".lo-pane").forEach((p) => (p.hidden = p.dataset.pane !== pane));
+          const current = ORDER.indexOf(STEP_OF[pane]);
+          modal.querySelectorAll(".lo-step").forEach((li) => {
+            const i = ORDER.indexOf(li.dataset.step);
+            li.classList.toggle("is-current", i === current);
+            li.classList.toggle("is-done", i < current || pane === "done");
+          });
+          submitLabel.textContent = LABEL[pane];
+          backBtn.hidden = !(pane === "existing" || pane === "new");
+          cancelBtn.hidden = pane === "done";
+          showAlert("");
+          const focusEl = { device: deviceInput, existing: $("lo_join_relationship"), new: $("lo_full_name") }[pane];
+          if (focusEl) setTimeout(() => focusEl.focus(), 80);
         }
-
-        relationshipSelect.addEventListener("change", toggleRelationshipOther);
 
         function openModal() {
-          clearAlert();
+          state.deviceId = "";
+          state.found = null;
+          state.changed = false;
+          deviceInput.value = "";
           form.reset();
-          toggleRelationshipOther();
-          form
-            .querySelectorAll(".form-field.has-error")
-            .forEach((f) => f.classList.remove("has-error"));
+          $("lo_join_relationship").value = "";
+          $("lo_join_other").value = "";
+          $("lo_join_other_wrap").hidden = true;
+          $("lo_relationship_other_wrap").hidden = true;
+          modal.querySelectorAll(".has-error").forEach((el) => el.classList.remove("has-error"));
+          show("device");
           modal.classList.add("open");
           modal.setAttribute("aria-hidden", "false");
           document.body.classList.add("modal-open");
-          setTimeout(() => document.getElementById("lo_full_name").focus(), 60);
         }
 
         function closeModal() {
+          stopScan();
           modal.classList.remove("open");
           modal.setAttribute("aria-hidden", "true");
           document.body.classList.remove("modal-open");
+          if (state.changed) window.location.reload();
         }
 
-        openers.forEach((btn) => btn.addEventListener("click", openModal));
-        closers.forEach((btn) => btn.addEventListener("click", closeModal));
+        // ---------- step 1: device ----------
+        async function checkDevice() {
+          const id = deviceInput.value.replace(/\s+/g, "").toUpperCase();
+          if (!id) {
+            deviceInput.closest(".lo-input-wrap").classList.add("has-error");
+            return showAlert("Enter the Device ID, or scan the QR code on the device.");
+          }
+          setBusy(true, "Checking...");
+          try {
+            const data = await postJson("/loved-ones/check-device", { device_id: id });
+            state.deviceId = data.device_id;
+            if (data.status === "existing") {
+              state.found = data.elder;
+              $("loFoundInitials").textContent = data.elder.initials;
+              $("loFoundName").textContent = data.elder.name;
+              const born = data.elder.date_of_birth ? "Born " + data.elder.date_of_birth + " · " : "";
+              $("loFoundMeta").textContent =
+                born + "Device " + data.device_id + " · " +
+                data.elder.family_count + " of " + data.elder.family_limit + " family members linked";
+              show("existing");
+            } else {
+              setDeviceChip(data.device_id);
+              show("new");
+            }
+          } catch (e) {
+            deviceInput.closest(".lo-input-wrap").classList.add("has-error");
+            showAlert(e.message);
+          } finally {
+            setBusy(false);
+            if (state.pane !== "device") submitLabel.textContent = LABEL[state.pane];
+            else submitLabel.textContent = LABEL.device;
+          }
+        }
 
-        // Clicking the dimmed backdrop closes it; clicks inside the dialog don't
+        function setDeviceChip(id) {
+          const chip = $("loDeviceChip");
+          chip.textContent = "";
+          const icon = document.createElement("i");
+          icon.setAttribute("data-lucide", id ? "badge-check" : "clock");
+          chip.appendChild(icon);
+          chip.appendChild(document.createTextNode(id ? " Device " + id : " No device yet"));
+          chip.classList.toggle("is-pending", !id);
+          if (window.lucide) window.lucide.createIcons();
+        }
+
+        $("loNoDeviceBtn").addEventListener("click", () => {
+          state.deviceId = "";
+          setDeviceChip("");
+          show("new");
+        });
+        deviceInput.addEventListener("input", () => {
+          deviceInput.closest(".lo-input-wrap").classList.remove("has-error");
+        });
+        deviceInput.addEventListener("keydown", (e) => {
+          if (e.key === "Enter") {
+            e.preventDefault();
+            submitBtn.click();
+          }
+        });
+
+        // ---------- QR scanner (jsQR) ----------
+        let stream = null;
+        let scanning = false;
+        const scanner = $("loScanner");
+        const video = $("loQrVideo");
+        const canvas = $("loQrCanvas");
+        const hint = $("loScanHint");
+
+        async function startScan() {
+          if (!window.jsQR || !navigator.mediaDevices) {
+            return showAlert("Scanning isn't available in this browser. Type the Device ID instead.");
+          }
+          scanner.hidden = false;
+          hint.textContent = "Point the camera at the QR code on the device.";
+          try {
+            stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment" } });
+            video.srcObject = stream;
+            await video.play();
+            scanning = true;
+            requestAnimationFrame(scanLoop);
+          } catch (e) {
+            hint.textContent = "Can't open the camera. Allow camera access, or type the Device ID.";
+          }
+        }
+
+        function stopScan() {
+          scanning = false;
+          if (stream) stream.getTracks().forEach((t) => t.stop());
+          stream = null;
+          if (scanner) scanner.hidden = true;
+        }
+
+        function scanLoop() {
+          if (!scanning) return;
+          if (video.readyState === video.HAVE_ENOUGH_DATA) {
+            canvas.width = video.videoWidth;
+            canvas.height = video.videoHeight;
+            const ctx = canvas.getContext("2d", { willReadFrequently: true });
+            ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+            const img = ctx.getImageData(0, 0, canvas.width, canvas.height);
+            const code = window.jsQR(img.data, img.width, img.height, { inversionAttempts: "dontInvert" });
+            if (code && code.data) {
+              deviceInput.value = code.data.trim();
+              hint.textContent = "Got it!";
+              stopScan();
+              checkDevice();
+              return;
+            }
+          }
+          requestAnimationFrame(scanLoop);
+        }
+
+        $("loScanBtn").addEventListener("click", startScan);
+        $("loScanStop").addEventListener("click", stopScan);
+
+        // ---------- step 2a: link to an existing elder ----------
+        const joinRel = $("lo_join_relationship");
+        joinRel.addEventListener("change", () => toggleOther(joinRel, $("lo_join_other_wrap"), $("lo_join_other")));
+
+        async function joinElder() {
+          if (!joinRel.value) {
+            joinRel.classList.add("has-error");
+            return showAlert("Choose how you are related to them.");
+          }
+          if (joinRel.value === "Other" && !$("lo_join_other").value.trim()) {
+            return showAlert("Please specify your relationship.");
+          }
+          setBusy(true, "Linking...");
+          try {
+            const data = await postJson("/loved-ones/join", {
+              device_id: state.deviceId,
+              relationship: joinRel.value,
+              relationship_other: $("lo_join_other").value.trim(),
+            });
+            state.changed = true;
+            $("loDoneTitle").textContent = data.name + " is now in your list";
+            show("done");
+          } catch (e) {
+            showAlert(e.message);
+          } finally {
+            setBusy(false);
+            submitLabel.textContent = LABEL[state.pane];
+          }
+        }
+
+        // ---------- step 2b: new loved one ----------
+        const rel = $("lo_relationship");
+        rel.addEventListener("change", () =>
+          toggleOther(rel, $("lo_relationship_other_wrap"), $("lo_relationship_other")),
+        );
+        form.addEventListener("input", (e) => {
+          const field = e.target.closest(".lo-field");
+          if (field) field.classList.remove("has-error");
+          e.target.classList.remove("has-error");
+        });
+
+        function markInvalid(id) {
+          const el = $(id);
+          const field = el && el.closest(".lo-field");
+          if (field) field.classList.add("has-error");
+          if (el) el.focus();
+        }
+
+        async function saveNew() {
+          const name = $("lo_full_name").value.trim();
+          if (!name) {
+            markInvalid("lo_full_name");
+            return showAlert("Enter the full name of your loved one.");
+          }
+          if (!rel.value) {
+            markInvalid("lo_relationship");
+            return showAlert("Choose how you are related to them.");
+          }
+          if (rel.value === "Other" && !$("lo_relationship_other").value.trim()) {
+            markInvalid("lo_relationship_other");
+            return showAlert("Please specify your relationship.");
+          }
+
+          const body = new FormData(form);
+          body.set("device_id", state.deviceId || "");
+          setBusy(true, "Saving...");
+          try {
+            const res = await fetch("/loved-ones/add", { method: "POST", body });
+            const data = await res.json().catch(() => ({}));
+            if (!res.ok || !data.success) {
+              const map = { full_name: "lo_full_name", relationship: "lo_relationship",
+                            relationship_other: "lo_relationship_other", dob: "lo_dob" };
+              if (map[data.field]) markInvalid(map[data.field]);
+              if (data.field === "device_id") {
+                show("device");
+                deviceInput.closest(".lo-input-wrap").classList.add("has-error");
+              }
+              return showAlert(data.message || "Could not save. Try again.");
+            }
+            state.changed = true;
+            $("loDoneTitle").textContent = (data.name || name) + " has been added";
+            show("done");
+          } catch (e) {
+            showAlert("Cannot reach the server. Check your connection and try again.");
+          } finally {
+            setBusy(false);
+            submitLabel.textContent = LABEL[state.pane];
+          }
+        }
+
+        // ---------- buttons ----------
+        submitBtn.addEventListener("click", () => {
+          if (state.busy) return;
+          if (state.pane === "device") checkDevice();
+          else if (state.pane === "existing") joinElder();
+          else if (state.pane === "new") saveNew();
+          else closeModal();
+        });
+        backBtn.addEventListener("click", () => show("device"));
+        cancelBtn.addEventListener("click", closeModal);
+        $("addLovedOneClose").addEventListener("click", closeModal);
         modal.addEventListener("click", (e) => {
           if (e.target === modal) closeModal();
         });
-
         document.addEventListener("keydown", (e) => {
-          if (e.key === "Escape" && modal.classList.contains("open"))
-            closeModal();
+          if (e.key === "Escape" && modal.classList.contains("open")) closeModal();
         });
 
-        // Clear the red outline once the user starts fixing the field
-        form.addEventListener("input", (e) => {
-          const field = e.target.closest(".form-field");
-          if (field) field.classList.remove("has-error");
-        });
-
-        function markInvalid(inputId) {
-          const el = document.getElementById(inputId);
-          if (!el) return;
-          const field = el.closest(".form-field");
-          if (field) field.classList.add("has-error");
-        }
-
-        submitBtn.addEventListener("click", async () => {
-          clearAlert();
-
-          const name = document.getElementById("lo_full_name").value.trim();
-          const relationship = relationshipSelect.value;
-
-          if (!name) {
-            markInvalid("lo_full_name");
-            showAlert("Enter the full name of your loved one.", "error");
-            return;
-          }
-          if (!relationship) {
-            markInvalid("lo_relationship");
-            showAlert("Choose how you are related to them.", "error");
-            return;
-          }
-          if (relationship === "Other" && !otherInput.value.trim()) {
-            markInvalid("lo_relationship_other");
-            showAlert("Please specify your relationship.", "error");
-            return;
-          }
-
-          submitBtn.disabled = true;
-          submitLabel.textContent = "Saving...";
-
-          try {
-            const res = await fetch("/loved-ones/add", {
-              method: "POST",
-              body: new FormData(form),
-            });
-            const data = await res.json();
-
-            if (data.success) {
-              showAlert(data.message || "Loved one saved.", "success");
-              submitLabel.textContent = "Saved";
-              setTimeout(() => window.location.reload(), 800);
-              return;
-            }
-
-            showAlert(
-              data.message || "Could not save. Please try again.",
-              "error",
-            );
-            if (data.field) markInvalid("lo_" + data.field);
-          } catch (err) {
-            showAlert(
-              "Cannot reach the server. Check your connection and try again.",
-              "error",
-            );
-          }
-
-          submitBtn.disabled = false;
-          submitLabel.textContent = "Save loved one";
-        });
+        [$("addLovedOneBtn"), $("emptyAddBtn")]
+          .filter(Boolean)
+          .forEach((btn) => btn.addEventListener("click", openModal));
       })();
 
       // ---- View Loved One modal (details + photo + delete) ----
@@ -1804,6 +1975,7 @@
             checkinEl.textContent = elder.last_checkin;
             medicineEl.textContent = elder.next_medicine;
             locationEl.textContent = elder.location;
+            if (window.loadEmergencyContacts) window.loadEmergencyContacts(elderId);
           } catch (err) {
             showAlert(
               "Cannot reach the server. Check your connection and try again.",
@@ -2031,6 +2203,246 @@
       })();
     </script>
     {% include 'family/_care_plan_modal.html' %}
+    <script>
+      // ---- Emergency contacts + barangay health worker (inside the
+      // "Loved one details" window). loadElder() calls
+      // window.loadEmergencyContacts(elderId) after the details load.
+      (function () {
+        const list = document.getElementById("ecList");
+        if (!list) return;
+        const bhwList = document.getElementById("ecBhwList");
+        const alertBox = document.getElementById("ecAlert");
+        const addBtn = document.getElementById("ecAddBtn");
+        const form = document.getElementById("ecForm");
+        const formTitle = document.getElementById("ecFormTitle");
+        const nameIn = document.getElementById("ecName");
+        const relIn = document.getElementById("ecRelationship");
+        const numIn = document.getElementById("ecNumber");
+        const typeIn = document.getElementById("ecType");
+        const emailIn = document.getElementById("ecEmail");
+        const saveBtn = document.getElementById("ecSaveBtn");
+        const cancelBtn = document.getElementById("ecCancelBtn");
+
+        const TYPE_LABEL = { FAMILY: "Family", BHW: "BHW", OTHER: "Other" };
+        let elderId = null;
+        let contacts = [];
+        let bhws = [];
+        let maxContacts = 10;
+        let editingId = null;
+        let busy = false;
+
+        function el(tag, cls, text) {
+          const node = document.createElement(tag);
+          if (cls) node.className = cls;
+          if (text !== undefined && text !== null) node.textContent = text;
+          return node;
+        }
+        function icon(name) {
+          const i = document.createElement("i");
+          i.setAttribute("data-lucide", name);
+          return i;
+        }
+        function initials(name) {
+          const parts = (name || "?").trim().split(/\s+/);
+          return ((parts[0] || "?")[0] + (parts.length > 1 ? parts[parts.length - 1][0] : "")).toUpperCase();
+        }
+        function showAlert(message, type) {
+          alertBox.textContent = message || "";
+          alertBox.className = "ec-alert" + (message ? " show " + (type || "error") : "");
+        }
+        async function post(url, body) {
+          const res = await fetch(url, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(body || {}),
+          });
+          let data = {};
+          try {
+            data = await res.json();
+          } catch (e) {
+            /* handled below */
+          }
+          if (!res.ok || !data.success) throw new Error(data.message || "Something went wrong. Try again.");
+          return data;
+        }
+
+        function render() {
+          list.textContent = "";
+          if (!contacts.length) {
+            const empty = el("li", "ec-empty");
+            empty.appendChild(icon("triangle-alert"));
+            empty.appendChild(
+              el("span", null, "No emergency contacts yet. Add at least one so the device has someone to text."),
+            );
+            list.appendChild(empty);
+          }
+          contacts.forEach((c) => {
+            const li = el("li", "ec-item");
+            li.appendChild(el("span", "ec-avatar", initials(c.full_name)));
+
+            const body = el("div", "ec-body");
+            const top = el("div", "ec-name");
+            top.appendChild(el("strong", null, c.full_name));
+            top.appendChild(el("span", "ec-chip ec-" + c.contact_type.toLowerCase(), TYPE_LABEL[c.contact_type] || "Other"));
+            body.appendChild(top);
+            const meta = [c.relationship, c.contact_num, c.email_add].filter(Boolean).join(" · ");
+            body.appendChild(el("span", "ec-meta", meta));
+            li.appendChild(body);
+
+            const actions = el("div", "ec-actions");
+            const edit = el("button", "ec-icon-btn");
+            edit.type = "button";
+            edit.setAttribute("aria-label", "Edit " + c.full_name);
+            edit.appendChild(icon("pencil"));
+            edit.addEventListener("click", () => openForm(c));
+            const del = el("button", "ec-icon-btn ec-danger");
+            del.type = "button";
+            del.setAttribute("aria-label", "Remove " + c.full_name);
+            del.appendChild(icon("trash-2"));
+            del.addEventListener("click", () => remove(c));
+            actions.appendChild(edit);
+            actions.appendChild(del);
+            li.appendChild(actions);
+            list.appendChild(li);
+          });
+          addBtn.hidden = !form.hidden || contacts.length >= maxContacts;
+          renderBhws();
+          if (window.lucide) window.lucide.createIcons();
+        }
+
+        function renderBhws() {
+          bhwList.textContent = "";
+          if (!bhws.length) {
+            bhwList.appendChild(
+              el("li", "ec-empty ec-muted", "No approved barangay health worker is assigned to this address yet."),
+            );
+            return;
+          }
+          const numbers = contacts.map((c) => c.contact_num);
+          bhws.forEach((b) => {
+            const li = el("li", "ec-item");
+            li.appendChild(el("span", "ec-avatar ec-avatar-bhw", initials(b.full_name)));
+            const body = el("div", "ec-body");
+            body.appendChild(el("strong", "ec-name", b.full_name));
+            const where = ["BHW, " + b.barangay, b.health_center].filter(Boolean).join(" · ");
+            body.appendChild(el("span", "ec-meta", [where, b.contact_num].filter(Boolean).join(" · ")));
+            li.appendChild(body);
+
+            if (b.contact_num && !numbers.includes(b.contact_num) && contacts.length < maxContacts) {
+              const add = el("button", "ec-link-btn", "Add as contact");
+              add.type = "button";
+              add.addEventListener("click", () =>
+                openForm(null, { full_name: b.full_name, relationship: "Barangay health worker", contact_num: b.contact_num, contact_type: "BHW" }),
+              );
+              li.appendChild(add);
+            } else if (b.contact_num && numbers.includes(b.contact_num)) {
+              li.appendChild(el("span", "ec-added", "In contacts"));
+            }
+            bhwList.appendChild(li);
+          });
+        }
+
+        async function load(id) {
+          elderId = id;
+          contacts = [];
+          bhws = [];
+          closeForm();
+          showAlert("");
+          list.textContent = "";
+          list.appendChild(el("li", "ec-empty ec-muted", "Loading contacts..."));
+          bhwList.textContent = "";
+          try {
+            const res = await fetch(`/loved-ones/${encodeURIComponent(id)}/contacts`);
+            const data = await res.json();
+            if (id !== elderId) return; // another loved one was opened meanwhile
+            if (!data.success) throw new Error(data.message);
+            contacts = data.contacts;
+            bhws = data.bhws;
+            maxContacts = data.max_contacts || 10;
+            render();
+          } catch (e) {
+            list.textContent = "";
+            showAlert(e.message || "Could not load the contacts.");
+          }
+        }
+
+        function openForm(contact, prefill) {
+          const c = contact || prefill || {};
+          editingId = contact ? contact.id : null;
+          formTitle.textContent = contact ? "Edit contact" : "Add contact";
+          nameIn.value = c.full_name || "";
+          relIn.value = c.relationship || "";
+          numIn.value = c.contact_num || "";
+          typeIn.value = c.contact_type || "FAMILY";
+          emailIn.value = c.email_add || "";
+          showAlert("");
+          form.hidden = false;
+          addBtn.hidden = true;
+          nameIn.focus();
+          form.scrollIntoView({ block: "nearest", behavior: "smooth" });
+        }
+
+        function closeForm() {
+          form.hidden = true;
+          editingId = null;
+          addBtn.hidden = contacts.length >= maxContacts;
+        }
+
+        async function remove(c) {
+          if (busy) return;
+          if (!window.confirm(`Remove ${c.full_name}? The device will stop texting this number.`)) return;
+          busy = true;
+          try {
+            await post(`/loved-ones/${encodeURIComponent(elderId)}/contacts/${encodeURIComponent(c.id)}/delete`);
+            await load(elderId);
+            showAlert("Contact removed.", "success");
+          } catch (e) {
+            showAlert(e.message);
+          } finally {
+            busy = false;
+          }
+        }
+
+        addBtn.addEventListener("click", () => openForm(null));
+        cancelBtn.addEventListener("click", () => {
+          closeForm();
+          showAlert("");
+        });
+
+        form.addEventListener("submit", async (e) => {
+          e.preventDefault();
+          if (busy || !elderId) return;
+          const payload = {
+            full_name: nameIn.value.trim(),
+            relationship: relIn.value.trim(),
+            contact_num: numIn.value.trim(),
+            contact_type: typeIn.value,
+            email_add: emailIn.value.trim(),
+          };
+          if (!payload.full_name) return showAlert("Enter the contact's full name.");
+          if (!/^(\+?63|0)9\d{9}$/.test(payload.contact_num.replace(/[\s-]/g, "")))
+            return showAlert("Enter a valid mobile number, like 09171234567.");
+
+          busy = true;
+          saveBtn.disabled = true;
+          const base = `/loved-ones/${encodeURIComponent(elderId)}/contacts`;
+          try {
+            const data = editingId
+              ? await post(`${base}/${encodeURIComponent(editingId)}/update`, payload)
+              : await post(`${base}/add`, payload);
+            await load(elderId);
+            showAlert(data.message, "success");
+          } catch (err) {
+            showAlert(err.message);
+          } finally {
+            busy = false;
+            saveBtn.disabled = false;
+          }
+        });
+
+        window.loadEmergencyContacts = load;
+      })();
+    </script>
   <script src="{{ url_for('static', filename='js/family_nav.js') }}"></script>
   </body>
 </html>

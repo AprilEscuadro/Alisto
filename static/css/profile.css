@@ -252,13 +252,17 @@
   align-items: center;
 }
 
-.profile-input-wrap > i {
+.profile-input-wrap>i,
+.profile-input-wrap>svg {
   position: absolute;
-  left: 13px;
+  left: 14px;
+  top: 50%;
+  transform: translateY(-50%);
   width: 17px;
   height: 17px;
   color: var(--muted);
   pointer-events: none;
+  z-index: 1;
 }
 
 .profile-input-wrap input {
@@ -448,4 +452,15 @@
   display: block;
   border-radius: 50%;
   flex-shrink: 0;
+}
+
+/* Password fields: room for the eye button on the right */
+.profile-input-wrap input[type="password"],
+.profile-input-wrap input[type="text"]:has(+ .profile-eye) {
+  padding-right: 46px;
+}
+
+/* Icon turns blue while typing in that field */
+.profile-input-wrap:focus-within>svg {
+  color: var(--blue);
 }

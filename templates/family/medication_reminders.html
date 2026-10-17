@@ -520,15 +520,15 @@
         <div class="care-plan-card">
           <div class="care-plan-top">
             <span class="care-plan-title">Alisto Care Plan</span>
-            <span class="badge badge-active">
-              <i data-lucide="check-circle-2"></i> Active
+             <span class="badge badge-{{ care_plan.badge }}">
+              <i data-lucide="{{ care_plan.icon }}"></i> {{ care_plan.status }}
             </span>
           </div>
           <div class="care-plan-row">
             <i data-lucide="calendar-clock"></i>
             <span
-              >Renews in {{ care_plan.days_left }} days<br /><small
-                >{{ care_plan.renew_date }}</small
+              >{{ care_plan.headline }}<br /><small
+                >{{ care_plan.subline }}</small
               ></span
             >
           </div>
