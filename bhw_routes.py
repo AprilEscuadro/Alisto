@@ -172,14 +172,25 @@ def _device_state(device):
 
 # ---------- READING FIRESTORE ----------
 
+_ELDERS_CACHE = {}          # {barangay: (time read, elders)}
+ELDERS_CACHE_SECONDS = 60   # new or edited residents show up within a minute
+
+
 def _elders_in_barangay(barangay):
-    """{elder_id: elder dict} for every non-deleted elder in this barangay."""
+    """{elder_id: elder dict} for every non-deleted elder in this barangay.
+    Kept for a minute so the alert poll doesn't re-read every elder
+    profile every 15 seconds."""
+    import time
+    hit = _ELDERS_CACHE.get(barangay)
+    if hit and time.time() - hit[0] < ELDERS_CACHE_SECONDS:
+        return dict(hit[1])
     elders = {}
     for doc in db.collection('elder_profile').stream():
         elder = doc.to_dict() or {}
         if not elder.get('deleted_at') and _in_barangay(elder.get('address'), barangay):
             elders[doc.id] = elder
-    return elders
+    _ELDERS_CACHE[barangay] = (time.time(), elders)
+    return dict(elders)
 
 
 def _devices_by_elder():
@@ -190,6 +201,24 @@ def _devices_by_elder():
             by_elder.setdefault(device['elder_id'],
                                 []).append((doc.id, device))
     return by_elder
+
+
+def _open_alerts(elders):
+    """Open alerts for these elders, newest first. Reads only alerts that are
+    still PENDING or SENT, not the whole history, so polling stays cheap."""
+    if not elders:
+        return []
+    out = []
+    for doc in (db.collection(ac.ALERT_COLLECTION)
+                .where('alert_status', 'in', ['PENDING', 'SENT']).stream()):
+        a = doc.to_dict() or {}
+        a['id'] = doc.id
+        if a.get('elder_id') in elders and ac.row_status(a) in ac.OPEN_STATUSES:
+            out.append(a)
+    oldest = datetime.min.replace(tzinfo=ac.PH_TIME)
+    out.sort(key=lambda a: ac.local(
+        a.get('date_triggered')) or oldest, reverse=True)
+    return out
 
 
 def _alerts_for(elder_ids, since=None):
@@ -272,8 +301,7 @@ def _alert_rows(alerts, elders):
 
 def _open_alerts_by_elder(elders):
     """{elder_id: alert row} for alerts that still need attention."""
-    open_alerts = [a for a in _alerts_for(set(elders))
-                   if ac.row_status(a) in ac.OPEN_STATUSES]
+    open_alerts = _open_alerts(elders)
     # Reversed so the newest open alert wins when a resident has more than one.
     return {r['elder_id']: r for r in reversed(_alert_rows(open_alerts, elders))}
 
@@ -346,8 +374,7 @@ def _bhw_layout_context():
     if not user:
         return {}
     elders = _elders_in_barangay(g.barangay)
-    open_count = sum(1 for a in _alerts_for(set(elders))
-                     if ac.row_status(a) in ac.OPEN_STATUSES)
+    open_count = len(_open_alerts(elders))
     return {
         'bhw_name': user.get('full_name') or 'BHW',
         'bhw_initials': _initials(user.get('full_name')),
@@ -424,8 +451,7 @@ def alerts_poll():
     """Unanswered emergencies in this BHW's barangay. bhw_alert_watch.js asks
     for this every few seconds on every BHW page to ring the alarm."""
     elders = _elders_in_barangay(g.barangay)
-    open_alerts = [a for a in _alerts_for(set(elders))
-                   if ac.row_status(a) in ac.OPEN_STATUSES]
+    open_alerts = _open_alerts(elders)
     return jsonify(success=True, count=len(open_alerts), alerts=[{
         'id': a['id'],
         'resident': (elders.get(a.get('elder_id')) or {}).get('full_name') or 'A resident',

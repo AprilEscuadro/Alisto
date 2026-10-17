@@ -1191,13 +1191,74 @@ def map_view():
     )
 
 
+def _live_map_points():
+    """Same points as _map_points(_resident_rows()), but cheap enough to poll
+    every few seconds: it reads only alerts that are still PENDING or SENT
+    (one read when nothing is happening) and then just the residents who are
+    in an emergency right now, instead of every elder, device, and alert."""
+    newest = {}
+    for doc in (db.collection(ac.ALERT_COLLECTION)
+                .where('alert_status', 'in', ['PENDING', 'SENT']).stream()):
+        alert = doc.to_dict() or {}
+        if ac.row_status(alert) not in ac.OPEN_STATUSES or not alert.get('elder_id'):
+            continue
+        row = {'id': doc.id, 'created_at': alert.get('date_triggered'),
+               'device_id': alert.get('device_id') or ''}
+        when = ac.local(row['created_at'])
+        best = newest.get(alert['elder_id'])
+        if not best or (when and (not ac.local(best['created_at']) or when > ac.local(best['created_at']))):
+            newest[alert['elder_id']] = row
+
+    fresh = {eid: a for eid, a in newest.items() if _is_fresh_alert(a)}
+    if not fresh:
+        return []
+
+    bhw_by_barangay = _bhw_by_barangay()
+    points = []
+    for elder_id, alert in fresh.items():
+        elder_doc = db.collection('elder_profile').document(elder_id).get()
+        elder = (elder_doc.to_dict() or {}) if elder_doc.exists else {}
+        if not elder or elder.get('deleted_at'):
+            continue
+
+        serial, device = alert['device_id'], {}
+        if serial:
+            device_doc = db.collection('device').document(serial).get()
+            device = (device_doc.to_dict() or {}) if device_doc.exists else {}
+        else:
+            for d in db.collection('device').where('elder_id', '==', elder_id).limit(1).stream():
+                serial, device = d.id, d.to_dict() or {}
+        lat, lng, _address, _recorded_at = ac.latest_device_location(
+            db, serial)
+        if not (lat and lng):
+            continue
+
+        _state, last_seen = _device_state(device)
+        name = elder.get('full_name') or 'Unnamed'
+        barangay = _barangay_of(elder.get('address'))
+        points.append({
+            'id': elder_id, 'name': name, 'initials': _initials(name),
+            'age': _age(elder.get('date_of_birth')),
+            'address': _short_address(elder.get('address')), 'barangay': barangay,
+            'latitude': lat, 'longitude': lng,
+            'status': 'alert',
+            'time': ac.fmt_time(last_seen),
+            'alert_label': ac.type_label('emergency'),
+            'alert_id': alert['id'],
+            'bhw_name': (bhw_by_barangay.get(barangay) or {}).get('name'),
+        })
+    points.sort(key=lambda p: p['name'].casefold())
+    return points
+
+
 @admin_bp.route('/map/points')
 @admin_required
 def map_points():
     """Polled every few seconds by the map page's own JS so a fresh
     emergency (or one going stale/resolved) appears without the admin
-    manually reloading the browser -- see MAP_POLL_MS in map_view.html."""
-    return jsonify(success=True, points=_map_points(_resident_rows()))
+    manually reloading the browser -- see MAP_POLL_MS in map_view.html.
+    Uses _live_map_points() so polling doesn't read the whole database."""
+    return jsonify(success=True, points=_live_map_points())
 
 
 @admin_bp.route('/map/flag/<alert_id>', methods=['POST'])
