@@ -2680,14 +2680,11 @@ NOTIFICATION_KEYS = ('emergency_alerts', 'medicine_reminders', 'device_alerts')
 DEFAULT_NOTIFICATION_SETTINGS = {key: True for key in NOTIFICATION_KEYS}
 
 
-def _notification_settings(user_id, user=None):
-    """This user's notification preferences, with defaults filled in."""
-    if user is None:
-        doc = db.collection('user_account').document(user_id).get()
-        user = (doc.to_dict() or {}) if doc.exists else {}
-    saved = user.get('notification_settings') or {}
-    return {key: bool(saved.get(key, DEFAULT_NOTIFICATION_SETTINGS[key]))
-            for key in NOTIFICATION_KEYS}
+def _notification_settings(user_id=None, user=None):
+    """Every notification is always on: ALISTO is an emergency system, and
+    reminders and device notices matter just as much to the family.
+    (Accounts that switched one off before this rule get it back on.)"""
+    return {key: True for key in NOTIFICATION_KEYS}
 
 
 def _notify_list(elder_id, key):
@@ -2738,50 +2735,120 @@ def settings():
     open_alerts = [a for a in _alerts_for_elders(
         elders) if _is_open_alert(a['data'])]
 
+    user_doc = db.collection('user_account').document(session['user_id']).get()
+    user = (user_doc.to_dict() or {}) if user_doc.exists else {}
+
     return render_template(
         'family/settings.html',
         full_name=session['full_name'], role=session['role'],
         care_plan=_get_care_plan(),
-        settings=_notification_settings(session['user_id']),
+        settings=_notification_settings(session['user_id'], user),
+        phone=user.get('contact_number') or '',
         notification_count=len(open_alerts),
         current_year=datetime.now().year,
     )
 
+# ---------- FAMILY: live emergency alarm + "download my data" ----------
 
-@app.route('/settings/save', methods=['POST'])
-def save_settings():
-    """Saves the toggles that were sent ('on' / 'off'). Keys not sent are left alone."""
-    if 'user_id' not in session:
+
+_FAMILY_ELDERS_CACHE = {}          # {user_id: (time read, {elder_id: name})}
+# a newly linked loved one is picked up within a minute
+FAMILY_ELDERS_CACHE_SECONDS = 60
+
+
+def _family_elder_names(user_id):
+    """{elder_id: full name} for this family account, kept for a minute so
+    the alarm poll below doesn't re-read every link and profile."""
+    import time
+    hit = _FAMILY_ELDERS_CACHE.get(user_id)
+    if hit and time.time() - hit[0] < FAMILY_ELDERS_CACHE_SECONDS:
+        return dict(hit[1])
+    names = {}
+    for link in db.collection('family_elder_link').where('family_user_id', '==', user_id).stream():
+        elder_id = (link.to_dict() or {}).get('elder_id')
+        if not elder_id or elder_id in names:
+            continue
+        doc = db.collection('elder_profile').document(elder_id).get()
+        data = (doc.to_dict() or {}) if doc.exists else {}
+        if data and not data.get('deleted_at'):
+            names[elder_id] = data.get('full_name') or 'Your loved one'
+    _FAMILY_ELDERS_CACHE[user_id] = (time.time(), names)
+    return dict(names)
+
+
+@app.route('/alerts/poll')
+def family_alerts_poll():
+    """Unanswered emergencies for this family's loved ones. family_nav.js asks
+    every 15 seconds on every family page to ring the alarm (same alarm as the
+    BHW portal). Reads only alerts that are still PENDING or SENT."""
+    if 'user_id' not in session or session.get('role') != 'family':
         return jsonify(success=False, message='Please log in first.'), 401
+    names = _family_elder_names(session['user_id'])
+    rows = []
+    if names:
+        for doc in (db.collection(ALERT_COLLECTION)
+                    .where('alert_status', 'in', ['PENDING', 'SENT']).stream()):
+            a = doc.to_dict() or {}
+            if a.get('elder_id') in names and _is_open_alert(a):
+                rows.append((ac.local(a.get('date_triggered')), doc.id, a))
+    oldest = datetime.min.replace(tzinfo=ac.PH_TIME)
+    rows.sort(key=lambda r: r[0] or oldest, reverse=True)
+    return jsonify(success=True, count=len(rows), alerts=[{
+        'id': alert_id,
+        'resident': names.get(a.get('elder_id')) or 'Your loved one',
+        'time': ac.fmt_time(a.get('date_triggered')),
+        'trigger': (a.get('trigger_type') or 'VOICE').lower(),
+        'url': url_for('alerts'),
+    } for _, alert_id, a in rows[:20]])
 
-    sent = {key: request.form[key]
-            for key in NOTIFICATION_KEYS if key in request.form}
-    if not sent or any(v not in ('on', 'off') for v in sent.values()):
-        return jsonify(success=False, message='Nothing to save.'), 400
 
-    ref = db.collection('user_account').document(session['user_id'])
-    doc = ref.get()
-    if not doc.exists:
-        return jsonify(success=False, message='Your account could not be found.'), 404
+def _export_value(value):
+    """Firestore values -> plain JSON (dates as text, photos left out)."""
+    if hasattr(value, 'isoformat'):
+        return value.isoformat()
+    if isinstance(value, dict):
+        return {k: _export_value(v) for k, v in value.items()
+                if k not in ('password_hash', 'photoBase64', 'photo_base64', 'photo_url')}
+    if isinstance(value, list):
+        return [_export_value(v) for v in value]
+    return value
 
-    current = _notification_settings(session['user_id'], doc.to_dict() or {})
-    updated = {**current, **{k: v == 'on' for k, v in sent.items()}}
 
-    try:
-        ref.update({
-            'notification_settings': updated,
-            'settings_updated_at': firestore.SERVER_TIMESTAMP,
+@app.route('/settings/my-data')
+def download_my_data():
+    """Data Privacy Act (RA 10173): a family member can download a copy of
+    the personal data ALISTO keeps about them and their loved ones."""
+    if 'user_id' not in session or session.get('role') != 'family':
+        flash('Please log in first.', 'error')
+        return redirect(url_for('login'))
+    uid = session['user_id']
+    user_doc = db.collection('user_account').document(uid).get()
+    data = {
+        'exported_at': datetime.now(PH_TZ).isoformat(),
+        'account': _export_value((user_doc.to_dict() or {}) if user_doc.exists else {}),
+        'loved_ones': [],
+    }
+    for link in db.collection('family_elder_link').where('family_user_id', '==', uid).stream():
+        link_data = link.to_dict() or {}
+        elder_id = link_data.get('elder_id')
+        if not elder_id:
+            continue
+        elder_doc = db.collection('elder_profile').document(elder_id).get()
+        if not elder_doc.exists:
+            continue
+        data['loved_ones'].append({
+            'relationship': link_data.get('relationship'),
+            'profile': _export_value(elder_doc.to_dict() or {}),
+            'emergency_contacts': [_export_value(c) for _, c in _active_contacts(elder_id)],
+            'medication_reminders': [_export_value(d.to_dict() or {}) for d in
+                                     db.collection('medication_reminder').where('elder_id', '==', elder_id).stream()],
+            'alerts': [_export_value(d.to_dict() or {}) for d in
+                       db.collection(ALERT_COLLECTION).where('elder_id', '==', elder_id).stream()],
         })
-    except Exception as e:
-        return jsonify(success=False, message=f'Could not save: {str(e)}'), 500
-
-    if len(sent) == 1:
-        key, value = next(iter(sent.items()))
-        label = key.replace('_', ' ').capitalize()
-        message = f"{label} turned {'on' if value == 'on' else 'off'}."
-    else:
-        message = 'Settings saved.'
-    return jsonify(success=True, message=message, settings=updated)
+    filename = f"alisto-my-data-{datetime.now(PH_TZ).strftime('%Y-%m-%d')}.json"
+    response = jsonify(data)
+    response.headers['Content-Disposition'] = f'attachment; filename={filename}'
+    return response
 
 
 @app.route('/care-plan/pay', methods=['POST'])

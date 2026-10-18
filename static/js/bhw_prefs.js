@@ -1,8 +1,10 @@
 /* ALISTO BHW display prefs. Loaded in <head> of bhw/base.html so the theme
    is applied BEFORE the page paints (no white flash in dark mode). */
 (function () {
-    var KEY = "alisto_bhw_prefs";
-    var DEFAULTS = { theme: "system", textSize: "default", timeFormat: "12", sound: true, desktop: false };
+    // Family pages set window.ALISTO_PREFS_KEY first so their choices are kept apart.
+    var KEY = window.ALISTO_PREFS_KEY || "alisto_bhw_prefs";
+    var DEFAULTS = Object.assign({ theme: "system", textSize: "default", timeFormat: "12", sound: true, desktop: false },
+        window.ALISTO_PREFS_DEFAULTS || {});
 
     function read() {
         try { return Object.assign({}, DEFAULTS, JSON.parse(localStorage.getItem(KEY) || "{}")); }

@@ -4,14 +4,19 @@
    desktop notification. Honors the Settings toggles (alert sound, desktop).
    Stops when the alert is acknowledged/resolved or the BHW presses Silence. */
 (function () {
+    // BHW pages: <div id="bhwWatch" data-url="...">.
+    // Family pages: window.ALISTO_WATCH = { url, listUrl, scope, badges } (set in family_nav.js).
+    var C = window.ALISTO_WATCH || {};
     var cfg = document.getElementById("bhwWatch");
     var P = window.AlistoPrefs, A = window.AlistoAlarm;
-    if (!cfg || !P || !A) return;
-
-    var URL = cfg.dataset.url;
+    var URL = C.url || (cfg && cfg.dataset.url);
+    if (!URL || !P || !A) return;
+    var SCOPE = C.scope || "bhw";
+    var LIST_URL = C.listUrl || URL.replace("/alerts/poll", "/alerts");
+    var BADGES = C.badges || '.admin-bell-badge, .admin-nav-link[href$="/alerts"] .nav-badge';
     var POLL_MS = 15000;     // how often to ask the server
     var REPEAT_MS = 30000;   // re-ring while an alert is still unanswered
-    var SEEN = "alisto_bhw_alerted", SILENT = "alisto_bhw_silenced", RING = "alisto_bhw_lastring";
+    var SEEN = "alisto_" + SCOPE + "_alerted", SILENT = "alisto_" + SCOPE + "_silenced", RING = "alisto_" + SCOPE + "_lastring";
     var baseTitle = document.title;
     var banner = null, last = [];
 
@@ -46,7 +51,7 @@
     }
 
     function setCount(n) {
-        document.querySelectorAll('.admin-bell-badge, .admin-nav-link[href$="/alerts"] .nav-badge').forEach(function (el) {
+        document.querySelectorAll(BADGES).forEach(function (el) {
             el.textContent = n; el.hidden = n === 0;
         });
         document.title = n ? "\uD83D\uDEA8 (" + n + ") " + baseTitle : baseTitle;
@@ -76,7 +81,7 @@
         var actions = document.createElement("div"); actions.className = "alert-watch-actions";
 
         var view = document.createElement("a");
-        view.href = open.length === 1 ? first.url : URL.replace("/alerts/poll", "/alerts");
+        view.href = open.length === 1 ? first.url : LIST_URL;
         view.className = "aw-btn aw-btn-solid"; view.textContent = open.length === 1 ? "View alert" : "View alerts";
         actions.appendChild(view);
 

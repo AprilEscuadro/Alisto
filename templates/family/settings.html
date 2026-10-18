@@ -226,44 +226,10 @@
           flex-direction: column-reverse;
         }
       }
-
-      /* ---- save confirmation toast ---- */
-      .settings-toast {
-        position: fixed;
-        left: 50%;
-        bottom: 28px;
-        transform: translate(-50%, 16px);
-        z-index: 1200;
-        display: flex;
-        align-items: center;
-        gap: 9px;
-        padding: 12px 18px;
-        border-radius: 999px;
-        font-size: 13.5px;
-        font-weight: 600;
-        box-shadow: 0 10px 28px rgba(15, 23, 42, 0.18);
-        opacity: 0;
-        pointer-events: none;
-        transition:
-          opacity 0.2s ease,
-          transform 0.2s ease;
-      }
-
-      .settings-toast.show {
-        opacity: 1;
-        transform: translate(-50%, 0);
-      }
-
-      .settings-toast.success {
-        background: var(--green-bg);
-        color: #14612f;
-      }
-
-      .settings-toast.error {
-        background: #fef2f2;
-        color: #b91c1c;
-      }
     </style>
+    <!-- Theme and text size for this browser (Settings > Display), same as the BHW portal -->
+    <script>window.ALISTO_PREFS_KEY = "alisto_family_prefs"; window.ALISTO_PREFS_DEFAULTS = { theme: "light" };</script>
+    <script src="{{ url_for('static', filename='js/bhw_prefs.js') }}"></script>
   </head>
   <body>
     <div class="app-shell">
@@ -422,109 +388,142 @@
           </div>
 
           <!-- ---- SETTINGS PANEL ---- -->
-          <section class="settings-panel" id="settingsPanel">
-            <div class="settings-section">
-              <h3 class="settings-section-title">Notifications</h3>
+          <section class="settings-panel settings-columns" id="settingsPanel">
+            <!-- ============ LEFT COLUMN ============ -->
+            <div class="settings-col">
+              <div class="settings-section">
+                <h3 class="settings-section-title">Notifications</h3>
 
-              <div
-                class="settings-row"
-                data-label="emergency alerts get notified for emergency events"
-              >
-                <div class="settings-row-icon danger">
-                  <i data-lucide="bell-ring"></i>
+                <div class="settings-row">
+                  <div class="settings-row-icon danger"><i data-lucide="siren"></i></div>
+                  <div class="settings-row-text">
+                    <strong>Emergency alerts</strong>
+                    {% if phone %}
+                    <small>SMS to {{ phone }} + alert on this website</small>
+                    {% else %}
+                    <small class="settings-warn">Add your phone number in <a href="{{ url_for('my_profile') }}">My Profile</a> so ALISTO can text you.</small>
+                    {% endif %}
+                  </div>
+                  <span class="pref-locked"><i data-lucide="lock"></i> Always on</span>
                 </div>
-                <div class="settings-row-text">
-                  <strong>Emergency Alerts</strong>
-                  <small>Get notified for emergency events</small>
+
+                <div class="settings-row">
+                  <div class="settings-row-icon primary"><i data-lucide="volume-2"></i></div>
+                  <div class="settings-row-text">
+                    <strong>Alert sound on this computer</strong>
+                    <small>Play a siren when your loved one needs help</small>
+                  </div>
+                  <button type="button" class="pref-test" id="prefTestSound" title="Play a test alarm">
+                    <i data-lucide="play"></i> <span id="prefTestLabel">Test</span>
+                  </button>
+                  <label class="toggle-switch">
+                    <input type="checkbox" id="prefSound" />
+                    <span class="toggle-slider"></span>
+                  </label>
                 </div>
-                <label class="toggle-switch">
-                  <input
-                    type="checkbox"
-                    name="emergency_alerts"
-                    {%
-                    if
-                    settings.emergency_alerts
-                    %}checked{%
-                    endif
-                    %}
-                  />
-                  <span class="toggle-slider"></span>
-                </label>
+
+                <div class="settings-row">
+                  <div class="settings-row-icon purple"><i data-lucide="monitor"></i></div>
+                  <div class="settings-row-text">
+                    <strong>Desktop notifications</strong>
+                    <small>Show a pop-up even when ALISTO is in another tab</small>
+                  </div>
+                  <label class="toggle-switch">
+                    <input type="checkbox" id="prefDesktop" />
+                    <span class="toggle-slider"></span>
+                  </label>
+                </div>
+
               </div>
 
-              <div
-                class="settings-row"
-                data-label="medicine reminders receive reminders for medicines"
-              >
-                <div class="settings-row-icon primary">
-                  <i data-lucide="pill"></i>
+              <div class="settings-section">
+                <h3 class="settings-section-title">Display</h3>
+                <div class="settings-row">
+                  <div class="settings-row-icon warning"><i data-lucide="sun-moon"></i></div>
+                  <div class="settings-row-text">
+                    <strong>Theme</strong>
+                    <small>Light, dark, or match this computer</small>
+                  </div>
+                  <div class="seg" role="radiogroup" aria-label="Theme" data-pref="theme">
+                    <button type="button" role="radio" data-value="light">Light</button>
+                    <button type="button" role="radio" data-value="dark">Dark</button>
+                    <button type="button" role="radio" data-value="system">System</button>
+                  </div>
                 </div>
-                <div class="settings-row-text">
-                  <strong>Medicine Reminders</strong>
-                  <small>Receive reminders for medicines</small>
+                <div class="settings-row">
+                  <div class="settings-row-icon primary"><i data-lucide="a-large-small"></i></div>
+                  <div class="settings-row-text">
+                    <strong>Text size</strong>
+                    <small>Bigger text on this computer</small>
+                  </div>
+                  <div class="seg" role="radiogroup" aria-label="Text size" data-pref="textSize">
+                    <button type="button" role="radio" data-value="default">Default</button>
+                    <button type="button" role="radio" data-value="large">Large</button>
+                    <button type="button" role="radio" data-value="larger">Larger</button>
+                  </div>
                 </div>
-                <label class="toggle-switch">
-                  <input
-                    type="checkbox"
-                    name="medicine_reminders"
-                    {%
-                    if
-                    settings.medicine_reminders
-                    %}checked{%
-                    endif
-                    %}
-                  />
-                  <span class="toggle-slider"></span>
-                </label>
-              </div>
-
-              <div
-                class="settings-row"
-                data-label="device alerts notifications about device status"
-              >
-                <div class="settings-row-icon warning">
-                  <i data-lucide="smartphone"></i>
-                </div>
-                <div class="settings-row-text">
-                  <strong>Device Alerts</strong>
-                  <small>Notifications about device status</small>
-                </div>
-                <label class="toggle-switch">
-                  <input
-                    type="checkbox"
-                    name="device_alerts"
-                    {%
-                    if
-                    settings.device_alerts
-                    %}checked{%
-                    endif
-                    %}
-                  />
-                  <span class="toggle-slider"></span>
-                </label>
               </div>
             </div>
 
-            <div class="settings-section">
-              <h3 class="settings-section-title">Device</h3>
+            <!-- ============ RIGHT COLUMN ============ -->
+            <div class="settings-col">
+              <div class="settings-section">
+                <h3 class="settings-section-title">Account</h3>
+                <a href="{{ url_for('my_profile') }}" class="settings-row settings-row-link">
+                  <div class="settings-row-icon primary"><i data-lucide="user-round"></i></div>
+                  <div class="settings-row-text">
+                    <strong>My profile</strong>
+                    <small>Name, phone number, photo, and password</small>
+                  </div>
+                  <i data-lucide="chevron-right" class="settings-row-chevron"></i>
+                </a>
+                <a href="{{ url_for('my_loved_ones') }}" class="settings-row settings-row-link">
+                  <div class="settings-row-icon danger"><i data-lucide="users-round"></i></div>
+                  <div class="settings-row-text">
+                    <strong>Emergency contacts</strong>
+                    <small>Who the device texts. Open a loved one, then Emergency contacts.</small>
+                  </div>
+                  <i data-lucide="chevron-right" class="settings-row-chevron"></i>
+                </a>
+              </div>
 
-              <div
-                class="settings-row"
-                data-label="wifi network change your device's wifi connection"
-              >
-                <div class="settings-row-icon primary">
-                  <i data-lucide="wifi"></i>
-                </div>
+              <div class="settings-section">
+                <h3 class="settings-section-title">Privacy &amp; data</h3>
+                <a href="{{ url_for('download_my_data') }}" class="settings-row settings-row-link">
+                  <div class="settings-row-icon purple"><i data-lucide="download"></i></div>
+                  <div class="settings-row-text">
+                    <strong>Download my data</strong>
+                    <small>A copy of your account and your loved ones' records (RA 10173)</small>
+                  </div>
+                  <i data-lucide="chevron-right" class="settings-row-chevron"></i>
+                </a>
+                <a href="{{ url_for('inbox_page', compose='support', subject='Account deletion request') }}" class="settings-row settings-row-link">
+                  <div class="settings-row-icon danger"><i data-lucide="user-x"></i></div>
+                  <div class="settings-row-text">
+                    <strong>Request account deletion</strong>
+                    <small>Sends a request to ALISTO Support. You'll get a reply in your Inbox.</small>
+                  </div>
+                  <i data-lucide="chevron-right" class="settings-row-chevron"></i>
+                </a>
+                <a href="{{ url_for('help_support') }}" class="settings-row settings-row-link">
+                  <div class="settings-row-icon warning"><i data-lucide="circle-help"></i></div>
+                  <div class="settings-row-text">
+                    <strong>Help &amp; support</strong>
+                    <small>FAQs, user guide, and contact</small>
+                  </div>
+                  <i data-lucide="chevron-right" class="settings-row-chevron"></i>
+                </a>
+              </div>
+            </div>
+
+            <!-- ============ FULL WIDTH ============ -->
+            <div class="settings-section settings-full">
+              <h3 class="settings-section-title">ALISTO device</h3>
+              <div class="settings-row">
+                <div class="settings-row-icon primary"><i data-lucide="wifi"></i></div>
                 <div class="settings-row-text">
-                  <strong>WiFi Network</strong>
-                  <small>
-                    To change your Alisto device's WiFi network, open the
-                    ALISTO mobile app and go to Device Information &rarr;
-                    Change WiFi Network. Your phone needs to connect
-                    directly to the device's own "Alisto-Setup" WiFi
-                    hotspot for this, so it isn't available from the
-                    website.
-                  </small>
+                  <strong>Wi-Fi network</strong>
+                  <small>Change it from the ALISTO mobile app: Device Information, then Change WiFi Network. Your phone connects to the device's "Alisto-Setup" hotspot, so it can't be done from the website.</small>
                 </div>
               </div>
             </div>
@@ -536,9 +535,6 @@
         </div>
       </main>
     </div>
-
-    <!-- Confirms the write actually reached Firestore. -->
-    <div class="settings-toast" id="settingsToast" role="status"></div>
 
     <!-- ============ LOGOUT CONFIRMATION ============ -->
     <div class="confirm-overlay" id="logoutConfirm" aria-hidden="true">
@@ -578,55 +574,6 @@
           sidebar.classList.toggle("open");
         });
       }
-
-      // ---- Toggles save to Firestore as soon as they are flipped ----
-      (function () {
-        const toggles = document.querySelectorAll(
-          '#settingsPanel .toggle-switch input[type="checkbox"]',
-        );
-        const toast = document.getElementById("settingsToast");
-        let toastTimer = null;
-
-        function showToast(message, type) {
-          if (!toast) return;
-          clearTimeout(toastTimer);
-          toast.textContent = message;
-          toast.className = "settings-toast show " + type;
-          toastTimer = setTimeout(() => {
-            toast.className = "settings-toast " + type;
-          }, 2600);
-        }
-
-        toggles.forEach((toggle) => {
-          toggle.addEventListener("change", async () => {
-            const wanted = toggle.checked;
-            const form = new FormData();
-            form.append(toggle.name, wanted ? "on" : "off");
-            toggle.disabled = true;
-
-            try {
-              const res = await fetch("{{ url_for('save_settings') }}", {
-                method: "POST",
-                body: form,
-              });
-              const data = await res.json();
-              if (!data.success)
-                throw new Error(data.message || "Could not save.");
-              showToast(data.message || "Settings saved.", "success");
-            } catch (err) {
-              // Put the switch back so the page matches what is really saved.
-              toggle.checked = !wanted;
-              showToast(
-                err.message && err.message !== "Failed to fetch"
-                  ? err.message
-                  : "Cannot reach the server. Please try again.",
-                "error",
-              );
-            }
-            toggle.disabled = false;
-          });
-        });
-      })();
 
       // ---- Profile dropdown + logout confirmation ----
       (function () {
@@ -698,6 +645,7 @@
       })();
     </script>
     {% include 'family/_care_plan_modal.html' %}
+  <script src="{{ url_for('static', filename='js/bhw_settings.js') }}"></script>
   <script src="{{ url_for('static', filename='js/family_nav.js') }}"></script>
   </body>
 </html>

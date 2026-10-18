@@ -47,3 +47,25 @@ document.addEventListener('DOMContentLoaded', () => {
   setInterval(refresh, 30000);
   document.addEventListener('visibilitychange', refresh);
 })();
+
+// Emergency alarm on every family page: the same siren, banner, and desktop
+// notification as the BHW portal (bhw_prefs.js + bhw_alert_watch.js), fed by
+// /alerts/poll. Sound and pop-ups follow Settings > Notifications.
+(function () {
+  window.ALISTO_PREFS_KEY = window.ALISTO_PREFS_KEY || "alisto_family_prefs";
+  window.ALISTO_WATCH = {
+    url: "/alerts/poll",
+    listUrl: "/alerts",
+    scope: "family",
+    badges: ".header-right .notif-dot",
+  };
+  function load(src, done) {
+    var s = document.createElement("script");
+    s.src = src;
+    if (done) s.onload = done;
+    document.body.appendChild(s);
+  }
+  function watch() { load("/static/js/bhw_alert_watch.js"); }
+  if (window.AlistoPrefs) watch();
+  else load("/static/js/bhw_prefs.js", watch);
+})();
