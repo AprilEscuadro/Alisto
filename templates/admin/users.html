@@ -182,16 +182,17 @@
                 </form>
                 {% endif %}
                 {% if row.status == 'archived' %}
+                {# Archived earlier (before Delete existed): can still be restored. #}
                 <form method="POST" action="{{ url_for('admin.archive_user', user_id=row.id) }}">
                   <input type="hidden" name="type" value="{{ row.type }}" />
                   <button type="submit" role="menuitem"><i data-lucide="rotate-ccw"></i> Restore</button>
                 </form>
-                {% else %}
-                <form method="POST" action="{{ url_for('admin.archive_user', user_id=row.id) }}" class="js-confirm-archive" data-name="{{ row.name }}">
-                  <input type="hidden" name="type" value="{{ row.type }}" />
-                  <button type="submit" class="text-red" role="menuitem"><i data-lucide="archive"></i> Archive</button>
-                </form>
                 {% endif %}
+                {# Permanent: also removes the Firebase login (and the data). #}
+                <form method="POST" action="{{ url_for('admin.delete_user', user_id=row.id) }}" class="js-confirm-delete-user" data-name="{{ row.name }}" data-type="{{ row.type }}">
+                  <input type="hidden" name="type" value="{{ row.type }}" />
+                  <button type="submit" class="text-red" role="menuitem"><i data-lucide="trash-2"></i> Delete</button>
+                </form>
               </div>
             </div>
           </td>

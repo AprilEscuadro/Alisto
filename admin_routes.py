@@ -22,6 +22,7 @@ from functools import wraps
 from flask import (Blueprint, render_template, session, redirect, url_for,
                    flash, request, send_from_directory, current_app, abort, Response,
                    jsonify, g)
+from firebase_admin import auth as fb_auth
 from firebase_admin import firestore, messaging
 from werkzeug.security import check_password_hash, generate_password_hash
 
@@ -575,17 +576,29 @@ def users():
     elders = _active_docs('elder_profile')
 
     devices_per_elder = {}
+    serials_per_elder = {}  # elder_id -> [serial, ...] (the device doc ID is the serial)
     for doc in db.collection('device').stream():
         elder_id = (doc.to_dict() or {}).get('elder_id')
         if elder_id:
             devices_per_elder[elder_id] = devices_per_elder.get(
                 elder_id, 0) + 1
+            serials_per_elder.setdefault(elder_id, []).append(doc.id)
 
     elders_per_family = {}
+    families_per_elder = {}  # elder_id -> [family user_id, ...]
     for doc in db.collection('family_elder_link').stream():
         link = doc.to_dict() or {}
         elders_per_family.setdefault(
             link.get('family_user_id'), []).append(link.get('elder_id'))
+        families_per_elder.setdefault(
+            link.get('elder_id'), []).append(link.get('family_user_id'))
+
+    # For the "View details" popup: who is linked to whom, and which device.
+    elder_names = {eid: e.get('full_name') or 'Unnamed' for eid, e in elders}
+    family_names = {uid: u.get('full_name') or 'Unnamed' for uid, u in accounts}
+
+    def serial_text(elder_id):
+        return ', '.join(sorted(serials_per_elder.get(elder_id, []))) or 'No device'
 
     bhw_profiles = {}
     for doc in db.collection('bhw_profile').stream():
@@ -607,6 +620,11 @@ def users():
                 ['Full Name', elder.get('full_name') or '—'],
                 ['Date of Birth', elder.get('date_of_birth') or '—'],
                 ['Address', elder.get('address') or '—'],
+                # One name per line (the popup keeps line breaks).
+                ['Device Serial', serial_text(elder_id)],
+                ['Linked Family', '\n'.join(sorted(
+                    family_names[f] for f in set(families_per_elder.get(elder_id, []))
+                    if f in family_names)) or '—'],
             ],
         })
 
@@ -632,8 +650,16 @@ def users():
             row['devices'] = sum(devices_per_elder.get(e, 0)
                                  for e in elders_per_family.get(user_id, []))
             row['status'] = 'archived' if user.get('is_archived') else 'active'
-            row['details'].append(
-                ['Linked Loved Ones', len(elders_per_family.get(user_id, []))])
+            # The elder(s) this family member watches over and the device
+            # serial for each, one per line and in the same order so the
+            # two rows line up. A link to an elder that no longer exists is
+            # left out.
+            linked = [e for e in dict.fromkeys(elders_per_family.get(user_id, []))
+                      if e in elder_names]
+            row['details'] += [
+                ['Linked Elder', '\n'.join(elder_names[e] for e in linked) or '—'],
+                ['Device Serial', '\n'.join(serial_text(e) for e in linked) or '—'],
+            ]
         else:
             approval = user.get('approval_status', 'pending')
             profile = bhw_profiles.get(user_id, {})
@@ -737,6 +763,122 @@ def archive_user(user_id):
         'archived_by': session['user_id'] if now_archived else None,
     })
     flash(f"{name} was {'archived' if now_archived else 'restored'}.", 'success')
+    return redirect(url_for('admin.users'))
+
+
+def _delete_matching(collection, field, value):
+    """Deletes every document in `collection` whose `field` equals `value`
+    (in batches, so a long list can't hit Firestore's 500-write limit).
+    Returns how many were deleted."""
+    deleted = 0
+    batch = db.batch()
+    pending = 0
+    for doc in db.collection(collection).where(field, '==', value).stream():
+        batch.delete(doc.reference)
+        pending += 1
+        deleted += 1
+        if pending >= 400:
+            batch.commit()
+            batch = db.batch()
+            pending = 0
+    if pending:
+        batch.commit()
+    return deleted
+
+
+@admin_bp.route('/users/<user_id>/delete', methods=['POST'])
+@admin_required
+def delete_user(user_id):
+    """PERMANENTLY deletes a user. Unlike archive_user() this removes the
+    data, so it is for freeing space and removing accounts for good.
+
+    Family / BHW account: the Firebase Authentication login, the user_account
+    document, the BHW profile and uploaded valid ID, and their links to loved
+    ones. Their loved ones (elder profiles) and devices are NOT deleted.
+
+    Elderly profile: the profile, its emergency contacts, medicine reminders
+    and family links; any device registered to them is unregistered (same as
+    Unregister on the Devices page) so the serial can be reused.
+
+    Alerts, subscriptions and payments are deliberately KEPT: Emergency Logs,
+    Reports and the Subscriptions page still reference them, and payments are
+    financial records.
+    """
+    kind = request.form.get('type')
+    if user_id == session.get('user_id'):
+        flash("You can't delete your own account.", 'error')
+        return redirect(url_for('admin.users'))
+    if kind == 'elderly':
+        return _delete_elder(user_id)
+
+    ref = db.collection('user_account').document(user_id)
+    doc = ref.get()
+    user = doc.to_dict() if doc.exists else None
+    if not user:
+        flash('That user could not be found.', 'error')
+        return redirect(url_for('admin.users'))
+    if user.get('role') not in ('family', 'bhw'):
+        flash('Only family and BHW accounts can be deleted here.', 'error')
+        return redirect(url_for('admin.users'))
+
+    name = user.get('full_name') or 'This user'
+
+    # 1) The sign-in account first. If this fails we stop BEFORE touching the
+    #    data, so a user is never left with a login but no profile.
+    try:
+        fb_auth.delete_user(user_id)
+    except fb_auth.UserNotFoundError:
+        pass  # no login account left (already removed in Firebase): carry on
+    except Exception as e:
+        flash(f"Could not delete {name}'s login in Firebase ({e}). Nothing was deleted.", 'error')
+        return redirect(url_for('admin.users'))
+
+    # 2) Their data.
+    try:
+        _delete_matching('bhw_profile', 'user_id', user_id)
+        try:
+            valid_id_store.delete(user_id)
+        except Exception as e:
+            print(f'[delete user] could not remove valid ID for {user_id}: {e}')
+        _delete_matching('family_elder_link', 'family_user_id', user_id)
+        ref.delete()
+    except Exception as e:
+        flash(f"{name}'s login was deleted but some data could not be removed ({e}). "
+              'Try Delete again.', 'error')
+        return redirect(url_for('admin.users'))
+
+    flash(f'{name} was permanently deleted, including their Firebase login.', 'success')
+    return redirect(url_for('admin.users'))
+
+
+def _delete_elder(elder_id):
+    ref = db.collection('elder_profile').document(elder_id)
+    doc = ref.get()
+    elder = doc.to_dict() if doc.exists else None
+    if not elder:
+        flash('That user could not be found.', 'error')
+        return redirect(url_for('admin.users'))
+    name = elder.get('full_name') or 'This person'
+
+    try:
+        for device in db.collection('device').where('elder_id', '==', elder_id).stream():
+            device.reference.update({
+                'is_registered': False,
+                'elder_id': None,
+                'registered_at': None,
+                'previous_elder_id': elder_id,
+                'unregistered_at': firestore.SERVER_TIMESTAMP,
+                'unregistered_by': session['user_id'],
+            })
+        _delete_matching('family_elder_link', 'elder_id', elder_id)
+        _delete_matching('emergency_contact', 'elder_id', elder_id)
+        _delete_matching('medication_reminder', 'elder_id', elder_id)
+        ref.delete()
+    except Exception as e:
+        flash(f'Could not finish deleting {name} ({e}). Try again.', 'error')
+        return redirect(url_for('admin.users'))
+
+    flash(f'{name} was permanently deleted and their device was unregistered.', 'success')
     return redirect(url_for('admin.users'))
 
 

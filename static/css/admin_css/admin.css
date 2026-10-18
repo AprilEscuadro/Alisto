@@ -1371,6 +1371,7 @@ h2 {
   margin: 0;
   font-weight: 600;
   word-break: break-word;
+  white-space: pre-line; /* "Linked Elder" / "Device Serial" list one item per line */
 }
 
 .details-list a {

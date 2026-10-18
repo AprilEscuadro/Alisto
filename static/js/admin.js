@@ -144,6 +144,18 @@
           message: `${who}, and the serial becomes available for someone else.`,
           okLabel: 'Unregister', danger: true,
         };
+      } else if (form.classList.contains('js-confirm-delete-user')) {
+        const kind = form.dataset.type;
+        const what = {
+          family: 'Their account and profile will be permanently deleted from the website and from Firebase, and they will no longer be able to sign in. Their loved ones and devices are not deleted.',
+          bhw: 'Their account, profile and uploaded valid ID will be permanently deleted from the website and from Firebase, and they will no longer be able to sign in.',
+          elderly: 'Their profile, emergency contacts, medicine reminders and family links will be permanently deleted, and their device will be unregistered.',
+        }[kind] || 'They will be permanently deleted.';
+        request = {
+          title: `Delete ${form.dataset.name}?`,
+          message: `${what} Past alerts and payment records are kept. This cannot be undone.`,
+          okLabel: 'Delete permanently', danger: true,
+        };
       } else if (form.classList.contains('js-confirm-archive')) {
         request = {
           title: `Archive ${form.dataset.name}?`,
