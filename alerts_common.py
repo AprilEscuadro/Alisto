@@ -107,7 +107,8 @@ def fmt_time(value):
     if moment.date() == today - timedelta(days=1):
         return f'Yesterday, {clock}'
     # Drop the year for dates in the current year, to keep table columns narrow.
-    day = moment.strftime('%b %d') if moment.year == today.year else moment.strftime('%b %d, %Y')
+    day = moment.strftime(
+        '%b %d') if moment.year == today.year else moment.strftime('%b %d, %Y')
     return f'{day}, {clock}'
 
 
@@ -156,7 +157,8 @@ def row_status(alert):
 
 def response_minutes(alert):
     """Minutes between the alert arriving and a BHW acknowledging it."""
-    created, answered = local(alert.get('date_triggered')), local(alert.get('acknowledged_at'))
+    created, answered = local(alert.get('date_triggered')), local(
+        alert.get('acknowledged_at'))
     if not created or not answered:
         return None
     minutes = (answered - created).total_seconds() / 60
@@ -228,9 +230,9 @@ def latest_device_location(db, device_id):
         # read and sort in Python instead of failing the whole lookup.
         try:
             docs = list(db.collection(LOCATION_COLLECTION)
-                       .where('device_id', '==', device_id).stream())
+                        .where('device_id', '==', device_id).stream())
             docs.sort(key=lambda d: getattr(d.to_dict().get('recorded_at'), 'timestamp', lambda: 0)(),
-                     reverse=True)
+                      reverse=True)
         except Exception:
             return None, None, None, None
 
@@ -270,7 +272,8 @@ def alert_locations_bulk(db, location_ids):
         for doc in db.get_all(refs):
             if doc.exists:
                 data = doc.to_dict() or {}
-                result[doc.id] = (data.get('gps_lat'), data.get('gps_long'), data.get('location_address'))
+                result[doc.id] = (data.get('gps_lat'), data.get(
+                    'gps_long'), data.get('location_address'))
         return result
     except Exception:
         return {}
@@ -393,7 +396,8 @@ def acknowledge(db, ref, alert_id, user_id):
                     remarks=f'Auto-acknowledged together with alert {alert_id}',
                 )
         except Exception as e:
-            print(f'[alerts_common] failed to bulk-acknowledge sibling alerts: {e}')
+            print(
+                f'[alerts_common] failed to bulk-acknowledge sibling alerts: {e}')
     return True
 
 
@@ -416,7 +420,8 @@ def resolve(db, ref, alert_id, user_id, false_alarm=False, notes=None):
         updates['acknowledged_at'] = firestore.SERVER_TIMESTAMP
         updates['acknowledged_by'] = user_id
     ref.update(updates)
-    write_status_history(db, alert_id, new_status, user_id, remarks=resolution_note or None)
+    write_status_history(db, alert_id, new_status, user_id,
+                         remarks=resolution_note or None)
     return new_status
 
 
@@ -439,10 +444,12 @@ def auto_escalate_stale_alerts(db):
     periodically by a background loop -- best-effort throughout, since a
     bad sweep should never take the caller down. Returns how many alerts
     were newly flagged."""
-    cutoff = datetime.now(timezone.utc) - timedelta(minutes=AUTO_ESCALATE_AFTER_MINUTES)
+    cutoff = datetime.now(timezone.utc) - \
+        timedelta(minutes=AUTO_ESCALATE_AFTER_MINUTES)
     flagged = 0
     try:
-        docs = db.collection(ALERT_COLLECTION).where('alert_status', 'in', ['PENDING', 'SENT']).stream()
+        docs = db.collection(ALERT_COLLECTION).where(
+            'alert_status', 'in', ['PENDING', 'SENT']).stream()
     except Exception as e:
         print(f'[alerts_common] auto_escalate_stale_alerts query failed: {e}')
         return 0
@@ -467,5 +474,6 @@ def auto_escalate_stale_alerts(db):
             )
             flagged += 1
         except Exception as e:
-            print(f'[alerts_common] auto_escalate_stale_alerts failed on {doc.id}: {e}')
+            print(
+                f'[alerts_common] auto_escalate_stale_alerts failed on {doc.id}: {e}')
     return flagged

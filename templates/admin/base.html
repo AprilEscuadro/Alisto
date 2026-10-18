@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="en">
+<html lang="en" data-theme="light">
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
@@ -13,6 +13,10 @@
       rel="stylesheet"
       href="{{ url_for('static', filename='css/admin_css/admin.css') }}"
     />
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/admin_css/admin_prefs.css') }}" />
+    <!-- Theme / text size for this browser (Settings > Display), same as the BHW portal -->
+    <script>window.ALISTO_PREFS_KEY = "alisto_admin_prefs";</script>
+    <script src="{{ url_for('static', filename='js/bhw_prefs.js') }}"></script>
     {% block head %}{% endblock %}
   </head>
   <body class="admin-body">
@@ -182,6 +186,16 @@
     </div>
 
     <script src="{{ url_for('static', filename='js/admin.js') }}"></script>
+    <!-- Emergency alarm on every admin page (same siren/banner as BHW + Family) -->
+    <script>
+      window.ALISTO_WATCH = {
+        url: "{{ url_for('admin.alerts_poll') }}",
+        listUrl: "{{ url_for('admin.emergency_logs') }}",
+        scope: "admin",
+        badges: ".alisto-no-badge", /* the bell already counts everything; don't overwrite it */
+      };
+    </script>
+    <script src="{{ url_for('static', filename='js/bhw_alert_watch.js') }}"></script>
     {% block scripts %}{% endblock %} 
         <script>
       // Inbox badge in the sidebar: checked every 30 seconds while the tab is open.

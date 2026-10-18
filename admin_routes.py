@@ -213,60 +213,57 @@ def _offline_devices_raw():
     return out
 
 
-def _notif_items(prefs):
-    """Builds the admin bell's combined feed, honoring each toggle under
-    Settings > Notification Settings -- previously the bell always showed
-    pending BHWs no matter what "New User Registration Requests" said,
-    and the other three toggles (Emergency Alerts, Device Offline Alerts,
-    Subscription Expiry Alerts) had no notification feed behind them at
-    all, so turning them on or off changed nothing. `prefs` is the
-    admin's own saved notification_settings dict; a missing key defaults
-    to True, matching settings()'s own default."""
+def _notif_items():
+    """Builds the admin bell's combined feed. Every kind (emergencies, BHW
+    registrations, offline devices, expiring subscriptions) is always on --
+    Settings no longer has toggles for them, because an emergency system
+    shouldn't let the admin switch alerts off. What an admin CAN tune is how
+    soon a device counts as offline (Settings > Device monitoring)."""
     items = []
 
-    if prefs.get('registration_requests', True):
-        for p in _cached('pending_bhws', _pending_bhws):
-            items.append({
-                'kind': 'bhw', 'title': p['name'],
-                'subtitle': 'BHW registration waiting for approval' + (f" · {p['barangay']}" if p['barangay'] else ''),
-                'when': p['when'], 'sort': p['sort'],
-                'href': url_for('admin.users', status='pending'),
-            })
+    # always on
+    for p in _cached('pending_bhws', _pending_bhws):
+        items.append({
+            'kind': 'bhw', 'title': p['name'],
+            'subtitle': 'BHW registration waiting for approval' + (f" · {p['barangay']}" if p['barangay'] else ''),
+            'when': p['when'], 'sort': p['sort'],
+            'href': url_for('admin.users', status='pending'),
+        })
 
-    if prefs.get('emergency_alerts', True):
-        open_alerts = _cached('open_alerts', lambda: [
-                              a for a in _all_alert_rows() if a['is_open']])
-        for a in open_alerts:
-            items.append({
-                'kind': 'emergency', 'title': a['name'],
-                'subtitle': f"{a['type_label']} -- still active",
-                'when': a['time'], 'sort': _sort_key(a['created_at']),
-                'href': url_for('admin.emergency_logs'),
-            })
+    # emergency alerts are always on
+    open_alerts = _cached('open_alerts', lambda: [
+                          a for a in _all_alert_rows() if a['is_open']])
+    for a in open_alerts:
+        items.append({
+            'kind': 'emergency', 'title': a['name'],
+            'subtitle': f"{a['type_label']} -- still active",
+            'when': a['time'], 'sort': _sort_key(a['created_at']),
+            'href': url_for('admin.emergency_logs'),
+        })
 
-    if prefs.get('device_offline_alerts', True):
-        for d in _cached('offline_devices', _offline_devices_raw):
-            items.append({
-                'kind': 'device', 'title': d['name'],
-                'subtitle': f"Device {d['doc_id']} is offline",
-                'when': _fmt_when(d['last_seen']), 'sort': _sort_key(d['last_seen']),
-                'href': url_for('admin.devices'),
-            })
+    # always on
+    for d in _cached('offline_devices', _offline_devices_raw):
+        items.append({
+            'kind': 'device', 'title': d['name'],
+            'subtitle': f"Device {d['doc_id']} is offline",
+            'when': _fmt_when(d['last_seen']), 'sort': _sort_key(d['last_seen']),
+            'href': url_for('admin.devices'),
+        })
 
-    if prefs.get('subscription_expiry_alerts', True):
-        expiring = _cached('expiring_subs', lambda: [
-                           s for s in _subscription_rows() if s['status'] == 'expiring'])
-        for s in expiring:
-            days = s['days_left']
-            items.append({
-                'kind': 'subscription', 'title': s['name'],
-                'subtitle': f"{s['plan']} plan expires in {days} day{'' if days == 1 else 's'}",
-                # Soonest-expiring first within this kind -- see the
-                # final sort below for why this can use a different
-                # scale than the timestamp-based `sort` values above.
-                'when': s['expiry'], 'sort': -days if days is not None else 0,
-                'href': url_for('admin.subscriptions'),
-            })
+    # always on
+    expiring = _cached('expiring_subs', lambda: [
+                       s for s in _subscription_rows() if s['status'] == 'expiring'])
+    for s in expiring:
+        days = s['days_left']
+        items.append({
+            'kind': 'subscription', 'title': s['name'],
+            'subtitle': f"{s['plan']} plan expires in {days} day{'' if days == 1 else 's'}",
+            # Soonest-expiring first within this kind -- see the
+            # final sort below for why this can use a different
+            # scale than the timestamp-based `sort` values above.
+            'when': s['expiry'], 'sort': -days if days is not None else 0,
+            'href': url_for('admin.subscriptions'),
+        })
 
     for item in items:
         item['icon'], item['tint'] = NOTIF_STYLE[item['kind']]
@@ -284,12 +281,7 @@ def _admin_layout_context():
     """Values every admin page needs for the sidebar and top bar."""
     if session.get('role') != 'admin':
         return {}
-    user_id = session['user_id']
-    prefs = _cached(f'prefs:{user_id}', lambda: (
-        (db.collection('user_account').document(user_id).get(
-        ).to_dict() or {}).get('notification_settings') or {}
-    ))
-    items = _notif_items(prefs)
+    items = _notif_items()
     return {
         'admin_name': session.get('full_name', 'Administrator'),
         'admin_initial': _initials(session.get('full_name', 'Administrator'))[:1],
@@ -576,7 +568,8 @@ def users():
     elders = _active_docs('elder_profile')
 
     devices_per_elder = {}
-    serials_per_elder = {}  # elder_id -> [serial, ...] (the device doc ID is the serial)
+    # elder_id -> [serial, ...] (the device doc ID is the serial)
+    serials_per_elder = {}
     for doc in db.collection('device').stream():
         elder_id = (doc.to_dict() or {}).get('elder_id')
         if elder_id:
@@ -595,7 +588,8 @@ def users():
 
     # For the "View details" popup: who is linked to whom, and which device.
     elder_names = {eid: e.get('full_name') or 'Unnamed' for eid, e in elders}
-    family_names = {uid: u.get('full_name') or 'Unnamed' for uid, u in accounts}
+    family_names = {uid: u.get('full_name')
+                    or 'Unnamed' for uid, u in accounts}
 
     def serial_text(elder_id):
         return ', '.join(sorted(serials_per_elder.get(elder_id, []))) or 'No device'
@@ -657,8 +651,10 @@ def users():
             linked = [e for e in dict.fromkeys(elders_per_family.get(user_id, []))
                       if e in elder_names]
             row['details'] += [
-                ['Linked Elder', '\n'.join(elder_names[e] for e in linked) or '—'],
-                ['Device Serial', '\n'.join(serial_text(e) for e in linked) or '—'],
+                ['Linked Elder', '\n'.join(elder_names[e]
+                                           for e in linked) or '—'],
+                ['Device Serial', '\n'.join(serial_text(e)
+                                            for e in linked) or '—'],
             ]
         else:
             approval = user.get('approval_status', 'pending')
@@ -830,7 +826,8 @@ def delete_user(user_id):
     except fb_auth.UserNotFoundError:
         pass  # no login account left (already removed in Firebase): carry on
     except Exception as e:
-        flash(f"Could not delete {name}'s login in Firebase ({e}). Nothing was deleted.", 'error')
+        flash(
+            f"Could not delete {name}'s login in Firebase ({e}). Nothing was deleted.", 'error')
         return redirect(url_for('admin.users'))
 
     # 2) Their data.
@@ -839,7 +836,8 @@ def delete_user(user_id):
         try:
             valid_id_store.delete(user_id)
         except Exception as e:
-            print(f'[delete user] could not remove valid ID for {user_id}: {e}')
+            print(
+                f'[delete user] could not remove valid ID for {user_id}: {e}')
         _delete_matching('family_elder_link', 'family_user_id', user_id)
         ref.delete()
     except Exception as e:
@@ -1851,9 +1849,8 @@ def download_subscriptions():
 
 # ---------- SETTINGS (account settings) ----------
 
-NOTIFICATION_KEYS = ('emergency_alerts', 'registration_requests',
-                     'device_offline_alerts', 'subscription_expiry_alerts')
-TIMEZONES = ['Asia/Manila (GMT+08:00)', 'UTC (GMT+00:00)']
+# Timezone is fixed: ALISTO only runs in Cebu, so there is nothing to choose.
+TIMEZONES = ['Asia/Manila (GMT+08:00)']
 DATE_FORMATS = ['MMM DD, YYYY', 'DD/MM/YYYY', 'YYYY-MM-DD']
 SYSTEM_DOC = 'system_settings'
 
@@ -1863,7 +1860,7 @@ def _system_settings():
     saved = (doc.to_dict() or {}) if doc.exists else {}
     last_backup_at = saved.get('last_backup_at')
     return {
-        'timezone': saved.get('timezone') or TIMEZONES[0],
+        'timezone': TIMEZONES[0],
         'date_format': saved.get('date_format') or DATE_FORMATS[0],
         'auto_backup': bool(saved.get('auto_backup', True)),
         # Deliberately NOT _fmt_date() -- that reads these very settings
@@ -1935,30 +1932,20 @@ def backup_now():
 @admin_bp.route('/settings')
 @admin_required
 def settings():
-    doc = db.collection('user_account').document(session['user_id']).get()
-    user = doc.to_dict() if doc.exists else {}
-    saved = user.get('notification_settings') or {}
-
     return render_template(
         'admin/settings.html', active_page='settings',
-        notifications={key: bool(saved.get(key, True))
-                       for key in NOTIFICATION_KEYS},
-        system=_system_settings(), timezones=TIMEZONES, date_formats=DATE_FORMATS,
+        system=_system_settings(), date_formats=DATE_FORMATS,
+        phone=(db.collection('user_account').document(session['user_id']).get()
+               .to_dict() or {}).get('contact_number') or '',
     )
 
 
 @admin_bp.route('/settings', methods=['POST'])
 @admin_required
 def save_settings():
-    timezone_choice = request.form.get('timezone')
     date_choice = request.form.get('date_format')
 
-    db.collection('user_account').document(session['user_id']).update({
-        'notification_settings': {key: request.form.get(key) == 'on' for key in NOTIFICATION_KEYS},
-        'settings_updated_at': firestore.SERVER_TIMESTAMP,
-    })
     db.collection('app_settings').document(SYSTEM_DOC).set({
-        'timezone': timezone_choice if timezone_choice in TIMEZONES else TIMEZONES[0],
         'date_format': date_choice if date_choice in DATE_FORMATS else DATE_FORMATS[0],
         'auto_backup': request.form.get('auto_backup') == 'on',
         'updated_at': firestore.SERVER_TIMESTAMP,
@@ -1971,7 +1958,32 @@ def save_settings():
     return redirect(url_for('admin.settings'))
 
 
+@admin_bp.route('/alerts/poll')
+@admin_required
+def alerts_poll():
+    """Unanswered emergencies anywhere in the system. The admin pages ask for
+    this every 15 seconds (bhw_alert_watch.js, same alarm as BHW/Family) so
+    the admin hears an emergency even if no one has responded. Only reads
+    alerts that are still PENDING or SENT."""
+    elders = _cached('poll_elders', _all_elders)
+    rows = []
+    for doc in (db.collection(ac.ALERT_COLLECTION)
+                .where('alert_status', 'in', ['PENDING', 'SENT']).stream()):
+        a = doc.to_dict() or {}
+        if ac.row_status(a) in ac.OPEN_STATUSES:
+            rows.append((ac.local(a.get('date_triggered')), doc.id, a))
+    oldest = datetime.min.replace(tzinfo=ac.PH_TIME)
+    rows.sort(key=lambda r: r[0] or oldest, reverse=True)
+    return jsonify(success=True, count=len(rows), alerts=[{
+        'id': alert_id,
+        'resident': (elders.get(a.get('elder_id')) or {}).get('full_name') or 'A resident',
+        'time': ac.fmt_time(a.get('date_triggered')),
+        'trigger': (a.get('trigger_type') or 'VOICE').lower(),
+        'url': url_for('admin.emergency_logs'),
+    } for _, alert_id, a in rows[:20]])
+
 # ---------- MY PROFILE ----------
+
 
 @admin_bp.route('/profile')
 @admin_required

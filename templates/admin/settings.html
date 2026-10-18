@@ -2,105 +2,156 @@
 {% block title %}Settings{% endblock %}
 
 {% block content %}
-<form method="POST" action="{{ url_for('admin.save_settings') }}">
-  <div class="admin-page-header">
-    <div>
-      <h1>Settings</h1>
-      <p>Manage admin account and basic system preferences.</p>
-    </div>
-    <button type="submit" class="btn btn-primary btn-lg">
-      <i data-lucide="save"></i> Save Changes
-    </button>
+<form method="POST" action="{{ url_for('admin.save_settings') }}" class="prefs-page">
+
+<div class="admin-page-header">
+  <div>
+    <h1>Settings</h1>
+    <p>Customize Alisto based on your role.</p>
+  </div>
+  <button type="submit" class="btn btn-primary btn-lg">
+    <i data-lucide="save"></i> Save Changes
+  </button>
+</div>
+
+<div class="prefs-wrap">
+
+  <!-- ============ LEFT COLUMN ============ -->
+  <div class="prefs-col">
+
+    <!-- NOTIFICATIONS -->
+    <h2 class="settings-group">Notifications</h2>
+    <section class="admin-card prefs-card">
+      <div class="pref-row">
+        <span class="setting-icon tint-red"><i data-lucide="bell"></i></span>
+        <span class="setting-text">
+          <strong>Emergency alerts</strong>
+          <small>{% if phone %}SMS to {{ phone }} + {% endif %}alert on this website. New BHW registrations, offline devices and expiring subscriptions also always show in the bell.</small>
+        </span>
+        <span class="pref-locked"><i data-lucide="lock"></i> Always on</span>
+      </div>
+
+      <div class="pref-row">
+        <span class="setting-icon tint-blue"><i data-lucide="volume-2"></i></span>
+        <span class="setting-text">
+          <strong>Alert sound on this computer</strong>
+          <small>Play a sound when a new emergency comes in</small>
+        </span>
+        <button type="button" class="pref-test" id="prefTestSound" title="Play a test alarm">
+          <i data-lucide="play"></i> <span id="prefTestLabel">Test</span>
+        </button>
+        <label class="switch-wrap">
+          <input type="checkbox" class="switch-input" id="prefSound" />
+          <span class="switch" aria-hidden="true"></span>
+        </label>
+      </div>
+
+      <label class="pref-row">
+        <span class="setting-icon tint-purple"><i data-lucide="monitor"></i></span>
+        <span class="setting-text">
+          <strong>Desktop notifications</strong>
+          <small>Show a pop-up even when ALISTO is in another tab</small>
+        </span>
+        <input type="checkbox" class="switch-input" id="prefDesktop" />
+        <span class="switch" aria-hidden="true"></span>
+      </label>
+    </section>
+
+    <!-- DISPLAY (same as BHW) -->
+    <h2 class="settings-group">Display</h2>
+    <section class="admin-card prefs-card">
+      <div class="pref-row">
+        <span class="setting-icon tint-orange"><i data-lucide="sun-moon"></i></span>
+        <span class="setting-text"><strong>Theme</strong></span>
+        <div class="seg" role="radiogroup" aria-label="Theme" data-pref="theme">
+          <button type="button" role="radio" data-value="light">Light</button>
+          <button type="button" role="radio" data-value="dark">Dark</button>
+          <button type="button" role="radio" data-value="system">System</button>
+        </div>
+      </div>
+
+      <div class="pref-row">
+        <span class="setting-icon tint-blue"><i data-lucide="a-large-small"></i></span>
+        <span class="setting-text"><strong>Text size</strong></span>
+        <div class="seg" role="radiogroup" aria-label="Text size" data-pref="textSize">
+          <button type="button" role="radio" data-value="default">Default</button>
+          <button type="button" role="radio" data-value="large">Large</button>
+          <button type="button" role="radio" data-value="larger">Larger</button>
+        </div>
+      </div>
+
+      <div class="pref-row">
+        <span class="setting-icon tint-purple"><i data-lucide="clock"></i></span>
+        <span class="setting-text"><strong>Time format</strong></span>
+        <div class="seg" role="radiogroup" aria-label="Time format" data-pref="timeFormat">
+          <button type="button" role="radio" data-value="12">12-hour</button>
+          <button type="button" role="radio" data-value="24">24-hour</button>
+        </div>
+      </div>
+    </section>
+
   </div>
 
-  <section class="admin-card settings-card">
-    <h2 class="settings-group">Notification Settings</h2>
+  <!-- ============ RIGHT COLUMN ============ -->
+  <div class="prefs-col">
 
-    {% set toggles = [
-      ('emergency_alerts', 'bell', 'red', 'Emergency Alerts', 'Receive notifications for new emergency cases.'),
-      ('registration_requests', 'user-plus', 'blue', 'New User Registration Requests', 'Get notified when new BHW registrations are submitted.'),
-      ('device_offline_alerts', 'smartphone', 'orange', 'Device Offline Alerts', 'Receive alerts when devices go offline.'),
-      ('subscription_expiry_alerts', 'credit-card', 'purple', 'Subscription Expiry Alerts', 'Get notified before a subscription expires.'),
-    ] %}
-    {% for key, icon, tint, title, description in toggles %}
-    <label class="setting-row">
-      <span class="setting-icon tint-{{ tint }}"><i data-lucide="{{ icon }}"></i></span>
-      <span class="setting-text">
-        <strong>{{ title }}</strong>
-        <small>{{ description }}</small>
-      </span>
-      <input type="checkbox" name="{{ key }}" class="switch-input" {% if notifications[key] %}checked{% endif %} />
-      <span class="switch" aria-hidden="true"></span>
-    </label>
-    {% endfor %}
-  </section>
+    <!-- SYSTEM -->
+    <h2 class="settings-group">System</h2>
+    <section class="admin-card prefs-card">
+      <div class="pref-row">
+        <span class="setting-icon tint-green"><i data-lucide="calendar"></i></span>
+        <span class="setting-text">
+          <strong>Date format</strong>
+          <small>Applies to every admin. Times are always Philippine time (GMT+8).</small>
+        </span>
+        <select name="date_format" class="setting-select">
+          {% for fmt in date_formats %}
+          <option value="{{ fmt }}" {% if fmt == system.date_format %}selected{% endif %}>{{ fmt }}</option>
+          {% endfor %}
+        </select>
+      </div>
 
-  <section class="admin-card settings-card">
-    <h2 class="settings-group">System Preferences</h2>
+      <label class="pref-row">
+        <span class="setting-icon tint-blue"><i data-lucide="cloud-upload"></i></span>
+        <span class="setting-text">
+          <strong>Auto backup</strong>
+          <small>Back up system data once a day. Last backup: {{ system.last_backup }}</small>
+        </span>
+        <input type="checkbox" name="auto_backup" class="switch-input" {% if system.auto_backup %}checked{% endif %} />
+        <span class="switch" aria-hidden="true"></span>
+      </label>
 
-    <div class="setting-row">
-      <span class="setting-icon tint-blue"><i data-lucide="globe"></i></span>
-      <span class="setting-text">
-        <strong>Timezone</strong>
-        <small>Select your local timezone.</small>
-      </span>
-      <select name="timezone" class="setting-select">
-        {% for zone in timezones %}
-        <option value="{{ zone }}" {% if zone == system.timezone %}selected{% endif %}>{{ zone }}</option>
-        {% endfor %}
-      </select>
-    </div>
+      <div class="pref-row">
+        <span class="setting-icon tint-blue"><i data-lucide="download"></i></span>
+        <span class="setting-text">
+          <strong>Backup now</strong>
+          <small>Runs a backup immediately instead of waiting for the daily one.</small>
+        </span>
+        <button type="submit" class="btn btn-outline" formaction="{{ url_for('admin.backup_now') }}" formnovalidate>
+          Backup Now
+        </button>
+      </div>
+    </section>
 
-    <div class="setting-row">
-      <span class="setting-icon tint-green"><i data-lucide="calendar"></i></span>
-      <span class="setting-text">
-        <strong>Date Format</strong>
-        <small>Choose your preferred date format.</small>
-      </span>
-      <select name="date_format" class="setting-select">
-        {% for fmt in date_formats %}
-        <option value="{{ fmt }}" {% if fmt == system.date_format %}selected{% endif %}>{{ fmt }}</option>
-        {% endfor %}
-      </select>
-    </div>
+    <!-- ACCOUNT -->
+    <h2 class="settings-group">Account &amp; security</h2>
+    <section class="admin-card prefs-card">
+      <a href="{{ url_for('admin.profile') }}" class="pref-row pref-link">
+        <span class="setting-icon tint-blue"><i data-lucide="user"></i></span>
+        <span class="setting-text">
+          <strong>My profile</strong>
+          <small>Name, phone number, and change password</small>
+        </span>
+        <i data-lucide="chevron-right"></i>
+      </a>
+    </section>
 
-    <label class="setting-row">
-      <span class="setting-icon tint-blue"><i data-lucide="cloud-upload"></i></span>
-      <span class="setting-text">
-        <strong>Auto Backup</strong>
-        <small>
-          Automatically back up system data once a day.
-          {% if system.last_backup != '—' %}Last backup: {{ system.last_backup }}.{% endif %}
-        </small>
-      </span>
-      <input type="checkbox" name="auto_backup" class="switch-input" {% if system.auto_backup %}checked{% endif %} />
-      <span class="switch" aria-hidden="true"></span>
-    </label>
-
-    <div class="setting-row">
-      <span class="setting-icon tint-blue"><i data-lucide="download"></i></span>
-      <span class="setting-text">
-        <strong>Backup Now</strong>
-        <small>Runs a backup immediately instead of waiting for the daily one.</small>
-      </span>
-      <button type="submit" class="btn btn-outline" formaction="{{ url_for('admin.backup_now') }}" formnovalidate>
-        Backup Now
-      </button>
-    </div>
-  </section>
-
-  <section class="admin-card settings-card">
-    <h2 class="settings-group">Security</h2>
-
-    <a href="{{ url_for('admin.profile') }}" class="setting-row setting-link">
-      <span class="setting-icon tint-blue"><i data-lucide="lock"></i></span>
-      <span class="setting-text">
-        <strong>Change Password</strong>
-        <small>Update your admin account password.</small>
-      </span>
-      <i data-lucide="chevron-right"></i>
-    </a>
-  </section>
+  </div>
+</div>
 
 </form>
+{% endblock %}
+
+{% block scripts %}
+<script src="{{ url_for('static', filename='js/bhw_settings.js') }}"></script>
 {% endblock %}
