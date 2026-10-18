@@ -57,6 +57,34 @@
         document.title = n ? "\uD83D\uDEA8 (" + n + ") " + baseTitle : baseTitle;
     }
 
+    // BHW only: keeps the bell dropdown (same look as the admin's) in sync.
+    function renderPanel(open) {
+        var list = document.getElementById("bhwNotifList");
+        if (!list) return;                              // admin/family pages: no panel
+        var empty = document.getElementById("bhwNotifEmpty");
+        var count = document.getElementById("bhwNotifCount");
+        list.innerHTML = "";
+        open.slice(0, 8).forEach(function (a) {
+            var row = document.createElement("a");
+            row.href = a.url; row.className = "notif-item"; row.setAttribute("role", "menuitem");
+            var ic = document.createElement("span"); ic.className = "notif-icon tint-red";
+            var i = document.createElement("i"); i.setAttribute("data-lucide", "siren"); ic.appendChild(i);
+            var body = document.createElement("span"); body.className = "notif-body";
+            var t = document.createElement("strong"); t.textContent = a.resident;
+            var s = document.createElement("small");
+            s.textContent = (a.trigger === "button" ? "Pressed the ALISTO device" : "Called for help") + " \u2014 still active";
+            var w = document.createElement("small"); w.className = "text-muted"; w.textContent = a.time;
+            body.appendChild(t); body.appendChild(s); body.appendChild(w);
+            var chev = document.createElement("i"); chev.setAttribute("data-lucide", "chevron-right");
+            row.appendChild(ic); row.appendChild(body); row.appendChild(chev);
+            list.appendChild(row);
+        });
+        list.hidden = !open.length;
+        if (empty) empty.hidden = open.length > 0;
+        if (count) { count.hidden = !open.length; count.textContent = open.length + " active"; }
+        icons();
+    }
+
     function render(open, silenced) {
         if (!open.length) { if (banner) { banner.remove(); banner = null; } return; }
         var loud = open.some(function (a) { return silenced.indexOf(a.id) < 0; });
@@ -117,6 +145,12 @@
         }
         save(SEEN, seen); save(SILENT, silenced);
         setCount(open.length);
+        renderPanel(open);
+        // Pop the bell open when a NEW emergency arrives (BHW pages only).
+        if (fresh.length && document.getElementById("bhwNotifList")) {
+            var bell = document.getElementById("adminNotif");
+            if (bell) bell.classList.add("open");
+        }
         render(open, silenced);
 
         if (!open.length) { if (A.isPlaying()) A.stop(); return; }

@@ -2207,3 +2207,10 @@ textarea.hs-input {
     text-align: center;
   }
 }
+
+.admin-bell-badge[hidden],
+.notif-count[hidden],
+.notif-list[hidden],
+.notif-empty[hidden] {
+  display: none !important;
+}

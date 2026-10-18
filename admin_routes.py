@@ -184,7 +184,7 @@ NOTIF_PRIORITY = {'emergency': 0, 'bhw': 1, 'device': 2, 'subscription': 3}
 # Devices) call the same underlying functions directly, uncached, so
 # nothing there is ever stale -- only the bell's opportunistic preview is.
 _notif_cache = {}
-_NOTIF_CACHE_TTL_SECONDS = 60
+_NOTIF_CACHE_TTL_SECONDS = 300
 
 
 def _cached(key, builder):
@@ -213,6 +213,23 @@ def _offline_devices_raw():
     return out
 
 
+def _open_alert_items():
+    """Active emergencies for the admin bell, built from memory (0 reads)."""
+    elders = _cached('poll_elders', _all_elders)
+    out = []
+    for alert_id, a in ac.open_alerts(db).items():
+        if ac.row_status(a) not in ac.OPEN_STATUSES:
+            continue
+        elder = elders.get(a.get('elder_id'), {})
+        out.append({
+            'name': elder.get('full_name') or 'Unknown resident',
+            'type_label': ac.type_label('emergency'),
+            'time': ac.fmt_time(a.get('date_triggered')),
+            'created_at': a.get('date_triggered'),
+        })
+    return out
+
+
 def _notif_items():
     """Builds the admin bell's combined feed. Every kind (emergencies, BHW
     registrations, offline devices, expiring subscriptions) is always on --
@@ -231,8 +248,7 @@ def _notif_items():
         })
 
     # emergency alerts are always on
-    open_alerts = _cached('open_alerts', lambda: [
-                          a for a in _all_alert_rows() if a['is_open']])
+    open_alerts = _open_alert_items()
     for a in open_alerts:
         items.append({
             'kind': 'emergency', 'title': a['name'],
@@ -1337,12 +1353,10 @@ def _live_map_points():
     (one read when nothing is happening) and then just the residents who are
     in an emergency right now, instead of every elder, device, and alert."""
     newest = {}
-    for doc in (db.collection(ac.ALERT_COLLECTION)
-                .where('alert_status', 'in', ['PENDING', 'SENT']).stream()):
-        alert = doc.to_dict() or {}
+    for alert_id, alert in ac.open_alerts(db).items():
         if ac.row_status(alert) not in ac.OPEN_STATUSES or not alert.get('elder_id'):
             continue
-        row = {'id': doc.id, 'created_at': alert.get('date_triggered'),
+        row = {'id': alert_id, 'created_at': alert.get('date_triggered'),
                'device_id': alert.get('device_id') or ''}
         when = ac.local(row['created_at'])
         best = newest.get(alert['elder_id'])
@@ -1391,14 +1405,18 @@ def _live_map_points():
     return points
 
 
+_MAP_CACHE = {'key': None, 'at': 0.0, 'points': []}
+
+
 @admin_bp.route('/map/points')
 @admin_required
 def map_points():
-    """Polled every few seconds by the map page's own JS so a fresh
-    emergency (or one going stale/resolved) appears without the admin
-    manually reloading the browser -- see MAP_POLL_MS in map_view.html.
-    Uses _live_map_points() so polling doesn't read the whole database."""
-    return jsonify(success=True, points=_live_map_points())
+    key = tuple(sorted((i, bool(a.get('acknowledged')))
+                       for i, a in ac.open_alerts(db).items()))
+    now = time.time()
+    if _MAP_CACHE['key'] != key or now - _MAP_CACHE['at'] > 15:
+        _MAP_CACHE.update(key=key, at=now, points=_live_map_points())
+    return jsonify(success=True, points=_MAP_CACHE['points'])
 
 
 @admin_bp.route('/map/flag/<alert_id>', methods=['POST'])
@@ -1967,11 +1985,9 @@ def alerts_poll():
     alerts that are still PENDING or SENT."""
     elders = _cached('poll_elders', _all_elders)
     rows = []
-    for doc in (db.collection(ac.ALERT_COLLECTION)
-                .where('alert_status', 'in', ['PENDING', 'SENT']).stream()):
-        a = doc.to_dict() or {}
+    for alert_id, a in ac.open_alerts(db).items():
         if ac.row_status(a) in ac.OPEN_STATUSES:
-            rows.append((ac.local(a.get('date_triggered')), doc.id, a))
+            rows.append((ac.local(a.get('date_triggered')), alert_id, a))
     oldest = datetime.min.replace(tzinfo=ac.PH_TIME)
     rows.sort(key=lambda r: r[0] or oldest, reverse=True)
     return jsonify(success=True, count=len(rows), alerts=[{

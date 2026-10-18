@@ -173,7 +173,7 @@ def _device_state(device):
 # ---------- READING FIRESTORE ----------
 
 _ELDERS_CACHE = {}          # {barangay: (time read, elders)}
-ELDERS_CACHE_SECONDS = 60   # new or edited residents show up within a minute
+ELDERS_CACHE_SECONDS = 300         # new or edited residents show up within a minute
 
 
 def _elders_in_barangay(barangay):
@@ -204,16 +204,13 @@ def _devices_by_elder():
 
 
 def _open_alerts(elders):
-    """Open alerts for these elders, newest first. Reads only alerts that are
-    still PENDING or SENT, not the whole history, so polling stays cheap."""
+    """Open alerts for these elders, newest first. Served from memory."""
     if not elders:
         return []
     out = []
-    for doc in (db.collection(ac.ALERT_COLLECTION)
-                .where('alert_status', 'in', ['PENDING', 'SENT']).stream()):
-        a = doc.to_dict() or {}
-        a['id'] = doc.id
+    for alert_id, a in ac.open_alerts(db).items():
         if a.get('elder_id') in elders and ac.row_status(a) in ac.OPEN_STATUSES:
+            a['id'] = alert_id
             out.append(a)
     oldest = datetime.min.replace(tzinfo=ac.PH_TIME)
     out.sort(key=lambda a: ac.local(
@@ -225,16 +222,18 @@ def _alerts_for(elder_ids, since=None):
     """Raw alert documents belonging to these elders, newest first."""
     if not elder_ids:
         return []
+    ids = list(elder_ids)
     out = []
-    for doc in db.collection(ac.ALERT_COLLECTION).stream():
-        alert = doc.to_dict() or {}
-        if alert.get('elder_id') not in elder_ids:
-            continue
-        created = ac.local(alert.get('date_triggered'))
-        if since and created and created < since:
-            continue
-        alert['id'] = doc.id
-        out.append(alert)
+    for i in range(0, len(ids), 30):            # Firestore 'in' allows 30 at a time
+        chunk = ids[i:i + 30]
+        for doc in (db.collection(ac.ALERT_COLLECTION)
+                    .where('elder_id', 'in', chunk).stream()):
+            alert = doc.to_dict() or {}
+            created = ac.local(alert.get('date_triggered'))
+            if since and created and created < since:
+                continue
+            alert['id'] = doc.id
+            out.append(alert)
 
     oldest = datetime.min.replace(tzinfo=ac.PH_TIME)
     out.sort(key=lambda a: ac.local(
@@ -374,8 +373,17 @@ def _bhw_layout_context():
     if not user:
         return {}
     elders = _elders_in_barangay(g.barangay)
-    open_count = len(_open_alerts(elders))
+    open_list = _open_alerts(elders)
+    open_count = len(open_list)
+    notif_items = [{
+        'title': (elders.get(a.get('elder_id')) or {}).get('full_name') or 'A resident',
+        'subtitle': ('Pressed the ALISTO device' if (a.get('trigger_type') or '').upper() == 'BUTTON'
+                     else 'Called for help') + ' — still active',
+        'when': ac.fmt_time(a.get('date_triggered')),
+        'href': url_for('bhw.alerts', alert=a['id']),
+    } for a in open_list[:8]]
     return {
+        'bhw_notif_items': notif_items,
         'bhw_name': user.get('full_name') or 'BHW',
         'bhw_initials': _initials(user.get('full_name')),
         'bhw_barangay': g.barangay,

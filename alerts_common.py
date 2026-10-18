@@ -45,6 +45,8 @@ the Pi for the authoritative field list):
     distress_phrase, voice_detection_log, device_location,
     alert_notification, sms_delivery_log, emergency_status_history
 """
+import time
+import threading
 from datetime import datetime, timedelta, timezone
 
 from firebase_admin import firestore
@@ -86,6 +88,70 @@ OPEN_STATUSES = ('active',)
 RESOLVED_STATUSES = ('resolved', 'closed', 'false_alarm')
 
 PH_TIME = timezone(timedelta(hours=8))
+
+# ---------- OPEN ALERTS: one Firestore listener, served from memory ----------
+# Costs 1 read per open alert at startup + 1 read per later change.
+# Every poll / bell count / live map / escalation sweep reads from memory (0 reads).
+
+_OPEN = {}                      # alert_id -> alert dict (PENDING / SENT only)
+_OPEN_LOCK = threading.Lock()
+_OPEN_READY = threading.Event()
+_OPEN_RESYNCED_AT = 0.0
+_OPEN_RESYNC_SECONDS = 900      # safety net: full re-read every 15 min
+_WATCH = None
+
+
+def _open_query(db):
+    return (db.collection(ALERT_COLLECTION)
+            .where('alert_status', 'in', ['PENDING', 'SENT']))
+
+
+def _full_resync(db):
+    global _OPEN_RESYNCED_AT
+    fresh = {d.id: (d.to_dict() or {}) for d in _open_query(db).stream()}
+    with _OPEN_LOCK:
+        _OPEN.clear()
+        _OPEN.update(fresh)
+        _OPEN_RESYNCED_AT = time.time()
+    _OPEN_READY.set()
+
+
+def start_open_alert_listener(db):
+    """Call once at server start."""
+    global _WATCH, _OPEN_RESYNCED_AT
+
+    if _WATCH is not None:
+        return
+
+    def _on_snapshot(_docs, changes, _read_time):
+        global _OPEN_RESYNCED_AT
+        with _OPEN_LOCK:
+            for ch in changes:
+                if ch.type.name == 'REMOVED':      # resolved / cancelled
+                    _OPEN.pop(ch.document.id, None)
+                else:                              # ADDED or MODIFIED
+                    _OPEN[ch.document.id] = ch.document.to_dict() or {}
+            if not _OPEN_READY.is_set():
+                _OPEN_RESYNCED_AT = time.time()    # first snapshot = full sync
+        _OPEN_READY.set()
+
+    _WATCH = _open_query(db).on_snapshot(_on_snapshot)
+
+
+def open_alerts(db):
+    """{alert_id: alert dict} for every PENDING/SENT alert.
+    Reads memory. Falls back to a normal query if the listener is not up."""
+    if _WATCH is None or not _OPEN_READY.wait(timeout=3):
+        return {d.id: (d.to_dict() or {}) for d in _open_query(db).stream()}
+
+    if time.time() - _OPEN_RESYNCED_AT > _OPEN_RESYNC_SECONDS:
+        try:
+            _full_resync(db)
+        except Exception as e:
+            print(f'[alerts_common] open-alert resync failed: {e}')
+
+    with _OPEN_LOCK:
+        return {k: dict(v) for k, v in _OPEN.items()}
 
 
 def local(value):
@@ -447,33 +513,26 @@ def auto_escalate_stale_alerts(db):
     cutoff = datetime.now(timezone.utc) - \
         timedelta(minutes=AUTO_ESCALATE_AFTER_MINUTES)
     flagged = 0
-    try:
-        docs = db.collection(ALERT_COLLECTION).where(
-            'alert_status', 'in', ['PENDING', 'SENT']).stream()
-    except Exception as e:
-        print(f'[alerts_common] auto_escalate_stale_alerts query failed: {e}')
-        return 0
 
-    for doc in docs:
+    for alert_id, alert in open_alerts(db).items():
         try:
-            alert = doc.to_dict() or {}
             if alert.get('acknowledged') or alert.get('admin_flagged') or alert.get('auto_escalated'):
                 continue
             triggered = alert.get('date_triggered')
             if not hasattr(triggered, 'astimezone') or triggered.astimezone(timezone.utc) > cutoff:
                 continue
-            doc.reference.update({
+            db.collection(ALERT_COLLECTION).document(alert_id).update({
                 'admin_flagged': True,
                 'admin_flagged_by': AUTO_ESCALATE_LABEL,
                 'admin_flagged_at': firestore.SERVER_TIMESTAMP,
                 'auto_escalated': True,
             })
             write_status_history(
-                db, doc.id, 'FLAGGED', None,
+                db, alert_id, 'FLAGGED', None,
                 remarks=f'Auto-flagged for BHW after {AUTO_ESCALATE_AFTER_MINUTES} min with no response',
             )
             flagged += 1
         except Exception as e:
             print(
-                f'[alerts_common] auto_escalate_stale_alerts failed on {doc.id}: {e}')
+                f'[alerts_common] auto_escalate_stale_alerts failed on {alert_id}: {e}')
     return flagged

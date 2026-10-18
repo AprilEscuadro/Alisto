@@ -62,44 +62,42 @@
         </button>
 
         <div class="admin-topbar-right">
-          <a
-            href="{{ url_for('bhw.alerts') }}"
-            class="admin-bell"
-            title="{{ active_alert_count }} active alert(s)"
-          >
-            <i data-lucide="bell"></i>
-            {% if active_alert_count %}
-            <span class="admin-bell-badge">{{ active_alert_count }}</span>
-            {% endif %}
-          </a>
-
-          <div class="admin-profile" id="adminProfile">
-            <button
-              type="button"
-              class="admin-profile-btn"
-              id="adminProfileBtn"
-              aria-haspopup="true"
-              aria-expanded="false"
-            >
-              <span class="admin-avatar">{{ bhw_initials }}</span>
-              <span class="admin-profile-text">
-                <strong>{{ bhw_name }}</strong>
-                <small>BHW</small>
-              </span>
-              <i data-lucide="chevron-down" class="admin-profile-chevron"></i>
+         <div class="admin-notif" id="adminNotif">
+            <button type="button" class="admin-bell" id="adminBellBtn"
+                    aria-haspopup="true" aria-expanded="false"
+                    aria-label="{{ active_alert_count }} active alert(s)">
+              <i data-lucide="bell"></i>
+              <span class="admin-bell-badge" {% if not active_alert_count %}hidden{% endif %}>{{ active_alert_count }}</span>
             </button>
 
-            <div class="admin-dropdown" id="adminDropdown" role="menu">
-              <a href="{{ url_for('bhw.profile') }}" role="menuitem"
-                 class="{% if active_page == 'profile' %}active{% endif %}">
-                <i data-lucide="user"></i> My Profile
-              </a>
-              <a href="{{ url_for('bhw.settings') }}" role="menuitem">
-                <i data-lucide="settings"></i> Account Settings
-              </a>
-              <div class="admin-dropdown-divider"></div>
-              <a href="{{ url_for('logout') }}" role="menuitem">
-                <i data-lucide="log-out"></i> Logout
+            <div class="notif-panel" id="adminNotifPanel" role="menu">
+              <div class="notif-head">
+                <strong>Notifications</strong>
+                <span class="notif-count" id="bhwNotifCount" {% if not active_alert_count %}hidden{% endif %}>{{ active_alert_count }} active</span>
+              </div>
+
+              <div class="notif-list" id="bhwNotifList" {% if not bhw_notif_items %}hidden{% endif %}>
+                {% for item in bhw_notif_items %}
+                <a href="{{ item.href }}" class="notif-item" role="menuitem">
+                  <span class="notif-icon tint-red"><i data-lucide="siren"></i></span>
+                  <span class="notif-body">
+                    <strong>{{ item.title }}</strong>
+                    <small>{{ item.subtitle }}</small>
+                    <small class="text-muted">{{ item.when }}</small>
+                  </span>
+                  <i data-lucide="chevron-right"></i>
+                </a>
+                {% endfor %}
+              </div>
+
+              <div class="notif-empty" id="bhwNotifEmpty" {% if bhw_notif_items %}hidden{% endif %}>
+                <span class="empty-icon"><i data-lucide="bell-off"></i></span>
+                <strong>You're all caught up</strong>
+                <p>Active emergencies in your barangay will show up here.</p>
+              </div>
+
+              <a href="{{ url_for('bhw.alerts') }}" class="notif-footer">
+                View all alerts <i data-lucide="arrow-right"></i>
               </a>
             </div>
           </div>

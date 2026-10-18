@@ -2786,11 +2786,9 @@ def family_alerts_poll():
     names = _family_elder_names(session['user_id'])
     rows = []
     if names:
-        for doc in (db.collection(ALERT_COLLECTION)
-                    .where('alert_status', 'in', ['PENDING', 'SENT']).stream()):
-            a = doc.to_dict() or {}
+        for alert_id, a in ac.open_alerts(db).items():
             if a.get('elder_id') in names and _is_open_alert(a):
-                rows.append((ac.local(a.get('date_triggered')), doc.id, a))
+                rows.append((ac.local(a.get('date_triggered')), alert_id, a))
     oldest = datetime.min.replace(tzinfo=ac.PH_TIME)
     rows.sort(key=lambda r: r[0] or oldest, reverse=True)
     return jsonify(success=True, count=len(rows), alerts=[{
@@ -3578,34 +3576,54 @@ def _linked_elders_for_dashboard():
     return elders
 
 
-def _alerts_for_elders(elders):
-    """Every alert for these elders, newest first.
-
-    No order_by in the query, so no composite index is needed;
-    sorting happens here instead.
-    """
+def _alerts_for_elders(elders, limit=None):
+    """Alerts for these elders, newest first. Pass limit= to read only the newest N per elder."""
     rows = []
     for elder_id, elder in elders.items():
         try:
-            docs = (
-                db.collection(ALERT_COLLECTION)
-                .where('elder_id', '==', elder_id)
-                .stream()
-            )
+            q = db.collection(ALERT_COLLECTION).where(
+                'elder_id', '==', elder_id)
+            if limit:
+                try:
+                    docs = list(q.order_by('date_triggered',
+                                           direction=firestore.Query.DESCENDING)
+                                .limit(limit).stream())
+                except Exception as e:
+                    # Missing index -> Firestore prints a link to create it.
+                    print(
+                        f'[alerts] create the index (elder_id + date_triggered desc): {e}')
+                    docs = list(q.stream())
+            else:
+                docs = list(q.stream())
             for doc in docs:
                 alert = doc.to_dict() or {}
-                if alert.get('deleted_at'):  # removed by the admin
+                if alert.get('deleted_at'):
                     continue
                 created = _to_ph(alert.get('date_triggered'))
                 rows.append({
-                    'id': doc.id,
-                    'elder_id': elder_id,
-                    'elder_name': elder['name'],
-                    'data': alert,
+                    'id': doc.id, 'elder_id': elder_id,
+                    'elder_name': elder['name'], 'data': alert,
                     'sort_key': created.timestamp() if created else 0,
                 })
         except Exception as e:
             print(f'[dashboard] could not read alerts for {elder_id}: {e}')
+    rows.sort(key=lambda r: r['sort_key'], reverse=True)
+    return rows
+
+
+def _open_alerts_for_elders(elders):
+    """Same row shape as _alerts_for_elders(), but only open alerts and
+    served from memory (0 reads)."""
+    rows = []
+    for alert_id, a in ac.open_alerts(db).items():
+        eid = a.get('elder_id')
+        if eid in elders and not a.get('deleted_at') and _is_open_alert(a):
+            created = _to_ph(a.get('date_triggered'))
+            rows.append({
+                'id': alert_id, 'elder_id': eid,
+                'elder_name': elders[eid]['name'], 'data': a,
+                'sort_key': created.timestamp() if created else 0,
+            })
     rows.sort(key=lambda r: r['sort_key'], reverse=True)
     return rows
 
@@ -3979,32 +3997,15 @@ def _latest_device_location(device_serial):
 
 
 def _open_alert_for_elder(elder_id):
-    """Most recent still-open alert for this elder, or None. Sorts
-    client-side instead of `.order_by()` + `.where()` together -- that
-    combination needs a composite index Firestore doesn't have by
-    default, which made this silently fall back to nothing (the bare
-    except below) until one was created for the old collection name.
-    Alert volume per elder is small enough that fetching them all and
-    sorting in Python is not worth an index for."""
-    try:
-        docs = list(
-            db.collection(ALERT_COLLECTION)
-            .where('elder_id', '==', elder_id)
-            .stream()
-        )
-    except Exception:
+    """Most recent still-open alert for this elder, from memory (0 reads)."""
+    mine = [a for a in ac.open_alerts(db).values()
+            if a.get('elder_id') == elder_id and not a.get('deleted_at')]
+    if not mine:
         return None
-
     oldest = datetime.min.replace(tzinfo=timezone.utc)
-    docs.sort(key=lambda d: _to_ph(d.to_dict().get(
-        'date_triggered')) or oldest, reverse=True)
-
-    for doc in docs:
-        alert = doc.to_dict() or {}
-        if ac.row_status(alert) in ac.RESOLVED_STATUSES:
-            continue
-        return alert
-    return None
+    mine.sort(key=lambda a: _to_ph(a.get('date_triggered'))
+              or oldest, reverse=True)
+    return mine[0]
 
 
 def _elder_map_status(alert, recorded_at):
@@ -4147,6 +4148,7 @@ def _run_auto_backup_loop():
 # worker (gunicorn etc.) __name__ is never '__main__' and there's no
 # reloader, so start them unconditionally there.
 if __name__ != '__main__' or os.environ.get('WERKZEUG_RUN_MAIN') == 'true':
+    ac.start_open_alert_listener(db)          # <-- NEW
     threading.Thread(target=_run_auto_escalation_loop, daemon=True).start()
     threading.Thread(target=_run_auto_backup_loop, daemon=True).start()
 
