@@ -1,0 +1,370 @@
+/* ==========================================================================
+   My Profile for admins and BHWs: same look and behaviour as the family page
+   (static/css/profile.css), drawn with the admin colour variables so light
+   and dark themes both work.
+   ========================================================================== */
+.acct {
+    display: flex;
+    flex-direction: column;
+    gap: 20px;
+    max-width: 1100px;
+}
+
+/* identity card */
+.acct-identity {
+    display: flex;
+    flex-direction: row;
+    align-items: center;
+    gap: 26px;
+    padding: 24px 28px;
+}
+
+.acct-avatar-col {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 8px;
+    flex-shrink: 0;
+}
+
+.acct-avatar {
+    position: relative;
+    width: 84px;
+    height: 84px;
+    padding: 0;
+    border: none;
+    border-radius: 50%;
+    background: var(--admin-primary-soft, rgba(37, 99, 235, 0.12));
+    color: var(--admin-primary);
+    font: inherit;
+    font-size: 28px;
+    font-weight: 800;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+}
+
+.acct-avatar img {
+    width: 100%;
+    height: 100%;
+    border-radius: 50%;
+    object-fit: cover;
+}
+
+.acct-avatar-edit {
+    position: absolute;
+    right: -2px;
+    bottom: -2px;
+    width: 28px;
+    height: 28px;
+    border-radius: 50%;
+    border: 3px solid var(--admin-card);
+    background: var(--admin-primary);
+    color: #fff;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.acct-avatar-edit svg {
+    width: 13px;
+    height: 13px;
+}
+
+.acct-avatar:hover .acct-avatar-edit {
+    filter: brightness(1.1);
+}
+
+.acct-avatar-remove {
+    border: none;
+    background: none;
+    padding: 2px 4px;
+    color: var(--red);
+    font: inherit;
+    font-size: 12px;
+    font-weight: 600;
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    cursor: pointer;
+}
+
+.acct-avatar-remove svg {
+    width: 13px;
+    height: 13px;
+}
+
+.acct-identity-text h2 {
+    margin: 0 0 6px;
+    font-size: 21px;
+    font-weight: 800;
+    color: var(--admin-text);
+}
+
+.acct-role {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    color: var(--admin-primary);
+    font-size: 13.5px;
+    font-weight: 700;
+}
+
+.acct-role svg {
+    width: 16px;
+    height: 16px;
+}
+
+.acct-identity-text p {
+    margin: 6px 0 0;
+    font-size: 13px;
+    color: var(--admin-muted);
+}
+
+.acct-hint {
+    font-size: 12.5px !important;
+}
+
+/* two columns */
+.acct-columns {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 20px;
+    align-items: start;
+}
+
+.acct-card {
+    padding: 24px;
+}
+
+.acct-card-head h3 {
+    margin: 0 0 4px;
+    font-size: 16px;
+    font-weight: 700;
+    color: var(--admin-text);
+}
+
+.acct-card-head p {
+    margin: 0 0 18px;
+    font-size: 13px;
+    color: var(--admin-muted);
+}
+
+/* fields: icon inside the box, like the family page */
+.acct-form {
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+}
+
+.acct-field label {
+    display: block;
+    margin-bottom: 7px;
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--admin-text);
+}
+
+.acct-input {
+    position: relative;
+    display: flex;
+    align-items: center;
+}
+
+.acct-input>i,
+.acct-input>svg {
+    position: absolute;
+    left: 14px;
+    top: 50%;
+    transform: translateY(-50%);
+    width: 17px;
+    height: 17px;
+    color: var(--admin-muted);
+    pointer-events: none;
+    z-index: 1;
+}
+
+.acct-input input {
+    width: 100%;
+    height: 44px;
+    padding: 0 14px 0 42px;
+    border: 1px solid var(--admin-border);
+    border-radius: 10px;
+    background: var(--admin-bg);
+    color: var(--admin-text);
+    font: inherit;
+    font-size: 14px;
+    outline: none;
+    transition: border-color 0.15s, box-shadow 0.15s, background 0.15s;
+}
+
+.acct-input input[type="password"],
+.acct-input .acct-eye~input,
+.acct-input input:has(+ .acct-eye) {
+    padding-right: 46px;
+}
+
+.acct-input input:focus {
+    border-color: var(--admin-primary);
+    box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.15);
+    background: var(--admin-card);
+}
+
+.acct-input:focus-within>svg {
+    color: var(--admin-primary);
+}
+
+.acct-eye {
+    position: absolute;
+    right: 8px;
+    width: 32px;
+    height: 32px;
+    border: none;
+    border-radius: 8px;
+    background: transparent;
+    color: var(--admin-muted);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+}
+
+.acct-eye:hover {
+    color: var(--admin-text);
+}
+
+.acct-eye svg {
+    width: 17px;
+    height: 17px;
+}
+
+.acct-field-hint {
+    display: block;
+    margin-top: 6px;
+    font-size: 12px;
+    color: var(--admin-muted);
+}
+
+.acct-btn {
+    align-self: flex-start;
+    height: 44px;
+    padding: 0 20px;
+}
+
+/* live checklist: grey until you type, then green (met) or red (not met) */
+.acct-rules p {
+    margin: 0 0 8px;
+    font-size: 13px;
+    font-weight: 700;
+    color: var(--admin-text);
+}
+
+.acct-rules ul {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+
+.acct-rules li {
+    position: relative;
+    padding-left: 18px;
+    font-size: 13px;
+    color: var(--admin-muted);
+}
+
+.acct-rules li::before {
+    content: '';
+    position: absolute;
+    left: 0;
+    top: 50%;
+    transform: translateY(-50%);
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: var(--admin-border);
+}
+
+.acct-rules li.ok {
+    color: var(--green);
+}
+
+.acct-rules li.ok::before {
+    background: var(--green);
+}
+
+.acct-rules li.bad {
+    color: var(--red);
+}
+
+.acct-rules li.bad::before {
+    background: var(--red);
+}
+
+/* read-only account facts under the form */
+.acct-details-head {
+    margin-top: 26px;
+    padding-top: 22px;
+    border-top: 1px solid var(--admin-border);
+}
+
+.acct-details-head h3 {
+    margin-bottom: 8px;
+}
+
+.acct-details {
+    margin: 0;
+}
+
+.acct-details div {
+    display: flex;
+    justify-content: space-between;
+    gap: 16px;
+    padding: 11px 0;
+    border-bottom: 1px solid var(--admin-border);
+    font-size: 13.5px;
+}
+
+.acct-details div:last-child {
+    border-bottom: 0;
+}
+
+.acct-details dt {
+    color: var(--admin-muted);
+}
+
+.acct-details dd {
+    margin: 0;
+    font-weight: 600;
+    color: var(--admin-text);
+    text-align: right;
+}
+
+/* top bar avatar with a photo */
+.admin-avatar.has-photo {
+    padding: 0;
+    overflow: hidden;
+}
+
+.admin-avatar.has-photo img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    border-radius: 50%;
+}
+
+@media (max-width: 980px) {
+    .acct-columns {
+        grid-template-columns: 1fr;
+    }
+}
+
+@media (max-width: 560px) {
+    .acct-identity {
+        flex-direction: column;
+        text-align: center;
+    }
+}

@@ -2,31 +2,26 @@
 {% block title %}Settings{% endblock %}
 
 {% block content %}
-<form method="POST" action="{{ url_for('admin.save_settings') }}" class="prefs-page">
+<form method="POST" action="{{ url_for('admin.save_settings') }}" class="prefs-page" id="adminSettingsForm">
 
 <div class="admin-page-header">
   <div>
     <h1>Settings</h1>
-    <p>Customize Alisto based on your role.</p>
+    <p>Changes save automatically.</p>
   </div>
-  <button type="submit" class="btn btn-primary btn-lg">
-    <i data-lucide="save"></i> Save Changes
-  </button>
 </div>
 
-<div class="prefs-wrap">
+<div class="prefs-grid">
 
-  <!-- ============ LEFT COLUMN ============ -->
-  <div class="prefs-col">
-
-    <!-- NOTIFICATIONS -->
+  <!-- NOTIFICATIONS -->
+  <div class="prefs-block">
     <h2 class="settings-group">Notifications</h2>
     <section class="admin-card prefs-card">
       <div class="pref-row">
         <span class="setting-icon tint-red"><i data-lucide="bell"></i></span>
         <span class="setting-text">
           <strong>Emergency alerts</strong>
-          <small>{% if phone %}SMS to {{ phone }} + {% endif %}alert on this website. New BHW registrations, offline devices and expiring subscriptions also always show in the bell.</small>
+          <small>On this website, plus new BHW requests, offline devices, and expiring plans in the bell.</small>
         </span>
         <span class="pref-locked"><i data-lucide="lock"></i> Always on</span>
       </div>
@@ -35,34 +30,80 @@
         <span class="setting-icon tint-blue"><i data-lucide="volume-2"></i></span>
         <span class="setting-text">
           <strong>Alert sound on this computer</strong>
-          <small>Play a sound when a new emergency comes in</small>
+          <small>Play a siren when a new emergency comes in</small>
         </span>
         <button type="button" class="pref-test" id="prefTestSound" title="Play a test alarm">
           <i data-lucide="play"></i> <span id="prefTestLabel">Test</span>
         </button>
-        <label class="switch-wrap">
+        <label class="switch-wrap" aria-label="Alert sound">
           <input type="checkbox" class="switch-input" id="prefSound" />
           <span class="switch" aria-hidden="true"></span>
         </label>
       </div>
 
-      <label class="pref-row">
+      <div class="pref-row">
         <span class="setting-icon tint-purple"><i data-lucide="monitor"></i></span>
         <span class="setting-text">
           <strong>Desktop notifications</strong>
           <small>Show a pop-up even when ALISTO is in another tab</small>
         </span>
-        <input type="checkbox" class="switch-input" id="prefDesktop" />
-        <span class="switch" aria-hidden="true"></span>
-      </label>
+        <label class="switch-wrap" aria-label="Desktop notifications">
+          <input type="checkbox" class="switch-input" id="prefDesktop" />
+          <span class="switch" aria-hidden="true"></span>
+        </label>
+      </div>
     </section>
+  </div>
 
-    <!-- DISPLAY (same as BHW) -->
+  <!-- SYSTEM -->
+  <div class="prefs-block">
+    <h2 class="settings-group">System</h2>
+    <section class="admin-card prefs-card">
+      <div class="pref-row">
+        <span class="setting-icon tint-green"><i data-lucide="calendar"></i></span>
+        <span class="setting-text">
+          <strong>Date format</strong>
+          <small>For every admin. Times are Philippine time (GMT+8).</small>
+        </span>
+        <select name="date_format" class="setting-select js-autosave" aria-label="Date format">
+          {% for fmt in date_formats %}
+          <option value="{{ fmt }}" {% if fmt == system.date_format %}selected{% endif %}>{{ fmt }}</option>
+          {% endfor %}
+        </select>
+      </div>
+
+      <div class="pref-row">
+        <span class="setting-icon tint-blue"><i data-lucide="cloud-upload"></i></span>
+        <span class="setting-text">
+          <strong>Auto backup</strong>
+          <small>Once a day. Last backup: {{ system.last_backup }}</small>
+        </span>
+        <label class="switch-wrap" aria-label="Auto backup">
+          <input type="checkbox" name="auto_backup" class="switch-input js-autosave" {% if system.auto_backup %}checked{% endif %} />
+          <span class="switch" aria-hidden="true"></span>
+        </label>
+      </div>
+
+      <div class="pref-row">
+        <span class="setting-icon tint-blue"><i data-lucide="download"></i></span>
+        <span class="setting-text">
+          <strong>Backup now</strong>
+          <small>Run a backup right away instead of waiting for the daily one</small>
+        </span>
+        <button type="submit" class="btn btn-outline" formaction="{{ url_for('admin.backup_now') }}" formnovalidate>
+          Backup now
+        </button>
+      </div>
+    </section>
+  </div>
+
+  <!-- DISPLAY -->
+  <div class="prefs-block">
     <h2 class="settings-group">Display</h2>
     <section class="admin-card prefs-card">
       <div class="pref-row">
         <span class="setting-icon tint-orange"><i data-lucide="sun-moon"></i></span>
-        <span class="setting-text"><strong>Theme</strong></span>
+        <span class="setting-text"><strong>Theme</strong><small>Light, dark, or match this computer</small></span>
         <div class="seg" role="radiogroup" aria-label="Theme" data-pref="theme">
           <button type="button" role="radio" data-value="light">Light</button>
           <button type="button" role="radio" data-value="dark">Dark</button>
@@ -72,7 +113,7 @@
 
       <div class="pref-row">
         <span class="setting-icon tint-blue"><i data-lucide="a-large-small"></i></span>
-        <span class="setting-text"><strong>Text size</strong></span>
+        <span class="setting-text"><strong>Text size</strong><small>Bigger text on this computer</small></span>
         <div class="seg" role="radiogroup" aria-label="Text size" data-pref="textSize">
           <button type="button" role="radio" data-value="default">Default</button>
           <button type="button" role="radio" data-value="large">Large</button>
@@ -82,76 +123,58 @@
 
       <div class="pref-row">
         <span class="setting-icon tint-purple"><i data-lucide="clock"></i></span>
-        <span class="setting-text"><strong>Time format</strong></span>
+        <span class="setting-text"><strong>Time format</strong><small>12-hour or 24-hour clock</small></span>
         <div class="seg" role="radiogroup" aria-label="Time format" data-pref="timeFormat">
           <button type="button" role="radio" data-value="12">12-hour</button>
           <button type="button" role="radio" data-value="24">24-hour</button>
         </div>
       </div>
     </section>
-
   </div>
 
-  <!-- ============ RIGHT COLUMN ============ -->
-  <div class="prefs-col">
-
-    <!-- SYSTEM -->
-    <h2 class="settings-group">System</h2>
-    <section class="admin-card prefs-card">
-      <div class="pref-row">
-        <span class="setting-icon tint-green"><i data-lucide="calendar"></i></span>
-        <span class="setting-text">
-          <strong>Date format</strong>
-          <small>Applies to every admin. Times are always Philippine time (GMT+8).</small>
-        </span>
-        <select name="date_format" class="setting-select">
-          {% for fmt in date_formats %}
-          <option value="{{ fmt }}" {% if fmt == system.date_format %}selected{% endif %}>{{ fmt }}</option>
-          {% endfor %}
-        </select>
-      </div>
-
-      <label class="pref-row">
-        <span class="setting-icon tint-blue"><i data-lucide="cloud-upload"></i></span>
-        <span class="setting-text">
-          <strong>Auto backup</strong>
-          <small>Back up system data once a day. Last backup: {{ system.last_backup }}</small>
-        </span>
-        <input type="checkbox" name="auto_backup" class="switch-input" {% if system.auto_backup %}checked{% endif %} />
-        <span class="switch" aria-hidden="true"></span>
-      </label>
-
-      <div class="pref-row">
-        <span class="setting-icon tint-blue"><i data-lucide="download"></i></span>
-        <span class="setting-text">
-          <strong>Backup now</strong>
-          <small>Runs a backup immediately instead of waiting for the daily one.</small>
-        </span>
-        <button type="submit" class="btn btn-outline" formaction="{{ url_for('admin.backup_now') }}" formnovalidate>
-          Backup Now
-        </button>
-      </div>
-    </section>
-
-    <!-- ACCOUNT -->
+  <!-- ACCOUNT -->
+  <div class="prefs-block">
     <h2 class="settings-group">Account &amp; security</h2>
     <section class="admin-card prefs-card">
       <a href="{{ url_for('admin.profile') }}" class="pref-row pref-link">
         <span class="setting-icon tint-blue"><i data-lucide="user"></i></span>
         <span class="setting-text">
           <strong>My profile</strong>
-          <small>Name, phone number, and change password</small>
+          <small>Name, phone number, and password</small>
+        </span>
+        <i data-lucide="chevron-right"></i>
+      </a>
+      <a href="{{ url_for('admin.inbox') }}" class="pref-row pref-link">
+        <span class="setting-icon tint-green"><i data-lucide="inbox"></i></span>
+        <span class="setting-text">
+          <strong>Inbox</strong>
+          <small>Support requests, payments, and announcements</small>
+        </span>
+        <i data-lucide="chevron-right"></i>
+      </a>
+      <a href="{{ url_for('logout') }}" class="pref-row pref-link pref-danger js-confirm-link"
+         data-confirm-title="Log out?" data-confirm-message="You'll need to sign in again to access the admin panel."
+         data-confirm-ok="Logout">
+        <span class="setting-icon tint-red"><i data-lucide="log-out"></i></span>
+        <span class="setting-text">
+          <strong>Log out</strong>
+          <small>Sign out of ALISTO on this computer</small>
         </span>
         <i data-lucide="chevron-right"></i>
       </a>
     </section>
-
   </div>
-</div>
 
+</div>
 </form>
 {% endblock %}
 
 {% block scripts %}
 <script src="{{ url_for('static', filename='js/bhw_settings.js') }}"></script>
+<script>
+  // Date format and Auto backup save as soon as they change (no Save button).
+  document.querySelectorAll("#adminSettingsForm .js-autosave").forEach((el) => {
+    el.addEventListener("change", () => document.getElementById("adminSettingsForm").requestSubmit());
+  });
+</script>
 {% endblock %}

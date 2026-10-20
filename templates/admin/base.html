@@ -17,6 +17,7 @@
     <!-- Theme / text size for this browser (Settings > Display), same as the BHW portal -->
     <script>window.ALISTO_PREFS_KEY = "alisto_admin_prefs";</script>
     <script src="{{ url_for('static', filename='js/bhw_prefs.js') }}"></script>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/account_profile.css') }}" />
     {% block head %}{% endblock %}
   </head>
   <body class="admin-body">
@@ -133,7 +134,7 @@
               aria-haspopup="true"
               aria-expanded="false"
             >
-              <span class="admin-avatar">{{ admin_initial }}</span>
+<span class="admin-avatar{% if admin_photo %} has-photo{% endif %}">{% if admin_photo %}<img src="data:image/jpeg;base64,{{ admin_photo }}" alt="" />{% else %}{{ admin_initial }}{% endif %}</span>
               <span class="admin-profile-text">
                 <strong>{{ admin_name }}</strong>
                 <small>Admin</small>

@@ -165,9 +165,31 @@
           <td><span class="badge badge-{{ row.status_class }}">{{ row.status_label }}</span></td>
           <td class="nowrap">{{ row.time }}</td>
           <td class="col-actions">
-            <button type="button" class="link-btn js-view-details" title="View details" aria-label="View details for {{ row.code }}">
-              <i data-lucide="eye"></i>
-            </button>
+            <div class="row-menu">
+              <button type="button" class="row-menu-btn" aria-label="Actions for {{ row.code }}" aria-haspopup="true" aria-expanded="false">
+                <i data-lucide="ellipsis-vertical"></i>
+              </button>
+              <div class="row-menu-list" role="menu">
+                <button type="button" class="js-view-details" role="menuitem">
+                  <i data-lucide="eye"></i> View details
+                </button>
+                {% if row.status == 'active' %}
+                <form method="POST" action="{{ url_for('admin.update_alert_status', alert_id=row.id, action='acknowledge') }}">
+                  <button type="submit" class="text-blue" role="menuitem"><i data-lucide="hand"></i> Acknowledge</button>
+                </form>
+                {% endif %}
+                {% if row.status in ('active', 'acknowledged') %}
+                <form method="POST" action="{{ url_for('admin.update_alert_status', alert_id=row.id, action='resolve') }}"
+                      class="js-confirm-alert" data-confirm="Mark {{ row.code }} as resolved? This closes the alert.">
+                  <button type="submit" class="text-green" role="menuitem"><i data-lucide="circle-check"></i> Resolve</button>
+                </form>
+                <form method="POST" action="{{ url_for('admin.update_alert_status', alert_id=row.id, action='false-alarm') }}"
+                      class="js-confirm-alert" data-confirm="Mark {{ row.code }} as a false alarm? This closes the alert.">
+                  <button type="submit" class="text-red" role="menuitem"><i data-lucide="circle-x"></i> False alarm</button>
+                </form>
+                {% endif %}
+              </div>
+            </div>
           </td>
         </tr>
         {% endfor %}
@@ -218,4 +240,14 @@
     </div>
   </div>
 </div>
+
+<script>
+  // Resolve / False alarm close the alert for everyone: ask first.
+  document.querySelectorAll(".js-confirm-alert").forEach((form) => {
+    form.addEventListener("submit", (e) => {
+      if (!window.confirm(form.dataset.confirm)) e.preventDefault();
+    });
+  });
+</script>
+
 {% endblock %}

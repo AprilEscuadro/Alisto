@@ -23,6 +23,7 @@ from flask import (Blueprint, render_template, session, redirect, url_for,
 from firebase_admin import firestore
 from werkzeug.security import check_password_hash, generate_password_hash
 
+import account_profile
 import alerts_common as ac
 from database import db
 
@@ -386,6 +387,7 @@ def _bhw_layout_context():
         'bhw_notif_items': notif_items,
         'bhw_name': user.get('full_name') or 'BHW',
         'bhw_initials': _initials(user.get('full_name')),
+        'bhw_photo': user.get('photoBase64') or None,
         'bhw_barangay': g.barangay,
         'bhw_phone': user.get('contact_number') or '',
         'active_alert_count': open_count,
@@ -741,42 +743,68 @@ PASSWORD_RULES = [
 @bhw_bp.route('/profile')
 @bhw_required
 def profile():
+    """Same behaviour as the family My Profile page (see account_profile.py).
+    Barangay, health center, and BHW ID stay read-only: the admin approved
+    them, and the barangay decides which residents this BHW sees."""
+    p = g.bhw_profile
+    barangay = p.get('barangay_assigned') or '—'
+    if p.get('barangay_assigned'):
+        barangay += ', Cebu City'
     return render_template(
         'bhw/profile.html', active_page='profile',
-        user=g.bhw_user, profile=g.bhw_profile,
+        me=account_profile.view(g.bhw_user),
+        role_label='Barangay Health Worker (BHW)',
         member_since=_fmt_date(g.bhw_user.get('created_at')),
-        last_login=session.get('previous_login') or 'First sign-in',
+        details=[
+            ('Role', 'Barangay Health Worker (BHW)'),
+            ('Barangay', barangay),
+            ('Health Center', p.get('health_center') or '—'),
+            ('BHW ID Number', p.get('bhw_id_number') or '—'),
+            ('Account Status', 'Active'),
+            ('Last Login', session.get('previous_login') or 'First sign-in'),
+            ('Two-Factor Authentication', 'Disabled'),
+        ],
+        urls={
+            'update': url_for('bhw.edit_profile'),
+            'password': url_for('bhw.change_password'),
+            'photo': url_for('bhw.upload_photo'),
+            'photo_remove': url_for('bhw.remove_photo'),
+        },
     )
 
 
 @bhw_bp.route('/profile/password', methods=['POST'])
 @bhw_required
 def change_password():
-    current = request.form.get('current_password', '')
-    new = request.form.get('new_password', '')
-    confirm = request.form.get('confirm_password', '')
-
-    if not check_password_hash(g.bhw_user.get('password_hash', ''), current):
-        flash('Your current password is incorrect.', 'error')
-    elif new != confirm:
-        flash('New password and confirm password do not match.', 'error')
-    elif new == current:
-        flash('Your new password must be different from your current password.', 'error')
-    else:
-        missing = [label for rule, label in PASSWORD_RULES if not rule(new)]
-        if missing:
-            flash('New password needs ' + ', '.join(missing) + '.', 'error')
-        else:
-            db.collection('user_account').document(session['user_id']).update({
-                'password_hash': generate_password_hash(new),
-                'password_changed_at': firestore.SERVER_TIMESTAMP,
-            })
-            flash('Your password has been updated.', 'success')
+    ok, message = account_profile.change_password(
+        session['user_id'], request.form)
+    flash(message, 'success' if ok else 'error')
     return redirect(url_for('bhw.profile'))
 
 
-@bhw_bp.route('/profile/edit')
+@bhw_bp.route('/profile/edit', methods=['POST'])
 @bhw_required
 def edit_profile():
-    flash('Edit Profile is not implemented yet.', 'info')
+    ok, message, name = account_profile.update_details(
+        session['user_id'], request.form)
+    if ok:
+        session['full_name'] = name
+    flash(message, 'success' if ok else 'error')
+    return redirect(url_for('bhw.profile'))
+
+
+@bhw_bp.route('/profile/photo', methods=['POST'])
+@bhw_required
+def upload_photo():
+    ok, message = account_profile.save_photo(
+        session['user_id'], request.form.get('photo_base64'))
+    flash(message, 'success' if ok else 'error')
+    return redirect(url_for('bhw.profile'))
+
+
+@bhw_bp.route('/profile/photo/remove', methods=['POST'])
+@bhw_required
+def remove_photo():
+    ok, message = account_profile.remove_photo(session['user_id'])
+    flash(message, 'success' if ok else 'error')
     return redirect(url_for('bhw.profile'))

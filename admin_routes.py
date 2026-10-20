@@ -26,6 +26,7 @@ from firebase_admin import auth as fb_auth
 from firebase_admin import firestore, messaging
 from werkzeug.security import check_password_hash, generate_password_hash
 
+import account_profile
 import alerts_common as ac
 import care_plan_service as cps
 import valid_id_store
@@ -292,6 +293,24 @@ def _notif_items():
     return items
 
 
+_PHOTO_CACHE = {}   # {user_id: (time read, photoBase64 or None)}
+
+
+def _admin_photo(user_id):
+    """The admin's profile photo for the top bar, kept for a minute so
+    every page load doesn't re-read the account."""
+    hit = _PHOTO_CACHE.get(user_id)
+    if hit and time.time() - hit[0] < 60:
+        return hit[1]
+    try:
+        doc = db.collection('user_account').document(user_id).get()
+        photo = ((doc.to_dict() or {}) if doc.exists else {}).get('photoBase64')
+    except Exception:
+        photo = None
+    _PHOTO_CACHE[user_id] = (time.time(), photo)
+    return photo
+
+
 @admin_bp.context_processor
 def _admin_layout_context():
     """Values every admin page needs for the sidebar and top bar."""
@@ -301,6 +320,7 @@ def _admin_layout_context():
     return {
         'admin_name': session.get('full_name', 'Administrator'),
         'admin_initial': _initials(session.get('full_name', 'Administrator'))[:1],
+        'admin_photo': _admin_photo(session['user_id']),
         'pending_count': len(items),
         # The bell shows the eight most urgent; the rest are one click
         # away on each item's own page (Users, Emergency Logs, etc.).
@@ -1493,6 +1513,41 @@ def emergency_logs():
     )
 
 
+@admin_bp.route('/emergency-logs/<alert_id>/<action>', methods=['POST'])
+@admin_required
+def update_alert_status(alert_id, action):
+    """Acknowledge / Resolve / False alarm from the Emergency Logs table, the
+    same actions the BHW has. Acknowledging stops the alarm and the "needs a
+    response" banner on every portal; Resolve and False alarm close it."""
+    back = request.referrer or url_for('admin.emergency_logs')
+    if action not in ('acknowledge', 'resolve', 'false-alarm'):
+        flash('Unknown action.', 'error')
+        return redirect(back)
+
+    ref = db.collection(ac.ALERT_COLLECTION).document(alert_id)
+    doc = ref.get()
+    if not doc.exists:
+        flash('That alert no longer exists.', 'error')
+        return redirect(back)
+    status = ac.row_status(doc.to_dict() or {})
+    if status in ac.RESOLVED_STATUSES:
+        flash('That alert is already closed.', 'info')
+        return redirect(back)
+
+    if action == 'acknowledge':
+        if not ac.acknowledge(db, ref, alert_id, session['user_id']):
+            flash('That alert was already handled.', 'info')
+        else:
+            flash('Alert acknowledged. The alarm has stopped for everyone.', 'success')
+    else:
+        ac.resolve(db, ref, alert_id, session['user_id'],
+                   false_alarm=(action == 'false-alarm'),
+                   notes=(request.form.get('resolution_note') or '').strip()[:300] or None)
+        flash('Alert marked as a false alarm.' if action == 'false-alarm'
+              else 'Alert resolved.', 'success')
+    return redirect(back)
+
+
 @admin_bp.route('/emergency-logs.csv')
 @admin_required
 def download_logs():
@@ -2004,63 +2059,68 @@ def alerts_poll():
 @admin_bp.route('/profile')
 @admin_required
 def profile():
+    """Same behaviour as the family My Profile page (see account_profile.py)."""
     doc = db.collection('user_account').document(session['user_id']).get()
     user = doc.to_dict() if doc.exists else {}
     admins = sum(1 for _, u in _active_docs(
         'user_account') if u.get('role') == 'admin')
 
     return render_template(
-        'admin/profile.html', active_page='profile', user=user,
+        'admin/profile.html', active_page='profile',
+        me=account_profile.view(user),
+        role_label='System Administrator',
         member_since=_fmt_date(user.get('created_at')),
-        last_login=session.get('previous_login') or 'First sign-in',
-        password_changed=_fmt_date(user.get('password_changed_at')),
-        admin_count=admins,
+        details=[
+            ('Role', 'System Administrator'),
+            ('Account Status', 'Active'),
+            ('Last Login', session.get('previous_login') or 'First sign-in'),
+            ('Password Last Changed', _fmt_date(user.get('password_changed_at'))),
+            ('Administrators', admins),
+            ('Two-Factor Authentication', 'Disabled'),
+        ],
+        urls={
+            'update': url_for('admin.edit_profile'),
+            'password': url_for('admin.change_password'),
+            'photo': url_for('admin.upload_photo'),
+            'photo_remove': url_for('admin.remove_photo'),
+        },
     )
 
 
 @admin_bp.route('/profile/password', methods=['POST'])
 @admin_required
 def change_password():
-    doc = db.collection('user_account').document(session['user_id']).get()
-    user = doc.to_dict() if doc.exists else {}
-
-    current = request.form.get('current_password', '')
-    new = request.form.get('new_password', '')
-    confirm = request.form.get('confirm_password', '')
-
-    if not check_password_hash(user.get('password_hash', ''), current):
-        flash('Your current password is incorrect.', 'error')
-    elif new != confirm:
-        flash('New password and confirm password do not match.', 'error')
-    elif new == current:
-        flash('Your new password must be different from your current password.', 'error')
-    else:
-        missing = [label for rule, label in PASSWORD_RULES if not rule(new)]
-        if missing:
-            flash('New password needs ' + ', '.join(missing) + '.', 'error')
-        else:
-            db.collection('user_account').document(session['user_id']).update({
-                'password_hash': generate_password_hash(new),
-                'password_changed_at': firestore.SERVER_TIMESTAMP,
-            })
-            flash('Your password has been updated.', 'success')
+    ok, message = account_profile.change_password(
+        session['user_id'], request.form)
+    flash(message, 'success' if ok else 'error')
     return redirect(url_for('admin.profile'))
 
 
 @admin_bp.route('/profile/edit', methods=['POST'])
 @admin_required
 def edit_profile():
-    full_name = (request.form.get('full_name') or '').strip()
-    contact = (request.form.get('contact_number') or '').strip()
+    ok, message, name = account_profile.update_details(
+        session['user_id'], request.form)
+    if ok:
+        session['full_name'] = name
+    flash(message, 'success' if ok else 'error')
+    return redirect(url_for('admin.profile'))
 
-    if not full_name:
-        flash('Please enter your full name.', 'error')
-        return redirect(url_for('admin.profile'))
 
-    db.collection('user_account').document(session['user_id']).update({
-        'full_name': full_name,
-        'contact_number': contact,
-    })
-    session['full_name'] = full_name
-    flash('Your profile has been updated.', 'success')
+@admin_bp.route('/profile/photo', methods=['POST'])
+@admin_required
+def upload_photo():
+    ok, message = account_profile.save_photo(
+        session['user_id'], request.form.get('photo_base64'))
+    _PHOTO_CACHE.pop(session['user_id'], None)
+    flash(message, 'success' if ok else 'error')
+    return redirect(url_for('admin.profile'))
+
+
+@admin_bp.route('/profile/photo/remove', methods=['POST'])
+@admin_required
+def remove_photo():
+    ok, message = account_profile.remove_photo(session['user_id'])
+    _PHOTO_CACHE.pop(session['user_id'], None)
+    flash(message, 'success' if ok else 'error')
     return redirect(url_for('admin.profile'))

@@ -1,0 +1,120 @@
+{# My Profile body for admins and BHWs: same layout and behaviour as the
+   family page. The page passes:
+     me        account_profile.view(user)
+     role_label  e.g. "System Administrator"
+     details   [(label, value), ...] read-only account facts
+     urls      {update, password, photo, photo_remove} #}
+<div class="acct">
+  <!-- ---- IDENTITY + PHOTO ---- -->
+  <section class="admin-card acct-identity">
+    <div class="acct-avatar-col">
+      <button type="button" class="acct-avatar" id="photoTrigger" aria-label="Change profile photo">
+        {% if me.photo_base64 %}
+        <img src="data:image/jpeg;base64,{{ me.photo_base64 }}" alt="" />
+        {% else %}
+        <span>{{ me.initials }}</span>
+        {% endif %}
+        <span class="acct-avatar-edit"><i data-lucide="camera"></i></span>
+      </button>
+      <input type="file" id="profilePhoto" accept="image/jpeg,image/png,image/gif,image/webp" hidden />
+      <form method="POST" action="{{ urls.photo }}" id="photoForm">
+        <input type="hidden" name="photo_base64" id="photoData" />
+      </form>
+      {% if me.photo_base64 %}
+      <form method="POST" action="{{ urls.photo_remove }}">
+        <button type="submit" class="acct-avatar-remove"><i data-lucide="trash-2"></i> Remove photo</button>
+      </form>
+      {% endif %}
+    </div>
+    <div class="acct-identity-text">
+      <h2>{{ me.full_name or 'Your name' }}</h2>
+      <span class="acct-role"><i data-lucide="shield-check"></i> {{ role_label }}</span>
+      <p>Member since {{ member_since }}</p>
+      <p class="acct-hint">Click the photo to change it. It is resized to 512px before saving, the same way the mobile app does it.</p>
+    </div>
+  </section>
+
+  <div class="acct-columns">
+    <!-- ---- PERSONAL INFORMATION ---- -->
+    <section class="admin-card acct-card">
+      <div class="acct-card-head">
+        <h3>Personal Information</h3>
+        <p>Update your details and save the changes.</p>
+      </div>
+      <form method="POST" action="{{ urls.update }}" class="acct-form">
+        <div class="acct-field">
+          <label for="full_name">Full Name</label>
+          <div class="acct-input">
+            <i data-lucide="user"></i>
+            <input type="text" id="full_name" name="full_name" value="{{ me.full_name }}" placeholder="Enter your full name" maxlength="100" required />
+          </div>
+        </div>
+        <div class="acct-field">
+          <label for="email">Email Address</label>
+          <div class="acct-input">
+            <i data-lucide="mail"></i>
+            <input type="email" id="email" name="email" value="{{ me.email }}" placeholder="Enter your email address" maxlength="120" required />
+          </div>
+          <small class="acct-field-hint">You will sign in with this email from now on.</small>
+        </div>
+        <div class="acct-field">
+          <label for="contact_number">Phone Number</label>
+          <div class="acct-input">
+            <i data-lucide="phone"></i>
+            <input type="text" id="contact_number" name="contact_number" value="{{ me.contact_number }}" placeholder="09XX XXX XXXX" maxlength="20" />
+          </div>
+        </div>
+        <button type="submit" class="btn btn-primary acct-btn"><i data-lucide="save"></i> Save Changes</button>
+      </form>
+
+      <div class="acct-card-head acct-details-head">
+        <h3>Account Information</h3>
+      </div>
+      <dl class="acct-details">
+        {% for label, value in details %}
+        <div><dt>{{ label }}</dt><dd>{{ value }}</dd></div>
+        {% endfor %}
+      </dl>
+    </section>
+
+    <!-- ---- CHANGE PASSWORD ---- -->
+    <section class="admin-card acct-card">
+      <div class="acct-card-head">
+        <h3>Change Password</h3>
+        <p>Choose a strong password you do not use anywhere else.</p>
+      </div>
+      <form method="POST" action="{{ urls.password }}" class="acct-form" id="acctPasswordForm">
+        {% for field, label, placeholder in [
+          ('current_password', 'Current Password', 'Enter your current password'),
+          ('new_password', 'New Password', 'Enter your new password'),
+          ('confirm_password', 'Confirm New Password', 'Re-enter your new password'),
+        ] %}
+        <div class="acct-field">
+          <label for="{{ field }}">{{ label }}</label>
+          <div class="acct-input">
+            <i data-lucide="lock"></i>
+            <input type="password" id="{{ field }}" name="{{ field }}" placeholder="{{ placeholder }}"
+                   autocomplete="{{ 'current-password' if field == 'current_password' else 'new-password' }}" required />
+            <button type="button" class="acct-eye" data-toggle="{{ field }}" aria-label="Show password">
+              <i data-lucide="eye"></i>
+            </button>
+          </div>
+        </div>
+        {% endfor %}
+
+        <div class="acct-rules" id="acctPasswordRules">
+          <p>New password must:</p>
+          <ul>
+            <li data-rule="length">Be at least 8 characters</li>
+            <li data-rule="upper">Include an uppercase letter</li>
+            <li data-rule="lower">Include a lowercase letter</li>
+            <li data-rule="number">Include a number</li>
+            <li data-rule="special">Include a special character</li>
+            <li data-rule="match">Both passwords match</li>
+          </ul>
+        </div>
+        <button type="submit" class="btn btn-primary acct-btn"><i data-lucide="key-round"></i> Update Password</button>
+      </form>
+    </section>
+  </div>
+</div>
