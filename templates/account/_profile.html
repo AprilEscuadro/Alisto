@@ -66,9 +66,13 @@
         </div>
         <button type="submit" class="btn btn-primary acct-btn"><i data-lucide="save"></i> Save Changes</button>
       </form>
+    </section>
 
-      <div class="acct-card-head acct-details-head">
+    <!-- ---- ACCOUNT INFORMATION (read-only) ---- -->
+    <section class="admin-card acct-card acct-info">
+      <div class="acct-card-head">
         <h3>Account Information</h3>
+        <p>Read-only details about your account.</p>
       </div>
       <dl class="acct-details">
         {% for label, value in details %}
@@ -76,45 +80,45 @@
         {% endfor %}
       </dl>
     </section>
-
-    <!-- ---- CHANGE PASSWORD ---- -->
-    <section class="admin-card acct-card">
-      <div class="acct-card-head">
-        <h3>Change Password</h3>
-        <p>Choose a strong password you do not use anywhere else.</p>
-      </div>
-      <form method="POST" action="{{ urls.password }}" class="acct-form" id="acctPasswordForm">
-        {% for field, label, placeholder in [
-          ('current_password', 'Current Password', 'Enter your current password'),
-          ('new_password', 'New Password', 'Enter your new password'),
-          ('confirm_password', 'Confirm New Password', 'Re-enter your new password'),
-        ] %}
-        <div class="acct-field">
-          <label for="{{ field }}">{{ label }}</label>
-          <div class="acct-input">
-            <i data-lucide="lock"></i>
-            <input type="password" id="{{ field }}" name="{{ field }}" placeholder="{{ placeholder }}"
-                   autocomplete="{{ 'current-password' if field == 'current_password' else 'new-password' }}" required />
-            <button type="button" class="acct-eye" data-toggle="{{ field }}" aria-label="Show password">
-              <i data-lucide="eye"></i>
-            </button>
-          </div>
-        </div>
-        {% endfor %}
-
-        <div class="acct-rules" id="acctPasswordRules">
-          <p>New password must:</p>
-          <ul>
-            <li data-rule="length">Be at least 8 characters</li>
-            <li data-rule="upper">Include an uppercase letter</li>
-            <li data-rule="lower">Include a lowercase letter</li>
-            <li data-rule="number">Include a number</li>
-            <li data-rule="special">Include a special character</li>
-            <li data-rule="match">Both passwords match</li>
-          </ul>
-        </div>
-        <button type="submit" class="btn btn-primary acct-btn"><i data-lucide="key-round"></i> Update Password</button>
-      </form>
-    </section>
   </div>
+
+  <!-- ---- CHANGE PASSWORD ---- -->
+  <section class="admin-card acct-card acct-wide">
+    <div class="acct-card-head">
+      <h3>Change Password</h3>
+      <p>Choose a strong password you do not use anywhere else.</p>
+    </div>
+    <form method="POST" action="{{ urls.password }}" class="acct-form acct-pw-form" id="acctPasswordForm">
+      {% for field, label, placeholder in [
+        ('current_password', 'Current Password', 'Enter your current password'),
+        ('new_password', 'New Password', 'Enter your new password'),
+        ('confirm_password', 'Confirm New Password', 'Re-enter your new password'),
+      ] %}
+      <div class="acct-field">
+        <label for="{{ field }}">{{ label }}</label>
+        <div class="acct-input">
+          <i data-lucide="lock"></i>
+          <input type="password" id="{{ field }}" name="{{ field }}" placeholder="{{ placeholder }}"
+                 autocomplete="{{ 'current-password' if field == 'current_password' else 'new-password' }}" required />
+          <button type="button" class="acct-eye" data-toggle="{{ field }}" aria-label="Show password">
+            <i data-lucide="eye"></i>
+          </button>
+        </div>
+      </div>
+      {% endfor %}
+
+      <div class="acct-rules" id="acctPasswordRules">
+        <p>New password must:</p>
+        <ul>
+          <li data-rule="length">Be at least 8 characters</li>
+          <li data-rule="upper">Include an uppercase letter</li>
+          <li data-rule="lower">Include a lowercase letter</li>
+          <li data-rule="number">Include a number</li>
+          <li data-rule="special">Include a special character</li>
+          <li data-rule="match">Both passwords match</li>
+        </ul>
+      </div>
+      <button type="submit" class="btn btn-primary acct-btn"><i data-lucide="key-round"></i> Update Password</button>
+    </form>
+  </section>
 </div>

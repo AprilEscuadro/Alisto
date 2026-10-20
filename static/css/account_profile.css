@@ -7,7 +7,6 @@
     display: flex;
     flex-direction: column;
     gap: 20px;
-    max-width: 1100px;
 }
 
 /* identity card */
@@ -131,7 +130,7 @@
     display: grid;
     grid-template-columns: repeat(2, minmax(0, 1fr));
     gap: 20px;
-    align-items: start;
+    align-items: stretch;
 }
 
 .acct-card {
@@ -304,28 +303,32 @@
     background: var(--red);
 }
 
-/* read-only account facts under the form */
-.acct-details-head {
-    margin-top: 26px;
-    padding-top: 22px;
-    border-top: 1px solid var(--admin-border);
-}
-
-.acct-details-head h3 {
-    margin-bottom: 8px;
+/* read-only account facts: label left, value right, rows spread to fill the card */
+.acct-info {
+    display: flex;
+    flex-direction: column;
 }
 
 .acct-details {
     margin: 0;
+    flex: 1;
+    display: flex;
+    flex-direction: column;
 }
 
 .acct-details div {
+    flex: 1;
     display: flex;
+    align-items: center;
     justify-content: space-between;
     gap: 16px;
     padding: 11px 0;
     border-bottom: 1px solid var(--admin-border);
     font-size: 13.5px;
+}
+
+.acct-details div:first-child {
+    border-top: 1px solid var(--admin-border);
 }
 
 .acct-details div:last-child {
@@ -341,6 +344,30 @@
     font-weight: 600;
     color: var(--admin-text);
     text-align: right;
+}
+
+/* change password: fields on the left, rules + button on the right (same width) */
+.acct-pw-form {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    column-gap: 20px;
+    row-gap: 16px;
+}
+
+.acct-pw-form .acct-field {
+    grid-column: 1;
+}
+
+.acct-pw-form .acct-rules {
+    grid-column: 2;
+    grid-row: 1 / span 2;
+}
+
+.acct-pw-form .acct-btn {
+    grid-column: 2;
+    grid-row: 3;
+    align-self: end;
+    justify-self: start;
 }
 
 /* top bar avatar with a photo */
@@ -359,6 +386,17 @@
 @media (max-width: 980px) {
     .acct-columns {
         grid-template-columns: 1fr;
+    }
+
+    .acct-pw-form {
+        grid-template-columns: 1fr;
+    }
+
+    .acct-pw-form .acct-rules,
+    .acct-pw-form .acct-btn {
+        grid-column: 1;
+        grid-row: auto;
+        align-self: start;
     }
 }
 

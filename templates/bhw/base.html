@@ -63,7 +63,8 @@
         </button>
 
         <div class="admin-topbar-right">
-         <div class="admin-notif" id="adminNotif">
+          <!-- NOTIFICATIONS -->
+          <div class="admin-notif" id="adminNotif">
             <button type="button" class="admin-bell" id="adminBellBtn"
                     aria-haspopup="true" aria-expanded="false"
                     aria-label="{{ active_alert_count }} active alert(s)">
@@ -102,6 +103,41 @@
               </a>
             </div>
           </div>
+
+          <!-- PROFILE DROPDOWN -->
+          <div class="admin-profile" id="adminProfile">
+            <button
+              type="button"
+              class="admin-profile-btn"
+              id="adminProfileBtn"
+              aria-haspopup="true"
+              aria-expanded="false"
+            >
+              <span class="admin-avatar{% if bhw_photo %} has-photo{% endif %}">{% if bhw_photo %}<img src="data:image/jpeg;base64,{{ bhw_photo }}" alt="" />{% else %}{{ bhw_initials }}{% endif %}</span>
+              <span class="admin-profile-text">
+                <strong>{{ bhw_name }}</strong>
+                <small>BHW</small>
+              </span>
+              <i data-lucide="chevron-down" class="admin-profile-chevron"></i>
+            </button>
+
+            <div class="admin-dropdown" id="adminDropdown" role="menu">
+              <a href="{{ url_for('bhw.profile') }}" role="menuitem"
+                 class="{% if active_page == 'profile' %}active{% endif %}">
+                <i data-lucide="user"></i> My Profile
+              </a>
+              <a href="{{ url_for('bhw.settings') }}" role="menuitem">
+                <i data-lucide="settings"></i> Account Settings
+              </a>
+              <div class="admin-dropdown-divider"></div>
+              <a href="{{ url_for('logout') }}" role="menuitem" class="js-confirm-link"
+                 data-confirm-title="Log out?"
+                 data-confirm-message="You'll need to sign in again to access the BHW portal."
+                 data-confirm-ok="Logout">
+                <i data-lucide="log-out"></i> Logout
+              </a>
+            </div>
+          </div>
         </div>
       </header>
 
@@ -116,6 +152,19 @@
 
         <footer class="bhw-footer">&copy; {{ now_year }} Alisto. All rights reserved.</footer>
       </main>
+    </div>
+
+    <!-- Floating confirm dialog (used by the Logout link) -- see confirmDialog() in admin.js -->
+    <div class="confirm-overlay" id="adminConfirm" aria-hidden="true">
+      <div class="confirm-dialog" role="alertdialog" aria-modal="true" aria-labelledby="adminConfirmTitle">
+        <div class="confirm-icon" id="adminConfirmIcon"><i data-lucide="triangle-alert"></i></div>
+        <h2 class="confirm-title" id="adminConfirmTitle">Are you sure?</h2>
+        <p class="confirm-text" id="adminConfirmText"></p>
+        <div class="confirm-actions">
+          <button type="button" class="btn btn-outline" id="adminConfirmCancel">Cancel</button>
+          <button type="button" class="btn btn-primary" id="adminConfirmOk">Confirm</button>
+        </div>
+      </div>
     </div>
 
     <script src="{{ url_for('static', filename='js/admin.js') }}"></script>
@@ -143,6 +192,5 @@
         setInterval(refresh, 30000);
       })();
     </script>
-    
   </body>
 </html>
