@@ -1,0 +1,147 @@
+{# Admin Help & Support modals. Included at the bottom of admin/settings.html #}
+
+<!-- ============ ADMIN GUIDE ============ -->
+<div class="hs-overlay" id="hsGuideModal" role="dialog" aria-modal="true" aria-labelledby="hsGuideTitle">
+  <div class="hs-modal">
+    <div class="hs-head">
+      <h2 class="hs-title" id="hsGuideTitle">How to Use ALISTO as an Admin</h2>
+      <button type="button" class="hs-close" data-hs-close aria-label="Close"><i data-lucide="x"></i></button>
+    </div>
+    <div class="hs-body">
+      <div class="hs-steps">
+        <div class="hs-step">
+          <div class="hs-step-no">1</div>
+          <div><h4>Approve BHW Accounts</h4>
+            <p>New Barangay Health Worker registrations wait in Users with a pending status. Open the BHW's valid ID, check the details, then approve or reject. Only approved BHWs can see alerts for their barangay.</p></div>
+        </div>
+        <div class="hs-step">
+          <div class="hs-step-no">2</div>
+          <div><h4>Manage Users</h4>
+            <p>Users lists family accounts, BHWs, and elderly residents. You can add a user, archive an account that is no longer active, or delete one permanently. Archive first if you may need the records later.</p></div>
+        </div>
+        <div class="hs-step">
+          <div class="hs-step-no">3</div>
+          <div><h4>Register and Track Devices</h4>
+            <p>Add ALISTO devices by serial number in Devices so families can register them. You can unregister a device to release it from a resident, or delete it from the system. Offline devices also show in the bell.</p></div>
+        </div>
+        <div class="hs-step">
+          <div class="hs-step-no">4</div>
+          <div><h4>Verify Payments and Subscriptions</h4>
+            <p>When a family submits a GCash reference, it appears in Subscriptions as pending. Check it against your GCash records, then approve it to activate the plan or reject it with a reason. Plans close to expiry show in the bell.</p></div>
+        </div>
+        <div class="hs-step">
+          <div class="hs-step-no">5</div>
+          <div><h4>Monitor Emergencies</h4>
+            <p>Emergency Logs shows every alert and its status. Map View shows where devices are. If an alert is still active and no one has responded, flag it to the BHW from the map. You can also close an alert or mark it as a false alarm.</p></div>
+        </div>
+        <div class="hs-step">
+          <div class="hs-step-no">6</div>
+          <div><h4>Answer Support Requests</h4>
+            <p>Problem reports and messages from families and BHWs arrive in your Inbox. Reply there, set the ticket status, and post announcements to everyone when needed.</p></div>
+        </div>
+        <div class="hs-step">
+          <div class="hs-step-no">7</div>
+          <div><h4>Reports and Backups</h4>
+            <p>Reports and the other pages let you export CSV files. In Settings, keep Auto backup on, and use Backup now before big changes such as deleting users.</p></div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ============ TROUBLESHOOTING ============ -->
+<div class="hs-overlay" id="hsTroubleModal" role="dialog" aria-modal="true" aria-labelledby="hsTroubleTitle">
+  <div class="hs-modal">
+    <div class="hs-head">
+      <h2 class="hs-title" id="hsTroubleTitle">Troubleshooting</h2>
+      <button type="button" class="hs-close" data-hs-close aria-label="Close"><i data-lucide="x"></i></button>
+    </div>
+    <div class="hs-body">
+      <div class="hs-about">
+        <div class="hs-about-sec">
+          <h3><i data-lucide="wifi-off"></i> A device shows offline</h3>
+          <p>A device counts as offline if it has not checked in for 10 minutes. Check that it has power and Wi-Fi. If it is on, ask the family to confirm its Wi-Fi is set up again. The device keeps unsent alerts and syncs them once it reconnects.</p>
+        </div>
+        <div class="hs-about-sec">
+          <h3><i data-lucide="map-pin-off"></i> No pin on the map</h3>
+          <p>A device with no known location has no pin. It needs a GPS fix or a first check-in. A pin marked as unverified means the location did not come from a real GPS fix.</p>
+        </div>
+        <div class="hs-about-sec">
+          <h3><i data-lucide="message-square-warning"></i> Emergency SMS was not sent</h3>
+          <p>Open the alert in Emergency Logs and check how many contacts were texted. A count of 0 usually means the resident has no emergency contact saved, or the device's SIM has no load or signal.</p>
+        </div>
+        <div class="hs-about-sec">
+          <h3><i data-lucide="credit-card"></i> A payment is stuck on pending</h3>
+          <p>Payments stay pending until an admin acts on them. Open Subscriptions, compare the GCash reference number with your records, then approve or reject it. The family is told in their Inbox either way.</p>
+        </div>
+        <div class="hs-about-sec">
+          <h3><i data-lucide="user-x"></i> A BHW cannot see alerts</h3>
+          <p>Check that the BHW's account is approved and that the barangay on their profile matches the resident's barangay. Pending or rejected accounts do not receive alerts.</p>
+        </div>
+        <div class="hs-about-sec">
+          <h3><i data-lucide="database-backup"></i> Restoring data</h3>
+          <p>Backups are saved once a day when Auto backup is on. If something was deleted by mistake, do not make more changes. Keep the latest backup file and get the development team to restore it.</p>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ============ ABOUT ALISTO ============ -->
+<div class="hs-overlay" id="hsAboutModal" role="dialog" aria-modal="true" aria-labelledby="hsAboutTitle">
+  <div class="hs-modal">
+    <div class="hs-head">
+      <h2 class="hs-title" id="hsAboutTitle">About ALISTO</h2>
+      <button type="button" class="hs-close" data-hs-close aria-label="Close"><i data-lucide="x"></i></button>
+    </div>
+    <div class="hs-body">
+      <div class="hs-about">
+        <div class="hs-about-sec">
+          <h3><i data-lucide="stethoscope"></i> What is ALISTO?</h3>
+          <p>ALISTO is an offline emergency response system designed specifically to help elderly individuals during emergencies. It detects emergency voice commands in Cebuano (Bisaya) without requiring an internet connection.</p>
+        </div>
+
+        <div class="hs-about-sec hs-about-bhw">
+          <h3><i data-lucide="shield-check"></i> A Message for Administrators</h3>
+          <p>You keep ALISTO running for every family, BHW, and device in the system. Accurate accounts, working devices, and quick payment checks mean that when a resident calls for help, the alert reaches the right people.</p>
+        </div>
+
+        <div class="hs-about-sec">
+          <h3><i data-lucide="sparkles"></i> Key Features</h3>
+          <ul class="hs-about-list">
+            <li>Offline voice detection</li>
+            <li>Emergency phrase recognition</li>
+            <li>Android mobile application</li>
+            <li>Emergency alert notifications</li>
+            <li>Multiple emergency contacts</li>
+            <li>Alert history tracking</li>
+            <li>5-second false alarm cancellation</li>
+          </ul>
+        </div>
+
+        <div class="hs-about-sec">
+          <h3><i data-lucide="zap"></i> How It Works</h3>
+          <ol class="hs-about-list">
+            <li>Device listens for emergency voice commands</li>
+            <li>AI analyzes speech locally</li>
+            <li>5-second cancellation timer starts</li>
+            <li>If not canceled, sends emergency alert</li>
+            <li>Contacts receive notification instantly</li>
+            <li>Emergency saved in alert history</li>
+          </ol>
+        </div>
+
+        <div class="hs-team">
+          <div class="hs-team-title">Development Team</div>
+          <ul>
+            <li>April Dianne D. Escuadro</li>
+            <li>Engel B. Bellita</li>
+            <li>Josh Neo Ylaya</li>
+            <li>Lemuel Alonso</li>
+          </ul>
+          <p>Bachelor of Science in Information Technology<br />University of Cebu - Main Campus</p>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>

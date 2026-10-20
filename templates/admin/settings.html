@@ -1,5 +1,8 @@
 {% extends 'admin/base.html' %}
 {% block title %}Settings{% endblock %}
+{% block head %}
+<link rel="stylesheet" href="{{ url_for('static', filename='css/admin_css/admin_help.css') }}" />
+{% endblock %}
 
 {% block content %}
 <form method="POST" action="{{ url_for('admin.save_settings') }}" class="prefs-page" id="adminSettingsForm">
@@ -132,45 +135,54 @@
     </section>
   </div>
 
-  <!-- ACCOUNT -->
+    <!-- HELP & SUPPORT -->
   <div class="prefs-block">
-    <h2 class="settings-group">Account &amp; security</h2>
+    <h2 class="settings-group">Help &amp; Support</h2>
     <section class="admin-card prefs-card">
-      <a href="{{ url_for('admin.profile') }}" class="pref-row pref-link">
-        <span class="setting-icon tint-blue"><i data-lucide="user"></i></span>
+      <button type="button" class="pref-row" id="hsGuideBtn">
+        <span class="setting-icon tint-blue"><i data-lucide="book-open"></i></span>
         <span class="setting-text">
-          <strong>My profile</strong>
-          <small>Name, phone number, and password</small>
+          <strong>Admin Guide</strong>
+          <small>How to manage users, devices, payments, and alerts</small>
         </span>
         <i data-lucide="chevron-right"></i>
-      </a>
+      </button>
       <a href="{{ url_for('admin.inbox') }}" class="pref-row pref-link">
         <span class="setting-icon tint-green"><i data-lucide="inbox"></i></span>
         <span class="setting-text">
-          <strong>Inbox</strong>
-          <small>Support requests, payments, and announcements</small>
+          <strong>Support Requests</strong>
+          <small>Problem reports and messages from families and BHWs</small>
         </span>
         <i data-lucide="chevron-right"></i>
       </a>
-      <a href="{{ url_for('logout') }}" class="pref-row pref-link pref-danger js-confirm-link"
-         data-confirm-title="Log out?" data-confirm-message="You'll need to sign in again to access the admin panel."
-         data-confirm-ok="Logout">
-        <span class="setting-icon tint-red"><i data-lucide="log-out"></i></span>
+      <button type="button" class="pref-row" id="hsTroubleBtn">
+        <span class="setting-icon tint-red"><i data-lucide="life-buoy"></i></span>
         <span class="setting-text">
-          <strong>Log out</strong>
-          <small>Sign out of ALISTO on this computer</small>
+          <strong>Troubleshooting</strong>
+          <small>Offline devices, unsent SMS, pending payments</small>
         </span>
         <i data-lucide="chevron-right"></i>
-      </a>
+      </button>
+      <button type="button" class="pref-row" id="hsAboutBtn">
+        <span class="setting-icon tint-purple"><i data-lucide="info"></i></span>
+        <span class="setting-text">
+          <strong>About ALISTO</strong>
+          <small>Version 1.0</small>
+        </span>
+        <i data-lucide="chevron-right"></i>
+      </button>
     </section>
   </div>
 
 </div>
 </form>
+
+{% include 'admin/_help_modals.html' %}
 {% endblock %}
 
 {% block scripts %}
 <script src="{{ url_for('static', filename='js/bhw_settings.js') }}"></script>
+<script src="{{ url_for('static', filename='js/admin_help.js') }}"></script>
 <script>
   // Date format and Auto backup save as soon as they change (no Save button).
   document.querySelectorAll("#adminSettingsForm .js-autosave").forEach((el) => {
