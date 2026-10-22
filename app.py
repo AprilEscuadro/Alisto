@@ -2867,12 +2867,33 @@ def pay_care_plan():
     if not elder_id or not reference_no or months not in cps.PLAN_MONTH_OPTIONS:
         return jsonify(success=False, message='Please fill in all fields correctly.'), 400
 
+    # The amount the family says they sent must match the months they picked
+    # (stops "paid for 1 month, submitted 6"). The admin still confirms the
+    # reference number + amount in GCash before approving.
+    try:
+        amount_sent = float((request.form.get('amount_sent') or '').replace(',', '').strip())
+    except ValueError:
+        return jsonify(success=False, message='Enter the exact amount you sent.'), 400
+
     elder_doc = db.collection('elder_profile').document(elder_id).get()
     if not elder_doc.exists:
         return jsonify(success=False, message='Loved one not found.'), 404
 
     plan = cps.get_plan()
     unit_price = plan['price']
+    expected = unit_price * months
+    if abs(amount_sent - expected) > 0.005:
+        return jsonify(
+            success=False,
+            message=(f'The amount you sent (\u20b1{amount_sent:,.2f}) does not match '
+                     f'{months} month{"s" if months != 1 else ""} (\u20b1{expected:,.2f}). '
+                     'Select the plan that matches what you actually paid.')), 400
+
+    # One GCash receipt can only pay for one request.
+    for dup in db.collection('payment').where('reference_no', '==', reference_no).stream():
+        if (dup.to_dict() or {}).get('status') != 'rejected':
+            return jsonify(success=False,
+                           message='This reference number was already submitted.'), 409
 
     payment_ref = db.collection('payment').document()
     payment_ref.set({
@@ -2883,6 +2904,7 @@ def pay_care_plan():
         'months': months,
         'unit_price': unit_price,
         'amount': unit_price * months,
+        'amount_declared': amount_sent,
         'currency': plan.get('currency', 'PHP'),
         'method': 'gcash',
         'reference_no': reference_no,
