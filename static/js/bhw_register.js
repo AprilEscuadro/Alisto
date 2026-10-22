@@ -80,7 +80,7 @@
   function validateAccount() {
     if (!val('full_name')) return 'Please enter your full name.';
     if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(val('email'))) return 'Please enter a valid email address.';
-    if (!val('barangay_assigned')) return 'Please enter your assigned barangay.';
+    if (!val('barangay_assigned')) return 'Please select your assigned barangay.';
 
     const password = $('password').value;
     if (password.length < 6) return 'Password must be at least 6 characters.';

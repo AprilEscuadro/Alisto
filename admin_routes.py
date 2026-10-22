@@ -350,9 +350,14 @@ SEVERITY_ORDER = ('high', 'medium', 'low')
 def _barangay_of(address):
     """Best guess at the barangay from an address of either shape."""
     if isinstance(address, dict):
-        return (address.get('barangay') or '').strip()
+        raw = (address.get('barangay') or '').strip()
+        return _bg.canonical(raw) or raw
     parts = _address_parts(address)
-    # "house, street, barangay, city, province, zip"
+    # Prefer a part that really is a barangay, so "Sudlon 2" and "Sudlon II"
+    # land in the same row. Old guess: "house, street, barangay, city, province, zip"
+    found = _bg.find_in_parts(parts)
+    if found:
+        return found
     return parts[2] if len(parts) >= 4 else ''
 
 
@@ -377,6 +382,7 @@ def _bhw_by_barangay():
         user = doc.to_dict() or {}
         barangay = (profiles.get(doc.id, {}).get(
             'barangay_assigned') or '').strip()
+        barangay = _bg.canonical(barangay) or barangay
         if barangay and barangay not in out:
             out[barangay] = {'id': doc.id, 'name': user.get(
                 'full_name') or 'Unnamed BHW'}
@@ -955,29 +961,10 @@ YEARS_OF_SERVICE_OPTIONS = [
     'Less than 1 year', '1-3 years', '4-6 years', '7-10 years', 'More than 10 years'
 ]
 
-# All 80 Cebu City barangays (Cebu City proper only -- no other Cebu
-# province municipality), extracted from the same boundary data the Pi's
-# own reverse_geocode.py uses for GPS-to-barangay lookups
-# (alisto-iot/pi/data/cebu_city_barangays.json, ADM4_EN field, "(Pob.)"
-# suffix stripped the same way that module does) -- kept as a plain list
-# here rather than reading that file at request time so this page never
-# depends on the Pi's bundled data folder existing on the web server.
-CEBU_CITY_BARANGAYS = [
-    'Adlaon', 'Agsungot', 'Apas', 'Babag', 'Bacayan', 'Banilad', 'Basak Pardo',
-    'Basak San Nicolas', 'Binaliw', 'Bonbon', 'Budla-an', 'Buhisan', 'Bulacao',
-    'Buot-Taup Pardo', 'Busay', 'Calamba', 'Cambinocot', 'Camputhaw', 'Capitol Site',
-    'Carreta', 'Central', 'Cogon Pardo', 'Cogon Ramos', 'Day-as', 'Duljo', 'Ermita',
-    'Guadalupe', 'Guba', 'Hippodromo', 'Inayawan', 'Kalubihan', 'Kalunasan',
-    'Kamagayan', 'Kasambagan', 'Kinasang-an Pardo', 'Labangon', 'Lahug',
-    'Lorega (Lorega San Miguel)', 'Lusaran', 'Luz', 'Mabini', 'Mabolo', 'Malubog',
-    'Mambaling', 'Pahina Central', 'Pahina San Nicolas', 'Pamutan', 'Pardo',
-    'Pari-an', 'Paril', 'Pasil', 'Pit-os', 'Pulangbato', 'Pung-ol-Sibugay',
-    'Punta Princesa', 'Quiot Pardo', 'Sambag I', 'Sambag II', 'San Antonio',
-    'San Jose', 'San Nicolas Central', 'San Roque (Ciudad)', 'Santa Cruz',
-    'Sapangdaku', 'Sawang Calero', 'Sinsin', 'Sirao', 'Suba Pob. (Suba San Nicolas)',
-    'Sudlon I', 'Sudlon II', 'T. Padilla', 'Tabunan', 'Tagbao', 'Talamban', 'Taptap',
-    'Tejero (Villa Gonzalo)', 'Tinago', 'Tisa', 'To-ong Pardo', 'Zapatera',
-]
+# The barangay list lives in barangays.py so registration, the BHW portal and
+# this admin panel all use the same spelling.
+from barangays import CEBU_CITY_BARANGAYS  # noqa: E402
+import barangays as _bg  # noqa: E402
 
 
 @admin_bp.route('/users/new', methods=['GET', 'POST'])
@@ -1022,6 +1009,7 @@ def add_user():
     missing = [label for rule, label in PASSWORD_RULES if not rule(password)]
     if missing:
         return jsonify(success=False, message='Password needs ' + ', '.join(missing) + '.'), 400
+    barangay_assigned = _bg.canonical(barangay_assigned) or ''
     if barangay_assigned not in CEBU_CITY_BARANGAYS:
         return jsonify(success=False, message='Please select a valid barangay.'), 400
     if years_of_service not in YEARS_OF_SERVICE_OPTIONS:

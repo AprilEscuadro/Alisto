@@ -151,15 +151,12 @@
             </div>
 
             <div class="form-group" id="barangayField" style="display: none">
-              <div class="input-icon-wrap">
+              <div class="select-icon-wrap">
                 <i data-lucide="map-pin" class="input-icon"></i>
-                <input
-                  type="text"
-                  id="barangay_assigned"
-                  name="barangay_assigned"
-                  value="Sudlon II"
-                  placeholder="Barangay Assigned"
-                />
+                <select id="barangay_assigned" name="barangay_assigned">
+                  <option value="">Select assigned barangay</option>
+                  {% for b in barangays %}<option value="{{ b }}">{{ b }}</option>{% endfor %}
+                </select>
               </div>
             </div>
 
@@ -425,6 +422,17 @@
               </div>
             </div>
 
+            <div class="form-group">
+              <label class="field-label">Your Barangay</label>
+              <div class="select-icon-wrap">
+                <i data-lucide="map-pin" class="input-icon"></i>
+                <select id="family_barangay" name="family_barangay" required>
+                  <option value="">Select your barangay</option>
+                  {% for b in barangays %}<option value="{{ b }}">{{ b }}</option>{% endfor %}
+                </select>
+              </div>
+            </div>
+
             <div class="step-btn-row">
               <button type="button" class="btn-back" onclick="prevStep(3)">
                 Back
@@ -477,7 +485,7 @@
                   <i data-lucide="map" class="input-icon"></i>
                   <select id="barangay" name="barangay" required>
                     <option value="">Select barangay</option>
-                    <option value="Sudlon II">Sudlon II</option>
+                    {% for b in barangays %}<option value="{{ b }}">{{ b }}</option>{% endfor %}
                   </select>
                 </div>
               </div>
@@ -570,6 +578,9 @@
               <div class="review-row">
                 <span>Occupation</span><span id="rev_occupation">—</span>
               </div>
+              <div class="review-row">
+                <span>Your Barangay</span><span id="rev_family_barangay">—</span>
+              </div>
             </div>
 
             <div class="review-section">
@@ -634,11 +645,10 @@
                 <label class="field-label">Health Center</label>
                 <div class="select-icon-wrap">
                   <i data-lucide="hospital" class="input-icon"></i>
+                  <!-- Follows the barangay picked in step 1: "<Barangay> Health Center".
+                       Filled by updateHealthCenters() in auth.js -->
                   <select id="health_center" name="health_center">
-                    <option value="">Select your health center</option>
-                    {% for center in health_centers %}
-                    <option value="{{ center }}">{{ center }}</option>
-                    {% endfor %}
+                    <option value="">Select your barangay first</option>
                   </select>
                 </div>
               </div>

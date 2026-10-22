@@ -308,7 +308,8 @@ function fillReview() {
 
     setReviewText('rev_relationship', document.getElementById('relationship')?.value);
 
-    setReviewText('rev_occupation', document.getElementById('occupation')?.value);
+     setReviewText('rev_occupation', document.getElementById('occupation')?.value);
+    setReviewText('rev_family_barangay', document.getElementById('family_barangay')?.value);
 
     // Join mode never collects an address — it is already on the elder profile.
     if (joinContext) {
@@ -614,3 +615,61 @@ function clearJoinMode() {
         .querySelectorAll('.wizard-step[data-step="4"] input, .wizard-step[data-step="4"] select')
         .forEach(el => el.setAttribute('required', 'required'));
 }
+
+// ============================================================
+// BARANGAY + HEALTH CENTER DROPDOWNS — options come from Firestore
+// (GET /barangays), nothing is hardcoded in the HTML.
+// ============================================================
+let healthCentersByBarangay = {};
+
+function fillSelect(select, placeholder, values) {
+    select.innerHTML = '';
+    const first = document.createElement('option');
+    first.value = '';
+    first.textContent = placeholder;
+    select.appendChild(first);
+    values.forEach((v) => {
+        const opt = document.createElement('option');
+        opt.value = v;
+        opt.textContent = v;
+        select.appendChild(opt);
+    });
+}
+
+// BHW: when a barangay is picked, show that barangay's health center(s).
+function updateHealthCenters() {
+    const brgy = document.getElementById('barangay_assigned');
+    const hc = document.getElementById('health_center');
+    if (!brgy || !hc) return;
+
+    const centers = healthCentersByBarangay[brgy.value] || [];
+    fillSelect(hc, brgy.value ? 'Select your health center' : 'Select your barangay first', centers);
+    if (centers.length === 1) hc.value = centers[0]; // only one -> pre-select it
+}
+
+async function loadBarangays() {
+    const familySel = document.getElementById('family_barangay');
+    const bhwSel = document.getElementById('barangay_assigned');
+    if (!familySel && !bhwSel) return;
+
+    try {
+        const res = await fetch('/barangays');
+        const data = await res.json();
+        if (!data.success || !data.barangays.length) throw new Error('empty');
+
+        healthCentersByBarangay = data.health_centers || {};
+        if (familySel) fillSelect(familySel, 'Select your barangay', data.barangays);
+        if (bhwSel) {
+            fillSelect(bhwSel, 'Select your assigned barangay', data.barangays);
+            bhwSel.addEventListener('change', updateHealthCenters);
+            updateHealthCenters();
+        }
+    } catch (err) {
+        console.error('Could not load barangays:', err);
+        const msg = 'Could not load barangays — refresh the page';
+        if (familySel) fillSelect(familySel, msg, []);
+        if (bhwSel) fillSelect(bhwSel, msg, []);
+    }
+}
+
+document.addEventListener('DOMContentLoaded', loadBarangays);

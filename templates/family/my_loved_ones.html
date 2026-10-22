@@ -1099,7 +1099,10 @@
                 </div>
                 <div class="lo-field">
                   <label class="lo-label" for="lo_barangay">Barangay</label>
-                  <input type="text" id="lo_barangay" name="barangay" class="lo-input" placeholder="Sudlon II" />
+                  <select id="lo_barangay" name="barangay" class="lo-input" required>
+                    <option value="">Select barangay</option>
+                    {% for b in barangays %}<option value="{{ b }}">{{ b }}</option>{% endfor %}
+                  </select>
                 </div>
                 <div class="lo-field">
                   <label class="lo-label" for="lo_city">City / municipality</label>

@@ -12,6 +12,7 @@ import valid_id_store
 from firebase_admin import firestore, auth as firebase_auth
 from datetime import datetime, timedelta, timezone
 import alerts_common as ac
+import barangays as bg
 import care_plan_service as cps
 import device_info
 import requests
@@ -227,6 +228,35 @@ def check_device():
 def landing():
     return render_template('landing.html')
 
+# ---------- BARANGAYS (read from Firestore, never hardcoded) ----------
+# barangay/{id}: name, city, is_active
+
+def _barangay_docs():
+    """[{name, health_centers}] for every active barangay."""
+    out = []
+    for doc in db.collection('barangay').stream():
+        d = doc.to_dict() or {}
+        if d.get('is_active', True) and d.get('name'):
+            out.append({'name': d['name'],
+                        'health_centers': list(d.get('health_centers') or [])})
+    return sorted(out, key=lambda b: b['name'].casefold())
+
+
+def _active_barangays():
+    return [b['name'] for b in _barangay_docs()]
+
+
+@app.route('/barangays')
+def barangays_list():
+    try:
+        docs = _barangay_docs()
+        return jsonify(
+            success=True,
+            barangays=[b['name'] for b in docs],
+            health_centers={b['name']: b['health_centers'] for b in docs},
+        )
+    except Exception as e:
+        return jsonify(success=False, barangays=[], health_centers={}, message=str(e)), 500
 
 # ---------- REGISTER ----------
 
@@ -240,7 +270,7 @@ def register():
         role = request.form.get('role', '')
         contact_number = request.form.get('contact_number', '').strip()
         barangay_assigned = request.form.get(
-            'barangay_assigned', 'Sudlon II').strip()
+            'barangay_assigned', '').strip()
 
         serial_number = request.form.get('device_id', '').strip()
         join_mode = request.form.get('join_mode', 'claim').strip()
@@ -249,6 +279,7 @@ def register():
         elder_full_name = request.form.get('senior_full_name', '').strip()
         dob = request.form.get('dob', '').strip()
         relationship = request.form.get('relationship', '').strip()
+        family_barangay = request.form.get('family_barangay', '').strip()
 
         house_no = request.form.get('house_no', '').strip()
         street = request.form.get('street', '').strip()
@@ -270,6 +301,11 @@ def register():
         password_error = _check_family_password(password)
         if password_error:
             return jsonify(success=False, message=password_error), 400
+
+        if not family_barangay:
+            return jsonify(success=False, message='Please select your barangay.'), 400
+        if family_barangay not in _active_barangays():
+            return jsonify(success=False, message='That barangay is not available. Please pick one from the list.'), 400
 
         if not serial_number:
             return jsonify(success=False, message='Please enter a Device ID.'), 400
@@ -311,15 +347,20 @@ def register():
 
                     elder_id = _create_account_and_join(
                         full_name, email, password, role, contact_number,
-                        barangay_assigned, elder_id, relationship
+                        barangay_assigned, elder_id, relationship,
+                        family_barangay=family_barangay
                     )
                 else:
+                    elder_barangay = bg.canonical(elder_barangay)
+                    if not elder_barangay:
+                        return jsonify(success=False, message="Please select the elder's barangay from the list."), 400
                     elder_id = _create_account_and_elder(
                         full_name, email, password, role, contact_number,
                         barangay_assigned, elder_full_name, dob,
                         ', '.join(
                             filter(None, [house_no, street, elder_barangay, city, province, zip_code])),
-                        relationship, serial_number
+                        relationship, serial_number,
+                        family_barangay=family_barangay
                     )
             else:
                 if not device.get('is_registered') or device.get('elder_id') != existing_elder_id:
@@ -335,7 +376,8 @@ def register():
 
                 elder_id = _create_account_and_join(
                     full_name, email, password, role, contact_number,
-                    barangay_assigned, existing_elder_id, relationship
+                    barangay_assigned, existing_elder_id, relationship,
+                    family_barangay=family_barangay
                 )
 
             return jsonify(success=True, message='Registration successful!')
@@ -345,6 +387,7 @@ def register():
 
     return render_template(
         'register.html',
+        barangays=bg.CEBU_CITY_BARANGAYS,
         health_centers=HEALTH_CENTERS,
         years_of_service_options=YEARS_OF_SERVICE_OPTIONS,
     )
@@ -357,12 +400,17 @@ def _register_bhw(full_name, email, password, contact_number, barangay_assigned)
     bhw_id_number = request.form.get('bhw_id_number', '').strip()
     valid_id = request.files.get('valid_id')
 
+    barangay_assigned = bg.canonical(barangay_assigned)
     if not barangay_assigned:
-        return jsonify(success=False, message='Please enter your assigned barangay.'), 400
+        return jsonify(success=False, message='Please select your assigned barangay from the list.'), 400
     if not dob or not health_center or not years_of_service or not bhw_id_number:
         return jsonify(success=False, message='Please fill up all professional information fields.'), 400
-    if health_center not in HEALTH_CENTERS:
-        return jsonify(success=False, message='Please select a valid health center.'), 400
+
+    # Health center must belong to the chosen barangay (read from Firestore).
+    _centers = {b['name'].casefold(): b['health_centers'] for b in _barangay_docs()}
+    if health_center not in _centers.get(barangay_assigned.casefold(), []):
+        return jsonify(success=False, message='Please select a valid health center for your barangay.'), 400
+
     if years_of_service not in YEARS_OF_SERVICE_OPTIONS:
         return jsonify(success=False, message='Please select a valid years of service option.'), 400
 
@@ -433,10 +481,9 @@ def _register_bhw(full_name, email, password, contact_number, barangay_assigned)
 
     return jsonify(success=True, message='Registration submitted. Your account is pending approval.')
 
-
 def _create_account_and_elder(full_name, email, password, role, contact_number,
                               barangay_assigned, elder_full_name, dob, address,
-                              relationship, serial_number):
+                              relationship, serial_number, family_barangay=''):
     firebase_user = firebase_auth.create_user(
         email=email, password=password, display_name=full_name)
     user_ref = db.collection('user_account').document(firebase_user.uid)
@@ -480,13 +527,15 @@ def _create_account_and_elder(full_name, email, password, role, contact_number,
 
 
 def _create_account_and_join(full_name, email, password, role, contact_number,
-                             barangay_assigned, existing_elder_id, relationship):
+                             barangay_assigned, existing_elder_id, relationship,
+                             family_barangay=''):
     firebase_user = firebase_auth.create_user(
         email=email, password=password, display_name=full_name)
     user_ref = db.collection('user_account').document(firebase_user.uid)
     user_ref.set({
         'full_name': full_name, 'email': email,
         'role': role, 'contact_number': contact_number,
+        'barangay': family_barangay if role == 'family' else None,
         'created_at': firestore.SERVER_TIMESTAMP, 'deleted_at': None, 'is_archived': 0
     })
     user_id = user_ref.id
@@ -744,6 +793,7 @@ def my_loved_ones():
 
     return render_template(
         'family/my_loved_ones.html',
+        barangays=bg.CEBU_CITY_BARANGAYS,
         full_name=session['full_name'], role=session['role'],
         care_plan=_get_care_plan(),
         loved_ones=loved_ones,
@@ -876,6 +926,12 @@ def add_loved_one():
     province = request.form.get('province', '').strip()
     zip_code = request.form.get('zip_code', '').strip()
     device_id = _clean_device_id(request.form.get('device_id'))
+    # The BHW sees a resident only when this matches their assigned barangay,
+    # so it must be one of the dropdown names (older spellings are fixed here).
+    barangay = bg.canonical(barangay)
+    if not barangay:
+        return jsonify(success=False, field='barangay',
+                       message='Select the barangay from the list.'), 400
     occupation = request.form.get('occupation', '').strip()[:80]
 
     if not full_name:
@@ -2487,11 +2543,10 @@ def _elders_for_role():
 
 
 def _in_elder_barangay(address, barangay):
-    """Whole-part match so 'Sudlon I' never matches 'Sudlon II'."""
-    if not address or not barangay:
-        return False
-    parts = [p.strip().casefold() for p in address.split(',')]
-    return barangay.strip().casefold() in parts
+    """Whole-part match so 'Sudlon I' never matches 'Sudlon II'. Also accepts
+    'Sudlon 2' / 'Brgy. Sudlon II' (see barangays.py)."""
+    from bhw_routes import _in_barangay
+    return _in_barangay(address, barangay)
 
 
 def _activity_row(doc_id, item, elder_id, elder):

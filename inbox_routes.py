@@ -19,6 +19,7 @@ from flask import Blueprint, g, jsonify, request, session
 
 import inbox_service as inbox
 from bhw_routes import _in_barangay
+from barangays import same_barangay
 from database import db
 
 inbox_bp = Blueprint('inbox_api', __name__, url_prefix='/inbox/api')
@@ -314,8 +315,8 @@ def announcements():
         addresses = [e['address'] for e in _family_elders(me['id']).values()]
         def barangay_ok(b): return any(_in_barangay(a, b) for a in addresses)  # noqa: E731
     elif me['role'] == 'bhw':
-        mine = _bhw_barangay(me['id']).casefold()
-        def barangay_ok(b): return b.casefold() == mine  # noqa: E731
+        mine = _bhw_barangay(me['id'])
+        def barangay_ok(b): return same_barangay(b, mine)  # noqa: E731
     rows = inbox.announcements_for(me['role'], me['id'], barangay_ok)
     return jsonify(success=True, announcements=rows,
                    unread=sum(1 for r in rows if not r['is_read']))

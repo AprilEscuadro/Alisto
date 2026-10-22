@@ -26,6 +26,7 @@ from werkzeug.security import check_password_hash, generate_password_hash
 import account_profile
 import alerts_common as ac
 import device_info
+from barangays import same_barangay
 from database import db
 
 bhw_bp = Blueprint('bhw', __name__, url_prefix='/bhw')
@@ -136,8 +137,7 @@ def _in_barangay(address, barangay):
     """Compare whole parts so 'Sudlon I' doesn't match 'Sudlon II'."""
     if not address or not barangay:
         return False
-    wanted = barangay.strip().casefold()
-    return wanted in [p.casefold() for p in _address_parts(address)]
+    return any(same_barangay(p, barangay) for p in _address_parts(address))
 
 
 def _short_address(address, parts_wanted=3):
