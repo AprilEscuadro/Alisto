@@ -4169,11 +4169,13 @@ def _run_auto_backup_loop():
 # gate on that so the sweep threads don't start twice. Under a real WSGI
 # worker (gunicorn etc.) __name__ is never '__main__' and there's no
 # reloader, so start them unconditionally there.
-if __name__ != '__main__' or os.environ.get('WERKZEUG_RUN_MAIN') == 'true':
+DEBUG = os.environ.get('FLASK_DEBUG') == '1'
+
+if __name__ != '__main__' or not DEBUG or os.environ.get('WERKZEUG_RUN_MAIN') == 'true':
     ac.start_open_alert_listener(db)          # <-- NEW
     threading.Thread(target=_run_auto_escalation_loop, daemon=True).start()
     threading.Thread(target=_run_auto_backup_loop, daemon=True).start()
 
 
 if __name__ == '__main__':
-    app.run(debug=True)
+    app.run(debug=DEBUG)
