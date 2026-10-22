@@ -78,8 +78,13 @@
       <option value="rejected">Rejected</option>
       <option value="archived">Archived</option>
     </select>
-    <select id="subscriptionFilter" aria-label="Subscription" disabled title="Subscriptions are not set up yet">
+    <select id="subscriptionFilter" aria-label="Subscription">
       <option value="">Subscription</option>
+      <option value="active">Active</option>
+      <option value="expiring">Expiring</option>
+      <option value="pending">Pending</option>
+      <option value="expired">Expired</option>
+      <option value="none">No Plan</option>
     </select>
   </div>
   <div class="toolbar-actions">
@@ -127,6 +132,7 @@
           data-type-label="{{ 'BHW' if row.type == 'bhw' else row.type|capitalize }}"
           data-status="{{ row.status }}"
           data-devices="{{ row.devices }}"
+          data-plan="{{ row.plan.key if row.plan else 'na' }}"
           data-joined="{{ row.joined }}"
           data-details='{{ row.details|tojson }}'
           {% if row.valid_id_url %}data-valid-id-url="{{ row.valid_id_url }}" data-valid-id-name="{{ row.valid_id_name }}"{% endif %}
@@ -159,7 +165,14 @@
             <span class="text-muted">No device</span>
             {% endif %}
           </td>
-          <td><span class="text-muted">—</span></td>
+          <td>
+            {% if row.plan %}
+            <span class="badge badge-{{ row.plan.badge }}">{{ row.plan.label }}</span>
+            {% if row.plan.until %}<small class="text-muted" style="display:block;margin-top:4px">{{ row.plan.until }}</small>{% endif %}
+            {% else %}
+            <span class="text-muted">—</span>
+            {% endif %}
+          </td>
           <td><span class="badge badge-{{ row.status }}">{{ row.status|capitalize }}</span></td>
           <td class="nowrap">{{ row.joined }}</td>
           <td class="col-actions">

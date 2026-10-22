@@ -16,6 +16,11 @@
     var LIST_URL = C.listUrl || (cfg && cfg.dataset.list) || URL.replace("/alerts/poll", "/alerts");
     var BADGES = C.badges || '.admin-bell-badge, .admin-nav-link[href$="/alerts"] .nav-badge';
     var POLL_MS = 15000;     // how often to ask the server
+
+    // Admin only: Settings > "Emergency alerts" and "Alert sound" can turn
+    // the banner and the siren off. Family and BHW always get both.
+    function alertsOn() { return SCOPE !== "admin" || P.get().alerts !== false; }
+    function soundOn() { return alertsOn() && (SCOPE !== "admin" || P.get().sound !== false); }
     var SEEN = "alisto_" + SCOPE + "_alerted", RING = "alisto_" + SCOPE + "_ringer";
     var TAB = Math.random().toString(36).slice(2);   // this browser tab
     var baseTitle = document.title;
@@ -49,7 +54,7 @@
     async function alarmLoop() {
         if (looping) return;
         looping = true;
-        while (last.length) {
+        while (last.length && soundOn()) {
             // Sound is blocked until the browser allows it. Keep asking: after a
             // click on the previous ALISTO page most browsers allow it right away,
             // otherwise it starts on the first click/tap/key on this page.
@@ -159,7 +164,7 @@
         var fresh = open.filter(function (a) { return seen.indexOf(a.id) < 0; });
         if (fresh.length) {
             seen = seen.concat(fresh.map(function (a) { return a.id; }));
-            notify(fresh);
+            if (alertsOn()) notify(fresh);
         }
         save(SEEN, seen);
         setCount(open.length);
@@ -169,12 +174,18 @@
             var bell = document.getElementById("adminNotif");
             if (bell) bell.classList.add("open");
         }
-        render(open);
+        render(alertsOn() ? open : []);
 
-        // All emergencies acted on: stop the sound right away.
-        if (!open.length) { A.stop(); return; }
+        // All emergencies acted on (or alerts/sound turned off): stop the sound.
+        if (!open.length || !soundOn()) { A.stop(); return; }
         alarmLoop();
     }
+
+    // Settings changed (this tab or another one): apply it right away.
+    window.AlistoWatchRefresh = function () { handle({ alerts: last }); };
+    window.addEventListener("storage", function (e) {
+        if (e.key && e.key.indexOf("_prefs") > 0) window.AlistoWatchRefresh();
+    });
 
     async function poll() {
         try {

@@ -1403,7 +1403,7 @@ h2 {
 .confirm-overlay {
   position: fixed;
   inset: 0;
-  z-index: 200;
+  z-index: 3000;  
   display: none;
   align-items: center;
   justify-content: center;

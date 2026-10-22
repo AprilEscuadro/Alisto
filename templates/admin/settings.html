@@ -24,9 +24,12 @@
         <span class="setting-icon tint-red"><i data-lucide="bell"></i></span>
         <span class="setting-text">
           <strong>Emergency alerts</strong>
-          <small>On this website, plus new BHW requests, offline devices, and expiring plans in the bell.</small>
+          <small>Red banner and pop-up when a new emergency comes in. The bell still counts everything.</small>
         </span>
-        <span class="pref-locked"><i data-lucide="lock"></i> Always on</span>
+        <label class="switch-wrap" aria-label="Emergency alerts">
+          <input type="checkbox" class="switch-input" id="prefAlerts" />
+          <span class="switch" aria-hidden="true"></span>
+        </label>
       </div>
 
       <div class="pref-row">
@@ -183,6 +186,33 @@
 {% block scripts %}
 <script src="{{ url_for('static', filename='js/bhw_settings.js') }}"></script>
 <script src="{{ url_for('static', filename='js/admin_help.js') }}"></script>
+<script>
+  // Emergency alerts on/off (admin only, this computer).
+  // Off = no red banner, no siren, no desktop pop-up.
+  (function () {
+    const P = window.AlistoPrefs;
+    const alerts = document.getElementById("prefAlerts");
+    const sound = document.getElementById("prefSound");
+    if (!P || !alerts || !sound) return;
+
+    function sync() {
+      sound.disabled = !alerts.checked;
+      sound.closest(".pref-row").style.opacity = alerts.checked ? "" : "0.5";
+    }
+    function refreshWatcher() {
+      if (window.AlistoWatchRefresh) window.AlistoWatchRefresh();
+    }
+
+    alerts.checked = P.get().alerts !== false;
+    sync();
+    alerts.addEventListener("change", () => {
+      P.set({ alerts: alerts.checked });
+      sync();
+      refreshWatcher();
+    });
+    sound.addEventListener("change", refreshWatcher);
+  })();
+</script>
 <script>
   // Date format and Auto backup save as soon as they change (no Save button).
   document.querySelectorAll("#adminSettingsForm .js-autosave").forEach((el) => {

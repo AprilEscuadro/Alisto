@@ -15,9 +15,29 @@
         {% endfor %}
       </select>
     </label>
-    <a href="{{ url_for('admin.download_report', range=range_key) }}" class="btn btn-primary">
-      <i data-lucide="download"></i> Export Report
-    </a>
+    <div class="export-menu">
+      <button type="button" class="btn btn-primary export-menu-btn" aria-haspopup="true" aria-expanded="false">
+        <i data-lucide="download"></i> Export Report <i data-lucide="chevron-down"></i>
+      </button>
+      <div class="export-menu-list" role="menu">
+        <button type="button" role="menuitem"
+                onclick="this.closest('.export-menu').classList.remove('open'); window.location='{{ url_for('admin.reports', fmt='pdf', range=range_key) }}'">
+          <i data-lucide="file-text"></i> PDF (.pdf)
+        </button>
+        <button type="button" role="menuitem"
+                onclick="this.closest('.export-menu').classList.remove('open'); window.location='{{ url_for('admin.reports', fmt='excel', range=range_key) }}'">
+          <i data-lucide="file-spreadsheet"></i> Excel (.xlsx)
+        </button>
+        <button type="button" role="menuitem"
+                onclick="this.closest('.export-menu').classList.remove('open'); window.location='{{ url_for('admin.reports', fmt='word', range=range_key) }}'">
+          <i data-lucide="file-type"></i> Word (.docx)
+        </button>
+        <button type="button" role="menuitem"
+                onclick="this.closest('.export-menu').classList.remove('open'); window.location='{{ url_for('admin.download_report', range=range_key) }}'">
+          <i data-lucide="sheet"></i> CSV (raw data)
+        </button>
+      </div>
+    </div>
   </div>
 </div>
 

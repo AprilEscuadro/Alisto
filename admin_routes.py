@@ -30,6 +30,7 @@ import account_profile
 import alerts_common as ac
 import care_plan_service as cps
 import device_info
+import report_export
 import valid_id_store
 # One source of truth for reading addresses and working out whether a device is
 # online. Both portals show the same thing, so they share the same helpers.
@@ -642,6 +643,32 @@ def users():
         profile = doc.to_dict() or {}
         bhw_profiles[profile.get('user_id')] = profile
 
+    # Care plan per elder: same source as the family dashboard
+    # (subscription/{elder_id} read through care_plan_service).
+    subs = {doc.id: doc.to_dict() or {}
+            for doc in db.collection('subscription').stream()}
+    pending_ids = cps.pending_elder_ids([e for e, _ in elders])
+    plan_rank = {'active': 0, 'expiring': 1, 'pending': 2, 'expired': 3, 'none': 4}
+    plan_badge = {'active': 'active', 'expiring': 'pending', 'pending': 'pending',
+                  'expired': 'rejected', 'none': 'archived'}
+
+    def plan_for(elder_ids):
+        """Best plan among these elders (a family can watch more than one)."""
+        best = None
+        for e in elder_ids:
+            s = cps.subscription_state(subs.get(e), has_pending=e in pending_ids)
+            key = 'pending' if s['label'] == 'Pending' else s['status']
+            if best is None or plan_rank[key] < plan_rank[best[0]]:
+                best = (key, s)
+        if best is None:
+            return {'key': 'none', 'label': 'No Plan', 'badge': 'archived', 'until': ''}
+        key, s = best
+        until = {'active': f"Until {s['paid_until']}",
+                 'expiring': f"Until {s['paid_until']}",
+                 'pending': 'Waiting for approval',
+                 'expired': f"Ended {s['paid_until']}"}.get(key, '')
+        return {'key': key, 'label': s['label'], 'badge': plan_badge[key], 'until': until}
+
     rows = []
 
     for elder_id, elder in elders:
@@ -650,6 +677,7 @@ def users():
             'name': elder.get('full_name') or 'Unnamed', 'initials': _initials(elder.get('full_name')),
             'phone': None, 'email': None,
             'devices': devices_per_elder.get(elder_id, 0),
+            'plan': plan_for([elder_id]),
             'status': 'archived' if elder.get('is_archived') else 'active',
             'joined': _fmt_date(elder.get('created_at')), 'sort': _sort_key(elder.get('created_at')),
             # A list (not a dict) so the details keep this order in the modal.
@@ -699,6 +727,7 @@ def users():
                 ['Device Serial', '\n'.join(serial_text(e)
                                             for e in linked) or '—'],
             ]
+            row['plan'] = plan_for(linked)
         else:
             approval = user.get('approval_status', 'pending')
             profile = bhw_profiles.get(user_id, {})
@@ -1573,8 +1602,9 @@ def _csv_response(buffer, name):
 # ---------- REPORTS ----------
 
 @admin_bp.route('/reports')
+@admin_bp.route('/reports/export/<fmt>')
 @admin_required
-def reports():
+def reports(fmt=None):
     range_key = request.args.get('range', 'last_30')
     if range_key not in LOG_RANGES:
         range_key = 'last_30'
@@ -1667,6 +1697,14 @@ def reports():
             'residents': data['residents'],
             'avg_response': _fmt_minutes(round(sum(minutes) / len(minutes)) if minutes else None),
         })
+
+    # Export > PDF / Excel / Word: same numbers as this page, plus analysis.
+    if fmt:
+        response = report_export.build(fmt, rows, stats, barangay_rows,
+                                       type_breakdown, LOG_RANGES[range_key])
+        if response is None:
+            abort(404)
+        return response
 
     peak = max(per_bucket + [1])
     return render_template(

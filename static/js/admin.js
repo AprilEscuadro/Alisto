@@ -309,7 +309,7 @@
   const FILTER_TABLES = [
     {
       table: '#usersTable', search: '#userSearch', noun: 'users',
-      filters: { type: '#typeFilter', status: '#statusFilter' }, exportButton: '#exportUsers',
+      filters: { type: '#typeFilter', status: '#statusFilter', plan: '#subscriptionFilter' }, exportButton: '#exportUsers',
     },
     {
       table: '#elderlyTable', search: '#elderlySearch', noun: 'residents',

@@ -228,18 +228,34 @@ def check_device():
 def landing():
     return render_template('landing.html')
 
-# ---------- BARANGAYS (read from Firestore, never hardcoded) ----------
-# barangay/{id}: name, city, is_active
+# ---------- BARANGAYS ----------
+# All 80 Cebu City barangays come from barangays.py (always shown).
+# Firestore barangay/{id} can set the real health_centers for a barangay,
+# or hide it with is_active: False. Without that, the barangay gets
+# '<Barangay> Health Center' (e.g. Lahug Health Center).
 
 def _barangay_docs():
-    """[{name, health_centers}] for every active barangay."""
+    """[{name, health_centers}] for all Cebu City barangays."""
+    saved = {}
+    try:
+        for doc in db.collection('barangay').stream():
+            d = doc.to_dict() or {}
+            name = bg.canonical(d.get('name')) or d.get('name')
+            if name:
+                saved[name] = d
+    except Exception as e:
+        print(f'Could not read barangay collection: {e}')
+
     out = []
-    for doc in db.collection('barangay').stream():
-        d = doc.to_dict() or {}
-        if d.get('is_active', True) and d.get('name'):
-            out.append({'name': d['name'],
-                        'health_centers': list(d.get('health_centers') or [])})
-    return sorted(out, key=lambda b: b['name'].casefold())
+    for name in bg.CEBU_CITY_BARANGAYS:
+        d = saved.get(name, {})
+        if d.get('is_active', True) is False:
+            continue
+        centers = list(d.get('health_centers') or [])
+        if not centers:
+            centers = [name.split('(')[0].strip() + ' Health Center']
+        out.append({'name': name, 'health_centers': centers})
+    return out
 
 
 def _active_barangays():
@@ -248,15 +264,12 @@ def _active_barangays():
 
 @app.route('/barangays')
 def barangays_list():
-    try:
-        docs = _barangay_docs()
-        return jsonify(
-            success=True,
-            barangays=[b['name'] for b in docs],
-            health_centers={b['name']: b['health_centers'] for b in docs},
-        )
-    except Exception as e:
-        return jsonify(success=False, barangays=[], health_centers={}, message=str(e)), 500
+    docs = _barangay_docs()
+    return jsonify(
+        success=True,
+        barangays=[b['name'] for b in docs],
+        health_centers={b['name']: b['health_centers'] for b in docs},
+    )
 
 # ---------- REGISTER ----------
 
@@ -611,10 +624,6 @@ def login():
             updates = {'last_login_at': firestore.SERVER_TIMESTAMP}
 
             if user['role'] == 'bhw':
-                if not user.get('approved_notice_seen'):
-                    updates['approved_notice_seen'] = True
-                    user_doc.reference.update(updates)
-                    return redirect(url_for('bhw.account_approved'))
                 user_doc.reference.update(updates)
                 flash(f"Welcome back, {user['full_name']}!", 'success')
                 return redirect(url_for('bhw.dashboard'))
