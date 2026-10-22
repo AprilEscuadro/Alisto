@@ -4232,7 +4232,10 @@ def _run_auto_backup_loop():
 # reloader, so start them unconditionally there.
 DEBUG = os.environ.get('FLASK_DEBUG') == '1'
 
-if __name__ != '__main__' or not DEBUG or os.environ.get('WERKZEUG_RUN_MAIN') == 'true':
+# On Vercel each request is a short-lived serverless function, so these loops
+# would restart on every cold start and never complete a cycle.
+if os.environ.get('VERCEL') != '1' and (
+        __name__ != '__main__' or not DEBUG or os.environ.get('WERKZEUG_RUN_MAIN') == 'true'):
     ac.start_open_alert_listener(db)          # <-- NEW
     threading.Thread(target=_run_auto_escalation_loop, daemon=True).start()
     threading.Thread(target=_run_auto_backup_loop, daemon=True).start()
