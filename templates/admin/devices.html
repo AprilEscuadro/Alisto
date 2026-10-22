@@ -1,6 +1,13 @@
 {% extends 'admin/base.html' %}
 {% block title %}Devices{% endblock %}
 
+{% block head %}
+<style>
+  .load-low { color: #dc2626; }
+  .load-checked { display: block; font-size: 11.5px; margin-top: 2px; }
+</style>
+{% endblock %}
+
 {% block content %}
 <div class="admin-page-header">
   <div>
@@ -74,10 +81,11 @@
       <thead>
         <tr>
           <th>Serial Number</th>
-          <th>Batch</th>
+          <th>Device Number</th>
+          <th>Load</th>
           <th>Assigned To</th>
+          <th>Connected Accounts</th>
           <th>Status</th>
-          <th>Date Added</th>
           <th class="col-actions">Actions</th>
         </tr>
       </thead>
@@ -85,7 +93,15 @@
         {% for row in rows %}
         <tr data-status="{{ row.status }}" data-serial="{{ row.serial }}">
           <td><span class="serial-cell">{{ row.serial }}</span></td>
-          <td>{% if row.batch %}{{ row.batch }}{% else %}<span class="text-muted">—</span>{% endif %}</td>
+          <td class="nowrap">{% if row.sim_number %}{{ row.sim_number }}{% else %}<span class="text-muted">Not reported</span>{% endif %}</td>
+          <td class="nowrap">
+            {% if row.load %}
+            <strong class="cell-strong {% if row.load.low %}load-low{% endif %}" title="{{ row.load.raw }}">{{ row.load.text }}</strong>
+            <small class="text-muted load-checked">Checked {{ row.load.checked }}</small>
+            {% else %}
+            <span class="text-muted">Not checked yet</span>
+            {% endif %}
+          </td>
           <td>
             {% if row.assigned_to %}
             <strong class="cell-strong">{{ row.assigned_to }}</strong>
@@ -93,6 +109,7 @@
             <span class="text-muted">Not assigned</span>
             {% endif %}
           </td>
+          <td class="nowrap">{% if row.status == 'registered' %}{{ row.accounts_text }}{% else %}<span class="text-muted">—</span>{% endif %}</td>
           <td>
             {% if row.status == 'registered' %}
             <span class="badge badge-active">Registered</span>
@@ -100,7 +117,6 @@
             <span class="badge badge-pending">Available</span>
             {% endif %}
           </td>
-          <td class="nowrap">{{ row.added }}</td>
           <td class="col-actions">
             {% if row.status == 'registered' %}
             <form
@@ -128,7 +144,7 @@
         </tr>
         {% endfor %}
         <tr class="table-empty" {% if rows %}hidden{% endif %}>
-          <td colspan="6">
+          <td colspan="7">
             <div class="empty-state">
               <span class="empty-icon"><i data-lucide="smartphone"></i></span>
               {% if rows %}

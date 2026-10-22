@@ -430,6 +430,9 @@
             <button type="button" class="filter-tab active" data-filter="all">
               All ({{ alerts|length }})
             </button>
+            <button type="button" class="filter-tab" data-filter="active">
+              <span class="dot emergency"></span> Active ({{ notification_count }})
+            </button>
             <button type="button" class="filter-tab" data-filter="emergency">
               <span class="dot emergency"></span> Emergency ({{ emergency_count
               }})
@@ -639,6 +642,7 @@
 
       function matchesFilter(card) {
         if (activeFilter === "all") return true;
+        if (activeFilter === "active") return card.classList.contains("is-open");
         if (activeFilter === "emergency" || activeFilter === "false-alarm") {
           return card.dataset.status === activeFilter;
         }
@@ -673,6 +677,11 @@
           applyAlertFilters();
         });
       });
+
+      // Open straight to a filter from the URL, e.g. /alerts?filter=active
+      const startFilter = new URLSearchParams(window.location.search).get("filter");
+      const startButton = startFilter && document.querySelector(`#alertsFilters .filter-tab[data-filter="${startFilter}"]`);
+      if (startButton) startButton.click();
 
       // Respond / resolve
       async function updateAlert(alertId, action, button) {

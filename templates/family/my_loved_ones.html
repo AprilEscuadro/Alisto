@@ -889,6 +889,37 @@
                       <strong class="detail-value">{{ elder.location }}</strong>
                     </div>
                   </div>
+                  {% if elder.device_id %}
+                  <div class="detail-item">
+                    <span class="icon-badge"
+                      ><i data-lucide="smartphone"></i
+                    ></span>
+                    <div>
+                      <span class="detail-label">Device number</span>
+                      <strong class="detail-value">{{ elder.sim_number or 'Not reported' }}</strong>
+                    </div>
+                  </div>
+                  <div class="detail-item">
+                    <span class="icon-badge"
+                      ><i data-lucide="wallet"></i
+                    ></span>
+                    <div>
+                      <span class="detail-label">Load{% if elder.load %} · checked {{ elder.load.checked }}{% endif %}</span>
+                      <strong class="detail-value {% if elder.load and elder.load.low %}overdue{% endif %}"
+                        >{{ elder.load.text if elder.load else 'Not checked yet' }}</strong
+                      >
+                    </div>
+                  </div>
+                  {% endif %}
+                  <div class="detail-item">
+                    <span class="icon-badge"
+                      ><i data-lucide="users"></i
+                    ></span>
+                    <div>
+                      <span class="detail-label">Connected accounts</span>
+                      <strong class="detail-value">{{ elder.accounts_text }}</strong>
+                    </div>
+                  </div>
                 </div>
               </div>
 

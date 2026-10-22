@@ -3678,22 +3678,6 @@ html[data-theme="dark"] .cp-msg.success {
   color: #7ce9a5;
 }
 
-html[data-theme="dark"] .cp-reject strong {
-  color: #eb7a7a;
-}
-
-html[data-theme="dark"] .cp-reject p {
-  color: #e7eaf0;
-}
-
-html[data-theme="dark"] .cp-reject small {
-  color: #9aa3b2;
-}
-
-html[data-theme="dark"] .cp-reject-link {
-  color: #eb7a7a;
-}
-
 @media (max-width: 760px) {
   html[data-theme="dark"] .cp-left {
     border-bottom: 1px solid rgba(255, 255, 255, 0.09);

@@ -55,7 +55,7 @@ document.addEventListener('DOMContentLoaded', () => {
   window.ALISTO_PREFS_KEY = window.ALISTO_PREFS_KEY || "alisto_family_prefs";
   window.ALISTO_WATCH = {
     url: "/alerts/poll",
-    listUrl: "/alerts",
+    listUrl: "/alerts?filter=active",
     scope: "family",
     badges: ".header-right .notif-dot",
   };

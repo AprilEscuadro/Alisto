@@ -569,6 +569,10 @@
         table.scrollIntoView({ behavior: 'smooth', block: 'start' });
       });
     });
+
+    // Open straight to a filter from the URL, e.g. /bhw/alerts?group=active
+    const startGroup = new URLSearchParams(window.location.search).get('group');
+    if (startGroup) apply(startGroup);
   }
 
   // ---------- Register serial numbers window ----------

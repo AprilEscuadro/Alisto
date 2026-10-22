@@ -26,6 +26,13 @@
     <!-- Theme and text size for this browser (Settings > Display) -->
     <script>window.ALISTO_PREFS_KEY = "alisto_family_prefs"; window.ALISTO_PREFS_DEFAULTS = { theme: "light" };</script>
     <script src="{{ url_for('static', filename='js/bhw_prefs.js') }}"></script>
+    <style>
+      .device-sim-info { display: flex; flex-direction: column; gap: 4px; margin-top: 10px; font-size: 13px; }
+      .device-sim-info span { display: inline-flex; align-items: center; gap: 6px; font-weight: 600; }
+      .device-sim-info svg { width: 15px; height: 15px; opacity: .75; }
+      .device-sim-info small { opacity: .65; font-size: 11.5px; }
+      .device-sim-info .load-low { color: #dc2626; }
+    </style>
   </head>
   <body>
     <div class="app-shell">
@@ -228,6 +235,16 @@
                     <i data-lucide="circle"></i> {{ device.status }}
                   </span>
                   <p class="device-status-note">{{ device.note }}</p>
+                  {% if device.sim_number is defined %}
+                  <div class="device-sim-info">
+                    <span><i data-lucide="smartphone"></i> {{ device.sim_number or 'No number reported' }}</span>
+                    <span class="{% if device.load and device.load.low %}load-low{% endif %}">
+                      <i data-lucide="wallet"></i>
+                      Load: {{ device.load.text if device.load else 'Not checked yet' }}
+                    </span>
+                    {% if device.load %}<small>Checked {{ device.load.checked }}</small>{% endif %}
+                  </div>
+                  {% endif %}
                 </div>
               </div>
             </div>

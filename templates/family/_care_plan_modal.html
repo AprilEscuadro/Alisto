@@ -207,13 +207,6 @@
   .cp-msg.success { color: #15803d; }
   .cp-msg.error { color: #dc2626; }
 
-  .cp-reject { display:none; margin:0 0 16px; padding:12px 14px; border-radius:14px; background:rgba(220,38,38,.08); border:1px solid rgba(220,38,38,.22); font-size:13px; line-height:1.45; }
-  .cp-reject.show { display:block; }
-  .cp-reject strong { display:block; color:#b91c1c; font-size:13.5px; margin-bottom:2px; }
-  .cp-reject p { margin:0; color:#374151; white-space:pre-wrap; }
-  .cp-reject small { display:block; margin-top:6px; color:#6b7280; font-size:12px; }
-  .cp-reject-link { display:inline-block; margin-top:8px; color:#b91c1c; font-weight:700; font-size:12.5px; text-decoration:underline; }
-
   /* ---------- phones: stack ---------- */
   @media (max-width: 760px) {
     .cp-modal { grid-template-columns: 1fr; overflow-y: auto; border-radius: 24px; }
@@ -257,15 +250,6 @@
         <button type="button" class="cp-close" onclick="closeCarePlanModal()" aria-label="Close">
           <i data-lucide="x"></i>
         </button>
-      </div>
-
-      <div class="cp-reject" id="cpRejectBanner" role="alert">
-        <strong id="cpRejectTitle"></strong>
-        <p id="cpRejectMsg"></p>
-        <small id="cpRejectMeta"></small>
-        <a class="cp-reject-link" id="cpRejectLink" href="{{ url_for('inbox_page') }}">
-          Think this is a mistake? Reply in Inbox
-        </a>
       </div>
 
       <form id="carePlanForm" novalidate>
@@ -350,30 +334,7 @@
     cp('carePlanModalOverlay').classList.remove('open');
     document.body.classList.remove('modal-open');
   }
-    function openCarePlanModal() {
-    cp('carePlanModalOverlay').classList.add('open');
-    document.body.classList.add('modal-open');
-    cpUpdateTotal(false);
-    cpLoadRejection();
-  }
-
-  async function cpLoadRejection() {
-    const box = cp('cpRejectBanner');
-    box.classList.remove('show');
-    try {
-      const res = await fetch("{{ url_for('care_plan_last_rejection') }}");
-      const data = await res.json();
-      const r = data.rejection;
-      if (!r) return;
-      cp('cpRejectTitle').textContent = 'Your last payment was rejected: ' + r.reason;
-      cp('cpRejectMsg').textContent = r.message;
-      cp('cpRejectMeta').textContent =
-        (r.payment_no ? r.payment_no + ' · ' : '') + (r.months ? cpPlanText(r.months) + ' · ' : '') + r.date;
-      cp('cpRejectLink').href = "{{ url_for('inbox_page') }}" + (r.thread_id ? '?t=' + encodeURIComponent(r.thread_id) : '');
-      box.classList.add('show');
-    } catch (err) { /* banner is optional */ }
-  }
-
+  
   // Plan changed -> QR, amount and the "amount you sent" check all follow it,
   // and the typed amount is cleared so an old amount can't be submitted
   // against a new plan.

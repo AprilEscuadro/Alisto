@@ -1,42 +1,78 @@
-/* ALISTO BHW live alert watcher. Loaded on EVERY BHW page (base.html).
-   Polls /bhw/alerts/poll, and for each NEW unanswered emergency in this BHW's
-   barangay: plays the alarm (siren + voice), shows a red banner, and sends a
-   desktop notification. Honors the Settings toggles (alert sound, desktop).
-   Stops when the alert is acknowledged/resolved or the BHW presses Silence. */
+/* ALISTO live alert watcher. Loaded on every Family, BHW, and Admin page.
+   Polls for unanswered emergencies. While even ONE is still open, the alarm
+   (siren + voice) plays nonstop and the red banner stays up, on every page,
+   including the Alerts page itself. There is no Silence button: the sound
+   and banner only stop once ALL open emergencies have been acted on
+   (acknowledged/responded, resolved, or marked a false alarm). */
 (function () {
-    // BHW pages: <div id="bhwWatch" data-url="...">.
-    // Family pages: window.ALISTO_WATCH = { url, listUrl, scope, badges } (set in family_nav.js).
+    // BHW pages:    <div id="bhwWatch" data-url="..." data-list="...">
+    // Family/Admin: window.ALISTO_WATCH = { url, listUrl, scope, badges }
     var C = window.ALISTO_WATCH || {};
     var cfg = document.getElementById("bhwWatch");
     var P = window.AlistoPrefs, A = window.AlistoAlarm;
     var URL = C.url || (cfg && cfg.dataset.url);
     if (!URL || !P || !A) return;
     var SCOPE = C.scope || "bhw";
-    var LIST_URL = C.listUrl || URL.replace("/alerts/poll", "/alerts");
+    var LIST_URL = C.listUrl || (cfg && cfg.dataset.list) || URL.replace("/alerts/poll", "/alerts");
     var BADGES = C.badges || '.admin-bell-badge, .admin-nav-link[href$="/alerts"] .nav-badge';
     var POLL_MS = 15000;     // how often to ask the server
-    var REPEAT_MS = 30000;   // re-ring while an alert is still unanswered
-    var SEEN = "alisto_" + SCOPE + "_alerted", SILENT = "alisto_" + SCOPE + "_silenced", RING = "alisto_" + SCOPE + "_lastring";
+    var SEEN = "alisto_" + SCOPE + "_alerted", RING = "alisto_" + SCOPE + "_ringer";
+    var TAB = Math.random().toString(36).slice(2);   // this browser tab
     var baseTitle = document.title;
-    var banner = null, last = [];
+    var banner = null, last = [], looping = false;
 
     function load(k) { try { return JSON.parse(localStorage.getItem(k) || "[]"); } catch (e) { return []; } }
     function save(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch (e) { } }
-    function lastRing() { return Number(localStorage.getItem(RING) || 0); }
-    function stamp() { try { localStorage.setItem(RING, String(Date.now())); } catch (e) { } }
+    function sleep(ms) { return new Promise(function (r) { setTimeout(r, ms); }); }
     function icons() { if (window.lucide) window.lucide.createIcons(); }
 
-    // Browsers block sound until the page has had a click/tap/key. Unlock quietly on the first one.
-    ["click", "keydown", "touchstart"].forEach(function (ev) {
-        window.addEventListener(ev, function () { A.unlock(); }, { once: true, capture: true });
-    });
-
-    function ring() {
-        if (!P.get().sound || A.isPlaying()) return;
-        if (Date.now() - lastRing() < 25000) return;   // another tab just rang
-        stamp();
-        A.play({ repeat: 2 });
+    // ---------- Only ONE tab plays the sound ----------
+    // With several ALISTO tabs open, they'd all ring on top of each other.
+    // The tab that rings keeps a fresh timestamp in localStorage; the others
+    // stay quiet unless that timestamp goes stale (tab closed or navigated away).
+    function claim() {
+        var r = {};
+        try { r = JSON.parse(localStorage.getItem(RING) || "{}") || {}; } catch (e) { }
+        if (r.id && r.id !== TAB && Date.now() - r.t < 6000) return false;
+        try { localStorage.setItem(RING, JSON.stringify({ id: TAB, t: Date.now() })); } catch (e) { }
+        return true;
     }
+    function release() {
+        try {
+            var r = JSON.parse(localStorage.getItem(RING) || "{}") || {};
+            if (r.id === TAB) localStorage.removeItem(RING);
+        } catch (e) { }
+    }
+
+    // ---------- Continuous alarm ----------
+    // Plays the siren + voice back to back for as long as any emergency is open.
+    async function alarmLoop() {
+        if (looping) return;
+        looping = true;
+        while (last.length) {
+            // Sound is blocked until the browser allows it. Keep asking: after a
+            // click on the previous ALISTO page most browsers allow it right away,
+            // otherwise it starts on the first click/tap/key on this page.
+            if (!A.ready()) A.unlock();
+            if (A.ready() && claim()) {
+                var beat = setInterval(claim, 2000);
+                await A.play({ repeat: 1 });
+                clearInterval(beat);
+            } else {
+                await sleep(1000);
+            }
+        }
+        release();
+        looping = false;
+    }
+
+    // Browsers block sound until the page gets a click/tap/key. On the first
+    // one, unlock audio; the loop above starts ringing right after.
+    ["click", "keydown", "touchstart"].forEach(function (ev) {
+        window.addEventListener(ev, function () { A.unlock(); alarmLoop(); }, { once: true, capture: true });
+    });
+    // Leaving the page: hand the alarm over to the next page/tab right away.
+    window.addEventListener("pagehide", function () { A.stop(); release(); });
 
     function notify(fresh) {
         var p = P.get();
@@ -46,7 +82,7 @@
                 body: a.resident + (a.trigger === "button" ? " pressed the ALISTO device" : " called for help") + " (" + a.time + ").",
                 tag: "alisto-" + a.id, requireInteraction: true,
             });
-            n.onclick = function () { window.focus(); window.location.href = a.url; n.close(); };
+            n.onclick = function () { window.focus(); window.location.href = LIST_URL; n.close(); };
         });
     }
 
@@ -85,10 +121,8 @@
         icons();
     }
 
-    function render(open, silenced) {
+    function render(open) {
         if (!open.length) { if (banner) { banner.remove(); banner = null; } return; }
-        var loud = open.some(function (a) { return silenced.indexOf(a.id) < 0; });
-        var blocked = loud && P.get().sound && !A.ready();
         var first = open[0];
         var text = open.length === 1
             ? first.resident + (first.trigger === "button" ? " pressed the ALISTO device" : " called for help") + " (" + first.time + ")"
@@ -108,26 +142,12 @@
         msg.appendChild(b); msg.appendChild(s);
         var actions = document.createElement("div"); actions.className = "alert-watch-actions";
 
+        // Always opens the Alerts list already filtered to Active.
         var view = document.createElement("a");
-        view.href = open.length === 1 ? first.url : LIST_URL;
-        view.className = "aw-btn aw-btn-solid"; view.textContent = open.length === 1 ? "View alert" : "View alerts";
+        view.href = LIST_URL;
+        view.className = "aw-btn aw-btn-solid"; view.textContent = "View alerts";
         actions.appendChild(view);
 
-        if (blocked) {
-            var en = document.createElement("button"); en.type = "button"; en.className = "aw-btn";
-            en.textContent = "Enable sound";
-            en.addEventListener("click", function () { A.unlock(); stamp(); A.play({ repeat: 2 }); render(last, load(SILENT)); });
-            actions.appendChild(en);
-        } else if (loud) {
-            var sil = document.createElement("button"); sil.type = "button"; sil.className = "aw-btn";
-            sil.textContent = "Silence";
-            sil.addEventListener("click", function () {
-                A.stop();
-                save(SILENT, load(SILENT).concat(open.map(function (a) { return a.id; })));
-                render(last, load(SILENT));
-            });
-            actions.appendChild(sil);
-        }
         banner.appendChild(ic); banner.appendChild(msg); banner.appendChild(actions);
         icons();
     }
@@ -136,14 +156,12 @@
         var open = data.alerts || [], ids = open.map(function (a) { return a.id; });
         last = open;
         var seen = load(SEEN).filter(function (id) { return ids.indexOf(id) >= 0; });
-        var silenced = load(SILENT).filter(function (id) { return ids.indexOf(id) >= 0; });
         var fresh = open.filter(function (a) { return seen.indexOf(a.id) < 0; });
         if (fresh.length) {
             seen = seen.concat(fresh.map(function (a) { return a.id; }));
             notify(fresh);
-            lastRingReset();
         }
-        save(SEEN, seen); save(SILENT, silenced);
+        save(SEEN, seen);
         setCount(open.length);
         renderPanel(open);
         // Pop the bell open when a NEW emergency arrives (BHW pages only).
@@ -151,14 +169,12 @@
             var bell = document.getElementById("adminNotif");
             if (bell) bell.classList.add("open");
         }
-        render(open, silenced);
+        render(open);
 
-        if (!open.length) { if (A.isPlaying()) A.stop(); return; }
-        var loud = open.some(function (a) { return silenced.indexOf(a.id) < 0; });
-        if (!loud) { if (A.isPlaying()) A.stop(); return; }
-        if (fresh.length || Date.now() - lastRing() >= REPEAT_MS) ring();
+        // All emergencies acted on: stop the sound right away.
+        if (!open.length) { A.stop(); return; }
+        alarmLoop();
     }
-    function lastRingReset() { try { localStorage.removeItem(RING); } catch (e) { } }
 
     async function poll() {
         try {

@@ -23,6 +23,7 @@ Replaces alisto_emergency.py + alisto_voice.py with one process that:
 Run as the alisto-emergency systemd service (see systemd/alisto-emergency.service).
 """
 
+import json
 import math
 import os
 import socket
@@ -43,7 +44,7 @@ import vad                # noqa: E402
 import whisper_asr         # noqa: E402
 
 sys.path.insert(0, "/home/alisto")
-from alisto_sms import send_sms, read_own_sim_number, read_sim_health, sms_failure_reason  # noqa: E402  (existing, working, own serial port)
+from alisto_sms import send_sms, read_own_sim_number, read_sim_health, sms_failure_reason, check_load_balance  # noqa: E402 (existing, working, own serial port)
 import gps  # noqa: E402  (SIM7600's built-in GNSS -- shares that same port,
             # but never used at the same time as send_sms(), see below)
 import reverse_geocode  # noqa: E402  (offline lat/lon -> barangay name)
@@ -1268,6 +1269,48 @@ BATTERY_CHECK_INTERVAL_S = 30
 BATTERY_CONSECUTIVE_CHECKS_REQUIRED = 2
 
 
+LOAD_CHECK_INTERVAL_S = 6 * 60 * 60  # every 6 hours -- each check is a free
+# USSD session, but checking too often just adds traffic on the SIM port.
+LOAD_CHECK_FIRST_DELAY_S = 90        # let GPS/SIM settle after boot first
+
+
+def _balance_ussd_override():
+    """Optional "balance_ussd" in device_config.json, for SIMs whose
+    carrier isn't recognised automatically (see alisto_sms.BALANCE_USSD_BY_OPERATOR)."""
+    try:
+        with open(firestore_backend.DEVICE_CONFIG_PATH) as f:
+            return (json.load(f).get("balance_ussd") or "").strip() or None
+    except Exception:
+        return None
+
+
+def load_balance_loop():
+    """Checks the SIM's remaining load every LOAD_CHECK_INTERVAL_S and saves
+    it to Firestore (device/{serial}.loadBalance) for the website. Never runs
+    during an emergency, and holds gps.port_lock like every other AT command
+    so it can't collide with an SMS send or the GPS poll."""
+    try:
+        serial_id = firestore_backend.get_own_serial()
+    except Exception as e:
+        print(f"Load check: could not read own serial ({e}) -- skipping.")
+        return
+
+    time.sleep(LOAD_CHECK_FIRST_DELAY_S)
+    while True:
+        if _emergency_in_progress:
+            time.sleep(60)  # try again shortly, after the emergency
+            continue
+        try:
+            with gps.port_lock:
+                amount, reply = check_load_balance(_balance_ussd_override())
+            if reply is not None:
+                firestore_backend.set_device_load(serial_id, amount, reply)
+                print(f"Load check: {amount if amount is not None else 'no amount'} ({reply[:80]!r})")
+        except Exception as e:
+            print(f"Load check failed: {e}")
+        time.sleep(LOAD_CHECK_INTERVAL_S)
+
+
 def _is_undervoltage():
     """Reads the Pi's OWN built-in undervoltage flag on its 5V input rail
     (bit 0 of vcgencmd get_throttled's "currently" bits) -- no dedicated
@@ -1433,6 +1476,7 @@ def main():
     threading.Thread(target=device_pairing_watcher_loop, args=(ser,), daemon=True).start()
     threading.Thread(target=location_sync_loop, daemon=True).start()
     threading.Thread(target=sync_sim_number, daemon=True).start()
+    threading.Thread(target=load_balance_loop, daemon=True).start()
     threading.Thread(target=heartbeat_loop, daemon=True).start()
     threading.Thread(target=battery_monitor_loop, args=(ser,), daemon=True).start()
 

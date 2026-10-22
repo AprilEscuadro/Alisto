@@ -431,28 +431,3 @@ def reject_payment(payment_ref, payment, reviewer_id, reviewer_name, reason_key,
         f"{message}\n\nReply here if you think this is a mistake.", status='open')
 
     return True, ''
-
-
-def latest_rejection(elder_ids):
-    """Only returns something if the MOST RECENT payment was rejected."""
-    latest = None
-    for elder_id in elder_ids:
-        try:
-            for doc in db.collection('payment').where('elder_id', '==', elder_id).stream():
-                data = doc.to_dict() or {}
-                created = to_ph(data.get('created_at'))
-                if created and (latest is None or created > latest[0]):
-                    latest = (created, data, doc.id)
-        except Exception as e:
-            print(f'[care plan] could not read payments for {elder_id}: {e}')
-    if not latest or latest[1].get('status') != 'rejected':
-        return None
-    data = latest[1]
-    return {
-        'payment_no': data.get('payment_no') or '',
-        'months': data.get('months'),
-        'reason': data.get('reject_reason') or 'Payment rejected',
-        'message': data.get('admin_note') or '',
-        'date': fmt_date(data.get('reviewed_at') or data.get('created_at')),
-        'thread_id': f'pay_{latest[2]}',
-    }

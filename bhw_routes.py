@@ -25,6 +25,7 @@ from werkzeug.security import check_password_hash, generate_password_hash
 
 import account_profile
 import alerts_common as ac
+import device_info
 from database import db
 
 bhw_bp = Blueprint('bhw', __name__, url_prefix='/bhw')
@@ -306,10 +307,13 @@ def _open_alerts_by_elder(elders):
     return {r['elder_id']: r for r in reversed(_alert_rows(open_alerts, elders))}
 
 
-def _elderly_rows(elders, open_alerts_by_elder=None):
-    """Residents in this barangay with their device status and alert state."""
+def _elderly_rows(elders, open_alerts_by_elder=None, family_counts=None):
+    """Residents in this barangay with their device status and alert state.
+    Pass family_counts (device_info.family_counts) to include how many
+    family accounts are connected; only the Elderly Users page needs it."""
     devices_by_elder = _devices_by_elder()
     open_alerts_by_elder = open_alerts_by_elder or {}
+    family_counts = family_counts or {}
     order = ('online', 'weak', 'offline')
 
     rows = []
@@ -324,6 +328,9 @@ def _elderly_rows(elders, open_alerts_by_elder=None):
 
         name = elder.get('full_name') or 'Unnamed'
         open_alert = open_alerts_by_elder.get(elder_id)
+        sim = device_info.sim_number(device)
+        load = device_info.load_info(device)
+        accounts_text = device_info.accounts_text(family_counts.get(elder_id, 0))
 
         if open_alert:
             current_status = 'emergency'
@@ -349,6 +356,9 @@ def _elderly_rows(elders, open_alerts_by_elder=None):
             'latitude': device.get('latitude'),
             'longitude': device.get('longitude'),
             'open_alert': open_alert,
+            'sim_number': sim,
+            'load': load,
+            'accounts_text': accounts_text,
             'details': [
                 ['Full Name', name],
                 ['Age', _age(elder.get('date_of_birth'))
@@ -357,6 +367,10 @@ def _elderly_rows(elders, open_alerts_by_elder=None):
                 ['Address', _address_text(elder.get('address'))],
                 ['Device ID', ', '.join(
                     d_id for d_id, _ in devices) or 'No device'],
+                ['Device Number', sim or 'Not reported'],
+                ['Load', f"{load['text']} (checked {load['checked']})"
+                 if load else 'Not checked yet'],
+                ['Connected Accounts', accounts_text],
                 ['Last Update', _fmt_datetime(last_seen)],
             ],
         })
@@ -512,7 +526,8 @@ def elderly_users():
     elders = _elders_in_barangay(g.barangay)
     return render_template(
         'bhw/elderly_users.html', active_page='elderly_users',
-        rows=_elderly_rows(elders, _open_alerts_by_elder(elders)),
+        rows=_elderly_rows(elders, _open_alerts_by_elder(elders),
+                           device_info.family_counts(db)),
     )
 
 

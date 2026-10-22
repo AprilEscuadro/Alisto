@@ -214,6 +214,21 @@ def set_device_sim_number(serial, sim_number):
         print(f"firestore: failed to set SIM number: {e}")
 
 
+def set_device_load(serial, amount, reply_text):
+    """Saves the last load check to device/{serial}. amount is pesos
+    (float) or None when the carrier's reply had no amount in it; the raw
+    reply is kept so the website can show it for troubleshooting."""
+    try:
+        db = _get_db()
+        db.collection("device").document(serial).update({
+            "loadBalance": amount,
+            "loadText": (reply_text or "")[:300],
+            "loadCheckedAt": firestore.SERVER_TIMESTAMP,
+        })
+    except Exception as e:
+        print(f"firestore: failed to save load balance: {e}")
+
+
 def set_device_status(serial, status):
     """Updates device/{serial}.status ('Pending' | 'Online' | 'Offline') --
     drives the colored badge on the app's Home screen. Best-effort: a

@@ -13,6 +13,7 @@ from firebase_admin import firestore, auth as firebase_auth
 from datetime import datetime, timedelta, timezone
 import alerts_common as ac
 import care_plan_service as cps
+import device_info
 import requests
 import os
 import uuid
@@ -691,6 +692,9 @@ def _loved_one_snapshot(elder_id, elder_data, link_data, has_open_alert):
         'device_id': serial,
         'device_status': summary['status'],
         'device_note': summary['note'],
+        'sim_number': device_info.sim_number(device),
+        'load': device_info.load_info(device),
+        'accounts_text': device_info.accounts_text(_family_link_count(elder_id)),
 
         'last_checkin': (_friendly_time(last_seen) if last_seen
                          else TEMP_LOCATION['last_updated']),
@@ -2930,16 +2934,6 @@ def pay_care_plan():
                    'Waiting for admin approval.')
 
 
-@app.route('/care-plan/last-rejection')
-def care_plan_last_rejection():
-    """Shown in the Pay care plan modal when the admin rejected the family's
-    most recent payment (reason + the admin's message)."""
-    if 'user_id' not in session:
-        return jsonify(rejection=None), 401
-    elders = _linked_elders_for_dashboard()
-    return jsonify(rejection=cps.latest_rejection(list(elders)))
-
-
 # ---------- MY PROFILE ----------
 
 MAX_PHOTO_BASE64_BYTES = 700 * 1024
@@ -3900,6 +3894,9 @@ def dashboard():
             care_plan = care_plan_future.result()
 
         device = _device_summary(serial, device_data, loc)
+        if serial:
+            device['sim_number'] = device_info.sim_number(device_data)
+            device['load'] = device_info.load_info(device_data)
 
         # Real location only once the device has sent coordinates;
         # until then TEMP_LOCATION stays on screen.

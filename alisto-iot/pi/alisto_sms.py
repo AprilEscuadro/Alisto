@@ -201,6 +201,113 @@ def read_own_sim_number():
     return number if number.startswith("+") else f"+{number}"
 
 
+# ---------- Load balance (USSD) ----------
+# Balance-inquiry USSD codes per carrier family. TM shares Globe's network
+# and TNT/Sun share Smart's. Both menus show the remaining load at the top
+# of their first screen. Override per device with "balance_ussd" in
+# device_config.json if a SIM needs a different code.
+BALANCE_USSD_BY_OPERATOR = (
+    ("GLOBE", "*143#"),
+    ("TM", "*143#"),
+    ("SMART", "*123#"),
+    ("TNT", "*123#"),
+    ("SUN", "*123#"),
+)
+USSD_TIMEOUT_S = 25
+
+
+def read_operator():
+    """Network operator name from AT+COPS? (e.g. 'Globe Telecom-PH', 'SMART'),
+    or None if the modem isn't registered."""
+    try:
+        ser = serial.Serial(SIM_PORT, SIM_BAUD, timeout=1)
+        time.sleep(0.5)
+        _send_at(ser, "AT+COPS=3,0")  # ask for the long alphanumeric name
+        resp = _send_at(ser, "AT+COPS?")
+        ser.close()
+    except Exception as e:
+        print(f"read_operator failed: {e}")
+        return None
+    match = re.search(r'\+COPS:\s*\d+,\d+,"([^"]+)"', resp)
+    return match.group(1) if match else None
+
+
+def balance_code_for(operator):
+    name = (operator or "").upper()
+    for key, code in BALANCE_USSD_BY_OPERATOR:
+        if key in name:
+            return code
+    return None
+
+
+def _decode_ussd(text, dcs):
+    """USSD replies come as plain text, or as UCS2 hex when dcs is 72
+    (or the text is clearly hex). Returns readable text either way."""
+    hexish = re.fullmatch(r"[0-9A-Fa-f]+", text or "") and len(text) % 4 == 0
+    if dcs == 72 or (hexish and len(text) >= 8):
+        try:
+            return bytes.fromhex(text).decode("utf-16-be", errors="ignore")
+        except ValueError:
+            pass
+    return text
+
+
+def parse_balance(text):
+    """Pesos as a float from a carrier reply like 'Bal: P12.50' or
+    'Your balance is PHP 5.00', or None if no amount is in the text."""
+    match = re.search(r"(?:PHP|P|\u20b1)\s?(\d[\d,]*(?:\.\d{1,2})?)", text or "", re.I)
+    if not match:
+        return None
+    try:
+        return float(match.group(1).replace(",", ""))
+    except ValueError:
+        return None
+
+
+def check_load_balance(ussd_code=None):
+    """Dials the balance USSD code and returns (amount, reply_text).
+    amount is None when the reply had no peso amount in it; reply_text is
+    None when the modem got no reply at all. Always closes the USSD menu
+    afterwards so it doesn't sit open on the network."""
+    code = ussd_code or balance_code_for(read_operator())
+    if not code:
+        print("check_load_balance: unknown carrier and no balance_ussd set -- skipped.")
+        return None, None
+    try:
+        ser = serial.Serial(SIM_PORT, SIM_BAUD, timeout=1)
+        time.sleep(0.5)
+        if "OK" not in _send_at(ser, "AT"):
+            ser.close()
+            print("check_load_balance: modem not responding -- skipped.")
+            return None, None
+
+        ser.write(f'AT+CUSD=1,"{code}",15\r\n'.encode())
+        deadline = time.monotonic() + USSD_TIMEOUT_S
+        buf = b""
+        while time.monotonic() < deadline:
+            chunk = ser.read(256)
+            if chunk:
+                buf += chunk
+                if re.search(rb'\+CUSD:\s*\d+,"[^"]*"', buf) or b"ERROR" in buf:
+                    break
+            else:
+                time.sleep(0.2)
+        resp = buf.decode(errors="ignore")
+
+        _send_at(ser, "AT+CUSD=2")  # close the carrier's menu session
+        ser.close()
+    except Exception as e:
+        print(f"check_load_balance failed: {e}")
+        return None, None
+
+    match = re.search(r'\+CUSD:\s*\d+,"([^"]*)"(?:,(\d+))?', resp, re.S)
+    if not match:
+        print(f"check_load_balance: no USSD reply ({resp.strip()!r})")
+        return None, None
+    text = _decode_ussd(match.group(1), int(match.group(2) or 15)).strip()
+    return parse_balance(text), text
+
+
 if __name__ == "__main__":
     ok = send_sms("ALISTO test message.")
     print("Sent." if ok else "Failed.")

@@ -191,7 +191,7 @@
     <script>
       window.ALISTO_WATCH = {
         url: "{{ url_for('admin.alerts_poll') }}",
-        listUrl: "{{ url_for('admin.emergency_logs') }}",
+        listUrl: "{{ url_for('admin.emergency_logs', status='active') }}",
         scope: "admin",
         badges: ".alisto-no-badge", /* the bell already counts everything; don't overwrite it */
       };

@@ -29,6 +29,7 @@ from werkzeug.security import check_password_hash, generate_password_hash
 import account_profile
 import alerts_common as ac
 import care_plan_service as cps
+import device_info
 import valid_id_store
 # One source of truth for reading addresses and working out whether a device is
 # online. Both portals show the same thing, so they share the same helpers.
@@ -1082,19 +1083,23 @@ def devices():
     elders = {doc.id: (doc.to_dict() or {}).get('full_name') or 'Unnamed'
               for doc in db.collection('elder_profile').stream()}
 
+    family_counts = device_info.family_counts(db)
+
     rows = []
     for doc in db.collection('device').stream():
         device = doc.to_dict() or {}
         elder_id = device.get('elder_id')
         registered = bool(device.get('is_registered'))
+        accounts = family_counts.get(elder_id, 0) if registered else 0
         rows.append({
             'serial': doc.id,
             'assigned_to': elders.get(elder_id) if registered else None,
             'elder_id': elder_id if registered else None,
             'status': 'registered' if registered else 'available',
-            'added': _fmt_date(device.get('created_at')),
-            'registered_at': _fmt_date(device.get('registered_at')),
-            'batch': device.get('batch') or '',
+            'sim_number': device_info.sim_number(device),
+            'load': device_info.load_info(device),
+            'accounts': accounts,
+            'accounts_text': device_info.accounts_text(accounts),
             'sort': _sort_key(device.get('created_at')),
         })
 

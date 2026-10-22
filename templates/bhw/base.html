@@ -168,7 +168,7 @@
     </div>
 
     <script src="{{ url_for('static', filename='js/admin.js') }}"></script>
-    <div id="bhwWatch" data-url="{{ url_for('bhw.alerts_poll') }}" hidden></div>
+    <div id="bhwWatch" data-url="{{ url_for('bhw.alerts_poll') }}" data-list="{{ url_for('bhw.alerts', group='active') }}" hidden></div>
     <script src="{{ url_for('static', filename='js/bhw_alert_watch.js') }}"></script>
     {% block scripts %}{% endblock %}
 
