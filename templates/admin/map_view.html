@@ -167,7 +167,9 @@
   document.addEventListener('DOMContentLoaded', function () {
     if (!window.L) return;
 
-    const POLL_MS = 5000; // how often to check for a new/resolved emergency
+    // Each poll can cost Firestore reads (always, on Vercel), so this is
+    // the map refresh only -- the siren/banner come from bhw_alert_watch.js.
+    const POLL_MS = 15000; // how often to check for a new/resolved emergency
 
     const initialPoints = JSON.parse(document.getElementById('mapPoints').textContent);
     const colours = { alert: '#e53935', online: '#16a34a', weak: '#f59e0b', offline: '#94a3b8', none: '#94a3b8' };
@@ -263,7 +265,10 @@
         // has to deal with.
       }
     }
-    setInterval(pollPoints, POLL_MS);
+    // A hidden tab has nobody looking at the map, so skip its polls and
+    // catch up the moment it is shown again.
+    setInterval(() => { if (!document.hidden) pollPoints(); }, POLL_MS);
+    document.addEventListener('visibilitychange', () => { if (!document.hidden) pollPoints(); });
 
     // "Notify BHW" button inside a popup -- delegated on the map container
     // since Leaflet creates/destroys the popup's DOM on open/close, so a

@@ -16,6 +16,11 @@
     var LIST_URL = C.listUrl || (cfg && cfg.dataset.list) || URL.replace("/alerts/poll", "/alerts");
     var BADGES = C.badges || '.admin-bell-badge, .admin-nav-link[href$="/alerts"] .nav-badge';
     var POLL_MS = 15000;     // how often to ask the server
+    // A background tab still polls so the alarm rings, just less often.
+    var HIDDEN_POLL_MS = 30000;
+    // The last answer, shared through localStorage: with several ALISTO
+    // tabs open only one of them asks the server each round.
+    var SHARED = "alisto_" + SCOPE + "_poll";
 
     // Admin only: Settings > "Emergency alerts" and "Alert sound" can turn
     // the banner and the siren off. Family and BHW always get both.
@@ -188,14 +193,31 @@
     });
 
     async function poll() {
+        var shared = null;
+        try { shared = JSON.parse(localStorage.getItem(SHARED) || "null"); } catch (e) { }
+        if (shared && shared.data && Date.now() - shared.t < POLL_MS - 1000) {
+            handle(shared.data);    // another tab asked moments ago
+            return;
+        }
         try {
             var res = await fetch(URL, { headers: { Accept: "application/json" }, credentials: "same-origin" });
             if (!(res.headers.get("content-type") || "").includes("json")) return; // logged out
             var data = await res.json();
-            if (data.success) handle(data);
+            if (data.success) {
+                try { localStorage.setItem(SHARED, JSON.stringify({ t: Date.now(), data: data })); } catch (e) { }
+                handle(data);
+            }
         } catch (e) { /* offline or server restarting: try again next time */ }
     }
 
+    function schedule() {
+        setTimeout(async function () {
+            await poll();
+            schedule();
+        }, document.hidden ? HIDDEN_POLL_MS : POLL_MS);
+    }
+
     poll();
-    setInterval(poll, POLL_MS);
+    schedule();
+    document.addEventListener("visibilitychange", function () { if (!document.hidden) poll(); });
 })();
