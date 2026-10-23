@@ -138,11 +138,26 @@ def start_open_alert_listener(db):
     _WATCH = _open_query(db).on_snapshot(_on_snapshot)
 
 
+# Without the listener (Vercel never starts it) every caller would run the
+# query itself -- /admin/map/points alone calls open_alerts() twice per poll.
+# Reuse one result for a few seconds within the same server instance.
+_FALLBACK_TTL_SECONDS = 5
+_FALLBACK = {'at': 0.0, 'alerts': {}}
+
+
+def _forget_fallback():
+    _FALLBACK['at'] = 0.0
+
+
 def open_alerts(db):
     """{alert_id: alert dict} for every PENDING/SENT alert.
     Reads memory. Falls back to a normal query if the listener is not up."""
     if _WATCH is None or not _OPEN_READY.wait(timeout=3):
-        return {d.id: (d.to_dict() or {}) for d in _open_query(db).stream()}
+        if time.time() - _FALLBACK['at'] > _FALLBACK_TTL_SECONDS:
+            _FALLBACK['alerts'] = {
+                d.id: (d.to_dict() or {}) for d in _open_query(db).stream()}
+            _FALLBACK['at'] = time.time()
+        return {k: dict(v) for k, v in _FALLBACK['alerts'].items()}
 
     if time.time() - _OPEN_RESYNCED_AT > _OPEN_RESYNC_SECONDS:
         try:
@@ -464,6 +479,7 @@ def acknowledge(db, ref, alert_id, user_id):
         except Exception as e:
             print(
                 f'[alerts_common] failed to bulk-acknowledge sibling alerts: {e}')
+    _forget_fallback()
     return True
 
 
@@ -488,6 +504,7 @@ def resolve(db, ref, alert_id, user_id, false_alarm=False, notes=None):
     ref.update(updates)
     write_status_history(db, alert_id, new_status, user_id,
                          remarks=resolution_note or None)
+    _forget_fallback()
     return new_status
 
 
