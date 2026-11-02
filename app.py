@@ -234,6 +234,7 @@ def landing():
 # or hide it with is_active: False. Without that, the barangay gets
 # '<Barangay> Health Center' (e.g. Lahug Health Center).
 
+
 def _barangay_docs():
     """[{name, health_centers}] for all Cebu City barangays."""
     saved = {}
@@ -272,6 +273,7 @@ def barangays_list():
     )
 
 # ---------- REGISTER ----------
+
 
 @app.route('/register', methods=['GET', 'POST'])
 def register():
@@ -420,7 +422,8 @@ def _register_bhw(full_name, email, password, contact_number, barangay_assigned)
         return jsonify(success=False, message='Please fill up all professional information fields.'), 400
 
     # Health center must belong to the chosen barangay (read from Firestore).
-    _centers = {b['name'].casefold(): b['health_centers'] for b in _barangay_docs()}
+    _centers = {b['name'].casefold(): b['health_centers']
+                for b in _barangay_docs()}
     if health_center not in _centers.get(barangay_assigned.casefold(), []):
         return jsonify(success=False, message='Please select a valid health center for your barangay.'), 400
 
@@ -493,6 +496,7 @@ def _register_bhw(full_name, email, password, contact_number, barangay_assigned)
         return jsonify(success=False, message=f'Error: {str(e)}'), 500
 
     return jsonify(success=True, message='Registration submitted. Your account is pending approval.')
+
 
 def _create_account_and_elder(full_name, email, password, role, contact_number,
                               barangay_assigned, elder_full_name, dob, address,
@@ -1467,7 +1471,7 @@ def loved_one_update(elder_id):
 # same underlying alert_status/acknowledged data either way.
 ALERT_STATUS_LABELS = {
     'active': ('Alert Sent', 'status-alert-sent'),
-    'acknowledged': ('Responded', 'status-responded'),
+    'acknowledged': ('Responding', 'status-responded'),
     'resolved': ('Resolved', 'status-resolved'),
     'false_alarm': ('Cancelled', 'status-cancelled'),
 }
@@ -2939,7 +2943,8 @@ def pay_care_plan():
     # (stops "paid for 1 month, submitted 6"). The admin still confirms the
     # reference number + amount in GCash before approving.
     try:
-        amount_sent = float((request.form.get('amount_sent') or '').replace(',', '').strip())
+        amount_sent = float((request.form.get('amount_sent')
+                            or '').replace(',', '').strip())
     except ValueError:
         return jsonify(success=False, message='Enter the exact amount you sent.'), 400
 
@@ -3726,7 +3731,7 @@ def _alert_row(row, phrases=None):
     elif status == 'false_alarm':
         icon, icon_class, label = 'circle-x', 'warn', 'Cancelled (false alarm)'
     elif status == 'acknowledged':
-        icon, icon_class, label = 'bell', 'warn', 'Responded'
+        icon, icon_class, label = 'bell', 'warn', 'Responding'
     else:
         icon, icon_class, label = 'siren', 'sos', 'Needs attention'
 

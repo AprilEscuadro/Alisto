@@ -75,7 +75,7 @@ ALERT_TYPES = {
 # built around) -> (label, badge class).
 ALERT_STATUSES = {
     'active': ('Active', 'alert-active'),
-    'acknowledged': ('Responded', 'alert-acknowledged'),
+    'acknowledged': ('Responding', 'alert-acknowledged'),
     'resolved': ('Resolved', 'alert-resolved'),
     'closed': ('Closed', 'alert-closed'),
     'delivered': ('Delivered', 'alert-delivered'),

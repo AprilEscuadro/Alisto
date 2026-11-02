@@ -27,7 +27,7 @@ const AlistoMap = (function () {
     online: "Safe / Online",
     offline: "Offline",
     emergency: "Emergency",
-    responded: "Responded",
+    responded: "Responding",
   };
 
   let map = null;
@@ -140,9 +140,8 @@ const AlistoMap = (function () {
     // reports", a blank panel reads as "broken" — and say why in a banner.
     if (!plotted.length) {
       const detail = data.total
-        ? `${data.total} loved one${data.total === 1 ? "" : "s"} ${
-            data.total === 1 ? "is" : "are"
-          } linked, but no device has reported a location yet. Pins appear here as soon as one does.`
+        ? `${data.total} loved one${data.total === 1 ? "" : "s"} ${data.total === 1 ? "is" : "are"
+        } linked, but no device has reported a location yet. Pins appear here as soon as one does.`
         : "Link a loved one's ALISTO device to see them on the map.";
       showNotice("No locations reported yet", detail);
       map.setView(SERVICE_AREA, SERVICE_AREA_ZOOM);
