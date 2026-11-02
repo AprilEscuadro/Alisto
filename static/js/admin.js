@@ -538,7 +538,7 @@
     const select = document.createElement('select');
     select.id = 'alertGroupFilter';
     select.hidden = true;
-    ['', 'active', 'resolved', 'medication', 'false_alarm'].forEach((value) => {
+    ['', 'active', 'responding', 'resolved', 'medication', 'false_alarm'].forEach((value) => {
       select.add(new Option(value || 'All', value));
     });
     table.parentElement.appendChild(select);

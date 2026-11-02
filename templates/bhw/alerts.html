@@ -56,6 +56,7 @@
       <div class="pill-group" id="alertPills" role="group" aria-label="Filter alerts">
         <button type="button" class="pill active" data-filter="">All</button>
         <button type="button" class="pill" data-filter="active">Active</button>
+        <button type="button" class="pill" data-filter="responding">Responding</button>
         <button type="button" class="pill" data-filter="resolved">Resolved</button>
         <button type="button" class="pill" data-filter="false_alarm">False Alarm</button>
       </div>
@@ -80,8 +81,8 @@
               data-alert-id="{{ row.id }}"
               data-status="{{ row.status }}"
               data-type="{{ row.type }}"
-              data-group="{{ 'active' if row.is_open else ('false_alarm' if 'false_alarm' in (row.status, row.type) else ('medication' if row.type == 'medication' else 'resolved')) }}"
-              class="{% if row.is_open %}row-urgent{% endif %} {% if detail and detail.id == row.id %}row-selected{% endif %}"
+              data-group="{{ 'active' if row.is_open else ('responding' if row.status == 'acknowledged' else ('false_alarm' if 'false_alarm' in (row.status, row.type) else ('medication' if row.type == 'medication' else 'resolved'))) }}"
+                            class="{% if row.is_open %}row-urgent{% endif %} {% if detail and detail.id == row.id %}row-selected{% endif %}"
             >
               <td>
                 <div class="user-cell">
