@@ -88,9 +88,11 @@
   border: 1px solid var(--border);
   border-radius: var(--radius);
   padding: 20px;
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  align-items: center;
+  column-gap: 14px;
+  row-gap: 12px;
 }
 
 .summary-icon {
@@ -147,6 +149,8 @@
 }
 
 .summary-link {
+  align-self: start;
+  white-space: nowrap;
   font-size: 12px;
   font-weight: 600;
   color: var(--blue);

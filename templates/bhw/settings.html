@@ -1,6 +1,10 @@
 {% extends 'bhw/base.html' %}
 {% block title %}Settings{% endblock %}
 
+{% block head %}
+<link rel="stylesheet" href="{{ url_for('static', filename='css/admin_css/admin_help.css') }}" />
+{% endblock %}
+
 {% block content %}
 <div class="prefs-page">
 
