@@ -253,7 +253,7 @@ button {
   height: 36px;
   border-radius: 8px;
   background: var(--bg);
-  display: flex;
+  display: none;
   align-items: center;
   justify-content: center;
   cursor: pointer;
@@ -769,6 +769,10 @@ button {
 }
 
 @media (max-width: 768px) {
+  .menu-toggle {
+    display: flex;
+  }
+
   .app-shell {
     grid-template-columns: 1fr;
   }

@@ -24,7 +24,10 @@ body {
     line-height: 1.6;
 }
 
-h1, h2, h3, .logo {
+h1,
+h2,
+h3,
+.logo {
     font-family: 'Nunito', sans-serif;
 }
 
@@ -66,7 +69,7 @@ h1, h2, h3, .logo {
     position: sticky;
     top: 0;
     background: #fff;
-    box-shadow: 0 2px 10px rgba(0,0,0,0.05);
+    box-shadow: 0 2px 10px rgba(0, 0, 0, 0.05);
     z-index: 100;
 }
 
@@ -93,13 +96,13 @@ h1, h2, h3, .logo {
     position: absolute;
     width: 340px;
     height: 340px;
-    background: radial-gradient(circle, rgba(80,136,254,0.35) 0%, rgba(80,136,254,0.1) 50%, transparent 75%);
+    background: radial-gradient(circle, rgba(80, 136, 254, 0.35) 0%, rgba(80, 136, 254, 0.1) 50%, transparent 75%);
     border-radius: 50%;
     z-index: 0;
 }
 
 .device-img {
-    width: 230px;
+    width: 300px;
     height: auto;
     z-index: 2;
     position: relative;
@@ -137,14 +140,14 @@ h1, h2, h3, .logo {
     justify-content: center;
     font-size: 28px;
     background: #ffffff;
-    box-shadow: 0 6px 16px rgba(80, 136, 254, 0.18); 
+    box-shadow: 0 6px 16px rgba(80, 136, 254, 0.18);
     color: var(--primary);
 }
 
 .badge-icon svg {
     width: 26px;
     height: 26px;
-    
+
 }
 
 .badge-top {
@@ -292,20 +295,88 @@ h1, h2, h3, .logo {
     user-select: none;
 }
 
-.decor-plus-1 { top: 8%; left: 42%; font-size: 22px; }
-.decor-plus-2 { top: 14%; left: 88%; font-size: 32px; }
-.decor-plus-3 { bottom: 18%; left: 92%; font-size: 24px; }
-.decor-plus-4 { top: 4%; left: 8%; font-size: 18px; }
-.decor-plus-5 { top: 35%; left: 25%; font-size: 20px; }
-.decor-plus-6 { top: 60%; left: 65%; font-size: 18px; }
-.decor-plus-7 { bottom: 8%; left: 15%; font-size: 26px; }
-.decor-plus-8 { top: 50%; left: 5%; font-size: 22px; }
+.decor-plus-1 {
+    top: 8%;
+    left: 42%;
+    font-size: 22px;
+}
 
-.decor-dot-1 { width: 6px; height: 6px; top: 45%; left: 46%; }
-.decor-dot-2 { width: 8px; height: 8px; top: 60%; left: 96%; }
-.decor-dot-3 { width: 5px; height: 5px; top: 5%; left: 6%; }
-.decor-dot-4 { width: 6px; height: 6px; top: 25%; left: 70%; }
-.decor-dot-5 { width: 5px; height: 5px; top: 75%; left: 30%; }
+.decor-plus-2 {
+    top: 14%;
+    left: 88%;
+    font-size: 32px;
+}
+
+.decor-plus-3 {
+    bottom: 18%;
+    left: 92%;
+    font-size: 24px;
+}
+
+.decor-plus-4 {
+    top: 4%;
+    left: 8%;
+    font-size: 18px;
+}
+
+.decor-plus-5 {
+    top: 35%;
+    left: 25%;
+    font-size: 20px;
+}
+
+.decor-plus-6 {
+    top: 60%;
+    left: 65%;
+    font-size: 18px;
+}
+
+.decor-plus-7 {
+    bottom: 8%;
+    left: 15%;
+    font-size: 26px;
+}
+
+.decor-plus-8 {
+    top: 50%;
+    left: 5%;
+    font-size: 22px;
+}
+
+.decor-dot-1 {
+    width: 6px;
+    height: 6px;
+    top: 45%;
+    left: 46%;
+}
+
+.decor-dot-2 {
+    width: 8px;
+    height: 8px;
+    top: 60%;
+    left: 96%;
+}
+
+.decor-dot-3 {
+    width: 5px;
+    height: 5px;
+    top: 5%;
+    left: 6%;
+}
+
+.decor-dot-4 {
+    width: 6px;
+    height: 6px;
+    top: 25%;
+    left: 70%;
+}
+
+.decor-dot-5 {
+    width: 5px;
+    height: 5px;
+    top: 75%;
+    left: 30%;
+}
 
 .decor-waves {
     position: absolute;
@@ -313,7 +384,7 @@ h1, h2, h3, .logo {
     left: 0;
     width: 100%;
     height: 100%;
-    opacity: 0.4;  
+    opacity: 0.4;
 }
 
 /* Para ang actual content mag-stay sa taas sa decorations */
@@ -465,8 +536,10 @@ section {
 
 .process-flow {
     display: grid;
-    grid-template-columns: repeat(5, 250px);  /* fixed width per column, gikan sa 1fr */
-    justify-content: center;                   /* i-center ang grid kung dili mo-fill ang buong container-wide */
+    grid-template-columns: repeat(5, 250px);
+    /* fixed width per column, gikan sa 1fr */
+    justify-content: center;
+    /* i-center ang grid kung dili mo-fill ang buong container-wide */
     align-items: stretch;
     gap: 32px;
     margin-top: 64px;
@@ -706,7 +779,7 @@ footer {
         flex-direction: column;
         padding: 20px 24px;
         display: none;
-        box-shadow: 0 4px 10px rgba(0,0,0,0.08);
+        box-shadow: 0 4px 10px rgba(0, 0, 0, 0.08);
     }
 
     .nav-links.active {
@@ -731,7 +804,7 @@ footer {
     }
 
     .device-img {
-        width: 230px;
+        width: 280px;
     }
 
     .badge {
@@ -1030,11 +1103,30 @@ footer {
     background: var(--primary);
 }
 
-.value-blue   { background: #e5efff; color: #5088FE; }
-.value-red    { background: #fde9e9; color: #e0555a; }
-.value-green  { background: #e3f6ea; color: #28A745; }
-.value-yellow { background: #fef3d9; color: #d9a441; }
-.value-purple { background: #f0e6fb; color: #9b6fd1; }
+.value-blue {
+    background: #e5efff;
+    color: #5088FE;
+}
+
+.value-red {
+    background: #fde9e9;
+    color: #e0555a;
+}
+
+.value-green {
+    background: #e3f6ea;
+    color: #28A745;
+}
+
+.value-yellow {
+    background: #fef3d9;
+    color: #d9a441;
+}
+
+.value-purple {
+    background: #f0e6fb;
+    color: #9b6fd1;
+}
 
 .value-card h4 {
     font-family: 'Nunito', sans-serif;
@@ -1048,20 +1140,20 @@ footer {
 }
 
 @media (max-width: 900px) {
-.mv-grid {
-    grid-template-columns: 1fr;
-    text-align: center;
-}
+    .mv-grid {
+        grid-template-columns: 1fr;
+        text-align: center;
+    }
 
-.mv-card {
-    align-items: flex-start;
-    text-align: left;
-}
+    .mv-card {
+        align-items: flex-start;
+        text-align: left;
+    }
 
-.mv-card h3::after {
-    left: 0;
-    transform: none;
-}
+    .mv-card h3::after {
+        left: 0;
+        transform: none;
+    }
 }
 
 /* DOWNLOAD APP */
