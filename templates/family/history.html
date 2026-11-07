@@ -318,12 +318,7 @@
           </div>
 
           <div class="header-right">
-            <a href="{{ url_for('alerts') }}" class="icon-btn" aria-label="Notifications">
-              <i data-lucide="bell"></i>
-              {% if notification_count %}
-              <span class="notif-dot">{{ notification_count }}</span>
-              {% endif %}
-            </a>
+            {% include 'family/_notif_bell.html' %}
 
             <button
               type="button"

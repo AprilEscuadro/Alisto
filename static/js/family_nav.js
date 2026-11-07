@@ -57,7 +57,7 @@ document.addEventListener('DOMContentLoaded', () => {
     url: "/alerts/poll",
     listUrl: "/alerts?filter=active",
     scope: "family",
-    badges: ".header-right .notif-dot",
+    badges: "[data-alert-badge]", // red Alerts badge in the sidebar
   };
   function load(src, done) {
     var s = document.createElement("script");

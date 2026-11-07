@@ -8,6 +8,7 @@ from admin_routes import admin_bp
 import admin_routes
 from bhw_routes import bhw_bp
 from inbox_routes import inbox_bp
+from notifications import notif_bp
 import inbox_service as inbox
 import valid_id_store
 from firebase_admin import firestore, auth as firebase_auth
@@ -33,6 +34,7 @@ app.secret_key = os.environ['SECRET_KEY']
 app.register_blueprint(admin_bp)  # admin panel at /admin
 app.register_blueprint(bhw_bp)    # BHW portal at /bhw
 app.register_blueprint(inbox_bp)  # inbox JSON API at /inbox/api
+app.register_blueprint(notif_bp)  # family notification bell at /notifications
 
 read_meter.install(app)          # prints Firestore reads per page; /dev/reads
 
@@ -83,6 +85,20 @@ def inject_account():
             'photo_base64': user.get('photoBase64') or None,
         }
     }
+
+
+@app.context_processor
+def inject_family_alert_badge():
+    """Red badge on the sidebar's Alerts link: emergencies still waiting for
+    a response. From memory (0 reads); family_nav.js keeps it live."""
+    if 'user_id' not in session or session.get('role') != 'family':
+        return {}
+    try:
+        count = len(_open_alerts_for_elders(_linked_elders_for_dashboard()))
+    except Exception as e:
+        print(f'[alerts] sidebar badge: {e}')
+        count = 0
+    return {'family_active_alerts': count}
 
 
 def _get_care_plan(elder_id=None):

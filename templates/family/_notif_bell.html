@@ -1,0 +1,237 @@
+<!-- ============ NOTIFICATION BELL (shared by every family page) ============
+     Lists new inbox messages, alerts and medicine Taken/Missed.
+     Items stay in the list; read ones turn gray. Data: /notifications (on
+     open), /notifications/summary (count, every 60s), /notifications/read
+     (clicking a medicine item). Alerts stay colored until a BHW/admin responds.
+     Emergencies do not depend on this: the siren, banner and the red Alerts
+     badge in the sidebar come from /alerts/poll (family_nav.js). -->
+<div class="fam-notif" id="famNotif">
+  <button
+    type="button"
+    class="icon-btn"
+    id="famNotifBtn"
+    aria-label="Notifications"
+    aria-haspopup="true"
+    aria-expanded="false"
+  >
+    <i data-lucide="bell"></i>
+    <span class="notif-dot" id="famNotifCount" hidden>0</span>
+  </button>
+
+  <div class="fam-notif-panel" id="famNotifPanel" role="menu">
+    <div class="fam-notif-head">
+      <strong>Notifications</strong>
+      <span class="fam-notif-chip" id="famNotifChip" hidden></span>
+    </div>
+
+    <div class="fam-notif-state" id="famNotifLoading">Loading…</div>
+    <div class="fam-notif-list" id="famNotifList" hidden></div>
+    <div class="fam-notif-state" id="famNotifEmpty" hidden>
+      <i data-lucide="bell-off"></i>
+      <span>You're all caught up.</span>
+    </div>
+
+    <a href="{{ url_for('alerts') }}" class="fam-notif-footer">
+      View all alerts <i data-lucide="arrow-right"></i>
+    </a>
+  </div>
+</div>
+
+<style>
+  .fam-notif { position: relative; }
+  .fam-notif .notif-dot[hidden] { display: none; }
+  .fam-notif-panel {
+    position: absolute; top: calc(100% + 10px); right: 0; z-index: 210;
+    width: 340px; max-width: calc(100vw - 24px);
+    background: var(--white); border: 1px solid var(--border);
+    border-radius: 12px; box-shadow: 0 12px 28px rgba(15, 23, 42, 0.14);
+    display: none; overflow: hidden;
+  }
+  .fam-notif-panel.open { display: block; }
+  .fam-notif-head {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 14px 16px; border-bottom: 1px solid var(--border);
+  }
+  .fam-notif-head strong { font-size: 14px; color: var(--ink); }
+  .fam-notif-chip {
+    font-size: 11px; font-weight: 700; padding: 3px 8px; border-radius: 999px;
+    background: var(--amber-bg); color: var(--amber);
+  }
+  .fam-notif-list { max-height: 360px; overflow-y: auto; }
+  .fam-notif-item {
+    display: flex; align-items: center; gap: 12px; padding: 12px 16px;
+    border-bottom: 1px solid var(--border); color: var(--ink);
+  }
+  .fam-notif-item:hover { background: var(--bg); }
+  .fam-notif-item.is-unread { background: var(--blue-light); }
+  .fam-notif-item.is-unread .fam-notif-body strong::after {
+    content: ""; display: inline-block; width: 7px; height: 7px; margin-left: 6px;
+    border-radius: 50%; background: var(--blue); vertical-align: middle;
+  }
+  /* Read: stays in the list, gray with no color */
+  .fam-notif-item.is-read .fam-notif-icon { background: var(--bg); color: var(--muted); }
+  .fam-notif-item.is-read .fam-notif-body strong { color: var(--muted); font-weight: 600; }
+  .fam-notif-icon {
+    width: 36px; height: 36px; border-radius: 10px; flex-shrink: 0;
+    display: inline-flex; align-items: center; justify-content: center;
+  }
+  .fam-notif-icon svg { width: 18px; height: 18px; }
+  .fam-notif-icon.blue  { background: var(--blue-light); color: var(--blue); }
+  .fam-notif-icon.red   { background: var(--red-bg); color: #dc2626; }
+  .fam-notif-icon.amber { background: var(--amber-bg); color: var(--amber); }
+  .fam-notif-icon.green { background: var(--green-bg); color: var(--green); }
+  .fam-notif-body { display: flex; flex-direction: column; gap: 2px; min-width: 0; flex: 1; }
+  .fam-notif-body strong { font-size: 13px; }
+  .fam-notif-body span {
+    font-size: 12px; color: var(--muted);
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  }
+  .fam-notif-body small { font-size: 11px; color: var(--muted); }
+  .fam-notif-item > svg { width: 16px; height: 16px; color: var(--muted); flex-shrink: 0; }
+  .fam-notif-state {
+    display: flex; flex-direction: column; align-items: center; gap: 6px;
+    padding: 26px 16px; font-size: 13px; color: var(--muted);
+  }
+  .fam-notif-state[hidden], .fam-notif-list[hidden] { display: none; }
+  .fam-notif-state svg { width: 22px; height: 22px; }
+  .fam-notif-footer {
+    display: flex; align-items: center; justify-content: center; gap: 6px;
+    padding: 12px; font-size: 13px; font-weight: 700; color: var(--blue);
+  }
+  .fam-notif-footer svg { width: 14px; height: 14px; }
+
+  html[data-theme="dark"] .fam-notif-panel {
+    background: #161b25; border-color: rgba(255, 255, 255, 0.09);
+  }
+  html[data-theme="dark"] .fam-notif-head,
+  html[data-theme="dark"] .fam-notif-item { border-color: rgba(255, 255, 255, 0.09); }
+  html[data-theme="dark"] .fam-notif-head strong,
+  html[data-theme="dark"] .fam-notif-item { color: #e7eaf0; }
+  html[data-theme="dark"] .fam-notif-item:hover { background: #1e2430; }
+  html[data-theme="dark"] .fam-notif-item.is-unread { background: rgba(37, 99, 235, 0.16); }
+  html[data-theme="dark"] .fam-notif-item.is-read .fam-notif-icon { background: #1e2430; color: #6b7280; }
+  html[data-theme="dark"] .fam-notif-item.is-read .fam-notif-body strong { color: #9aa3b2; }
+  html[data-theme="dark"] .fam-notif-body span,
+  html[data-theme="dark"] .fam-notif-body small,
+  html[data-theme="dark"] .fam-notif-state { color: #9aa3b2; }
+</style>
+
+<script>
+  (function () {
+    const btn = document.getElementById("famNotifBtn");
+    const panel = document.getElementById("famNotifPanel");
+    const countEl = document.getElementById("famNotifCount");
+    const chip = document.getElementById("famNotifChip");
+    const list = document.getElementById("famNotifList");
+    const empty = document.getElementById("famNotifEmpty");
+    const loading = document.getElementById("famNotifLoading");
+    if (!btn || !panel) return;
+
+    function setCount(n) {
+      countEl.textContent = n > 99 ? "99+" : String(n);
+      countEl.hidden = !n;
+    }
+
+    async function refreshCount(fresh) {
+      if (document.hidden) return;
+      try {
+        // fresh: on page load, so a message just read in Inbox drops off at once.
+        const url = "/notifications/summary" + (fresh === true ? "?fresh=1" : "");
+        const res = await fetch(url, { headers: { Accept: "application/json" } });
+        const data = await res.json();
+        if (data.success) setCount(data.count);
+      } catch (e) { /* offline: keep the last count */ }
+    }
+
+    function el(tag, cls, text) {
+      const node = document.createElement(tag);
+      if (cls) node.className = cls;
+      if (text !== undefined) node.textContent = text;
+      return node;
+    }
+
+    function render(items) {
+      list.replaceChildren();
+      items.forEach((it) => {
+        const a = el("a", "fam-notif-item " + (it.unread ? "is-unread" : "is-read"));
+        a.href = it.href;
+        a.dataset.id = it.id;
+        a.dataset.kind = it.kind;
+        a.setAttribute("role", "menuitem");
+        const icon = el("span", "fam-notif-icon " + it.tint);
+        icon.append(el("i"));
+        icon.firstChild.setAttribute("data-lucide", it.icon);
+        const body = el("span", "fam-notif-body");
+        body.append(el("strong", "", it.title), el("span", "", it.subtitle), el("small", "", it.when));
+        const arrow = el("i");
+        arrow.setAttribute("data-lucide", "chevron-right");
+        a.append(icon, body, arrow);
+        list.append(a);
+      });
+      list.hidden = !items.length;
+      empty.hidden = !!items.length;
+      if (window.lucide) window.lucide.createIcons();
+    }
+
+    async function openPanel() {
+      panel.classList.add("open");
+      btn.setAttribute("aria-expanded", "true");
+      loading.hidden = false;
+      list.hidden = true;
+      empty.hidden = true;
+      try {
+        const res = await fetch("/notifications", { headers: { Accept: "application/json" } });
+        const data = await res.json();
+        if (!data.success) throw new Error();
+        chip.textContent = `${data.unread_count} unread`;
+        chip.hidden = !data.unread_count;
+        setCount(data.unread_count);
+        render(data.items);
+      } catch (e) {
+        empty.hidden = false;
+        empty.querySelector("span").textContent = "Could not load notifications.";
+      } finally {
+        loading.hidden = true;
+      }
+    }
+
+    // Clicking an item: medicine is marked read here; a message is marked read
+    // when its conversation opens in Inbox; an alert stays until someone
+    // responds to it. The count drops right away for the first two.
+    list.addEventListener("click", (e) => {
+      const a = e.target.closest(".fam-notif-item");
+      if (!a || !a.classList.contains("is-unread") || a.dataset.kind === "alert") return;
+      a.classList.replace("is-unread", "is-read");
+      const n = Math.max(0, (parseInt(countEl.textContent, 10) || 0) - 1);
+      setCount(n);
+      if (a.dataset.kind === "medicine") {
+        fetch("/notifications/read", {
+          method: "POST",
+          keepalive: true, // still sent while the page navigates away
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ id: a.dataset.id }),
+        }).catch(() => {});
+      }
+    });
+
+    function closePanel() {
+      panel.classList.remove("open");
+      btn.setAttribute("aria-expanded", "false");
+    }
+
+    btn.addEventListener("click", (e) => {
+      e.stopPropagation();
+      const menu = document.getElementById("profileMenu");
+      if (menu) menu.classList.remove("open");
+      panel.classList.contains("open") ? closePanel() : openPanel();
+    });
+    document.addEventListener("click", (e) => {
+      if (!panel.contains(e.target) && !btn.contains(e.target)) closePanel();
+    });
+    document.addEventListener("keydown", (e) => { if (e.key === "Escape") closePanel(); });
+
+    refreshCount(true);
+    setInterval(refreshCount, 60000);
+    document.addEventListener("visibilitychange", refreshCount);
+  })();
+</script>
