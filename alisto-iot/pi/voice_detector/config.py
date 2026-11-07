@@ -25,7 +25,15 @@ NOISE_FLOOR_MIN_SAMPLES = 20      # don't trust the floor until it has this many
 # rose ~1.3x -- about 10 dB better signal-to-noise, and "Alisto tabang" was
 # recognised at 3 m. Applied at every startup (the mixer setting does not
 # survive a reboot). Each step is 0.5 dB; None = leave the card alone.
-CAPTURE_PGA = 40
+# After the device went into its box the sub-100 Hz hum rose and PGA 40 hit
+# full scale (peak 32,4xx) even in a silent room. PGA 30 removed the clipping
+# (peak ~17,700, speech 16.3 dB over room noise) but at 3 m only ~4 of 8
+# "Alisto tabang" tries triggered (gate always passed; whisper mangled the
+# words). PGA 34 gave the same hit rate (~3 of 9): vad.normalize_level() already
+# rescales every utterance to rms 2000 before whisper, so mic gain barely
+# changes what whisper hears. Stay at 30 for headroom (a shout near the
+# device must not clip).
+CAPTURE_PGA = 30
 CAPTURE_CARD = "seeed2micvoicec"
 
 # --- Audio preprocessing (see measure_noise.py for the measurements behind it) ---
