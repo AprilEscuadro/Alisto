@@ -44,12 +44,13 @@ import vad                # noqa: E402
 import whisper_asr         # noqa: E402
 
 sys.path.insert(0, "/home/alisto")
-from alisto_sms import send_sms, read_own_sim_number, read_sim_health, sms_failure_reason, check_load_balance  # noqa: E402 (existing, working, own serial port)
+from alisto_sms import send_sms, read_own_sim_number, read_sim_health, sms_failure_reason, check_load_balance, clear_sim_messages  # noqa: E402 (existing, working, own serial port)
 import gps  # noqa: E402  (SIM7600's built-in GNSS -- shares that same port,
 # but never used at the same time as send_sms(), see below)
 import reverse_geocode  # noqa: E402  (offline lat/lon -> barangay name)
 import firestore_backend  # noqa: E402  (Admin SDK -- finds who claimed this device)
 import outbox  # noqa: E402  (offline store-and-forward for emergency alerts)
+import load_alert  # noqa: E402  (when to speak the "SIM load is low" warning)
 
 try:
     from alisto_sms import DEFAULT_MESSAGE  # noqa: E402
@@ -103,6 +104,10 @@ RTC_TIMEOUT_S = 3
 
 _emergency_lock = threading.Lock()
 _emergency_in_progress = False
+# Set when an emergency ends: load_balance_loop() then re-checks the SIM load
+# soon after, so the app shows what the emergency SMS cost without waiting
+# for the next 6-hourly check.
+_load_check_now = threading.Event()
 
 # Set once in voice_listen_loop() at startup, then shared with
 # trigger_emergency() below -- both the button path (spawned independently
@@ -718,6 +723,7 @@ def trigger_emergency(ser, source, category="UNKNOWN", message=None):
             _progress["t"] = time.monotonic()
             with _emergency_lock:
                 _emergency_in_progress = False
+            _load_check_now.set()  # re-check the SIM load shortly (see load_balance_loop)
 
             dropped = frames.resume() if frames is not None else 0
             _progress["t"] = time.monotonic()
@@ -1317,6 +1323,12 @@ BATTERY_CONSECUTIVE_CHECKS_REQUIRED = 2
 LOAD_CHECK_INTERVAL_S = 6 * 60 * 60  # every 6 hours -- each check is a free
 # USSD session, but checking too often just adds traffic on the SIM port.
 LOAD_CHECK_FIRST_DELAY_S = 90        # let GPS/SIM settle after boot first
+LOAD_CHECK_AFTER_EMERGENCY_S = 60    # after an emergency ends, wait this long
+# (SMS tail, GPS and the modem settle) and then re-check the load.
+LOW_LOAD_RETRY_S = 30 * 60           # while a low-load warning is waiting (quiet
+# hours), re-check this often instead of every 6 h, so it is spoken soon after 7 am.
+SIM_CLEANUP_INTERVAL_S = 6 * 60 * 60  # the SIM stores only ~35 texts; see
+SIM_CLEANUP_FIRST_DELAY_S = 45        # alisto_sms.clear_sim_messages()
 
 
 def _balance_ussd_override():
@@ -1329,11 +1341,16 @@ def _balance_ussd_override():
         return None
 
 
-def load_balance_loop():
+def load_balance_loop(ser):
     """Checks the SIM's remaining load every LOAD_CHECK_INTERVAL_S and saves
     it to Firestore (device/{serial}.loadBalance) for the website. Never runs
     during an emergency, and holds gps.port_lock like every other AT command
-    so it can't collide with an SMS send or the GPS poll."""
+    so it can't collide with an SMS send or the GPS poll.
+
+    Also speaks a warning when the load runs low (see load_alert.decide() for
+    the rules: below PHP 10, once then every 12 h, none from 9 pm to 7 am), so
+    the person at the device hears it even if nobody opens the app. Without
+    load the emergency SMS cannot be sent."""
     try:
         serial_id = firestore_backend.get_own_serial()
     except Exception as e:
@@ -1341,6 +1358,9 @@ def load_balance_loop():
         return
 
     time.sleep(LOAD_CHECK_FIRST_DELAY_S)
+    _load_check_now.clear()  # the first check below covers any emergency so far
+    low_announced_at = None   # monotonic time of the last spoken low-load warning
+    low_deferred = False      # low, but the warning had to wait (quiet hours/busy)
     while True:
         if _emergency_in_progress:
             time.sleep(60)  # try again shortly, after the emergency
@@ -1355,9 +1375,54 @@ def load_balance_loop():
                 firestore_backend.set_device_load(serial_id, amount, reply)
                 print(
                     f"Load check: {amount if amount is not None else 'no amount'} ({reply[:80]!r})")
+                action, low_announced_at = load_alert.decide(
+                    amount, low_announced_at, time.monotonic(),
+                    time.localtime().tm_hour, busy=_emergency_in_progress)
+                low_deferred = action == "defer"
+                if action == "announce":
+                    print(f"Load low (P{amount:.2f}) -- announcing.")
+                    play_low_load_announcement(ser)
+                elif low_deferred:
+                    print(f"Load low (P{amount:.2f}) -- warning deferred "
+                          f"(quiet hours or busy), will retry.")
         except Exception as e:
             print(f"Load check failed: {e}")
-        time.sleep(LOAD_CHECK_INTERVAL_S)
+        # Sleep until the next 6-hourly check (sooner while a low-load warning
+        # is waiting for the quiet hours to pass), but wake early when an
+        # emergency has just ended so the app shows the SMS cost soon.
+        wait_s = LOW_LOAD_RETRY_S if low_deferred else LOAD_CHECK_INTERVAL_S
+        if _load_check_now.wait(timeout=wait_s):
+            _load_check_now.clear()
+            print(
+                f"Load check: emergency ended -- re-checking in {LOAD_CHECK_AFTER_EMERGENCY_S}s.")
+            time.sleep(LOAD_CHECK_AFTER_EMERGENCY_S)
+
+
+def sim_storage_cleanup_loop():
+    """Empties the SIM's message storage at startup and every
+    SIM_CLEANUP_INTERVAL_S. A full SIM logs "+SMS FULL" (seen in real
+    testing: 35 of 35 used by carrier promo texts). Never runs during an
+    emergency, and holds gps.port_lock like every other AT command."""
+    time.sleep(SIM_CLEANUP_FIRST_DELAY_S)
+    while True:
+        if _emergency_in_progress:
+            time.sleep(60)  # try again after the emergency
+            continue
+        try:
+            with gps.port_lock:
+                result = clear_sim_messages()
+            if result is None:
+                print("SIM storage: cleanup skipped (modem didn't answer).")
+            else:
+                before, after, total = result
+                if before:
+                    print(
+                        f"SIM storage: cleared {before} stored message(s) -> {after}/{total} used.")
+                else:
+                    print(f"SIM storage: empty (0/{total}).")
+        except Exception as e:
+            print(f"SIM storage cleanup failed: {e}")
+        time.sleep(SIM_CLEANUP_INTERVAL_S)
 
 
 def _is_undervoltage():
@@ -1381,6 +1446,29 @@ def _is_undervoltage():
         return bool(value & 0x1)
     except Exception:
         return False
+
+
+def play_low_load_announcement(ser):
+    """Same pause-mic/status-LED-off/resume pattern as every other
+    announcement -- see play_medicine_reminder() for why _audio_state_lock
+    is required."""
+    with _audio_state_lock:
+        if frames is not None:
+            frames.pause()
+        send_command(ser, "CMD:STATUS_LED_OFF")
+
+        try:
+            audio_path = tts.synthesize_low_load()
+            if audio_path:
+                stream_audio(ser, audio_path, clear_stale_cancel=True)
+            else:
+                print("Low-load TTS unavailable -- skipping announcement")
+        finally:
+            dropped = frames.resume() if frames is not None else 0
+            if dropped:
+                print(
+                    f"(discarded {dropped} boundary frame(s) after low-load announcement)")
+            send_command(ser, "CMD:STATUS_LED_ON")
 
 
 def play_low_battery_announcement(ser):
@@ -1530,7 +1618,9 @@ def main():
                      args=(ser,), daemon=True).start()
     threading.Thread(target=location_sync_loop, daemon=True).start()
     threading.Thread(target=sync_sim_number, daemon=True).start()
-    threading.Thread(target=load_balance_loop, daemon=True).start()
+    threading.Thread(target=sim_storage_cleanup_loop, daemon=True).start()
+    threading.Thread(target=load_balance_loop,
+                     args=(ser,), daemon=True).start()
     threading.Thread(target=heartbeat_loop, daemon=True).start()
     threading.Thread(target=battery_monitor_loop,
                      args=(ser,), daemon=True).start()

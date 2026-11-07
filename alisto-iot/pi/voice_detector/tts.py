@@ -45,6 +45,8 @@ SMS_FAILED_OUTPUT_RAW = "/home/alisto/alisto_audio/sms_failed_announce.raw"  # o
 # file too, same reasoning as above.
 LOW_BATTERY_OUTPUT_RAW = "/home/alisto/alisto_audio/low_battery_announce.raw"  # own
 # file too, same reasoning as above.
+LOW_LOAD_OUTPUT_RAW = "/home/alisto/alisto_audio/low_load_announce.raw"  # own
+# file too, same reasoning as above.
 
 # volume > 1.0 boosts loudness, but normalize_audio=True already maxes
 # peaks to full scale by default -- pushing volume much past ~1.6-1.7 just
@@ -256,3 +258,12 @@ def synthesize_low_battery():
     report, just "about to die")."""
     text = "Low battery. Please charge Alisto now."
     return _synthesize_to_file(text, LOW_BATTERY_OUTPUT_RAW)
+
+
+def synthesize_low_load():
+    """Said when the SIM's prepaid load is nearly used up (see
+    load_alert.py and alisto_main.py's load_balance_loop()). Without load the
+    emergency S M S cannot be sent. "sim" is lowercase and "S M S" spaced
+    for the same Piper pronunciation reasons as SMS_FAILURE_TEXT."""
+    text = "Low sim load. Please reload the sim card so Alisto can send alerts."
+    return _synthesize_to_file(text, LOW_LOAD_OUTPUT_RAW)
