@@ -50,7 +50,9 @@ DEBUG_DIR = "/home/alisto/voice_detector/whisper_timeouts"
 # "ales" -- real test: Whisper heard "Alisto" as "Ales do".
 # "alyst" -- real test: Whisper heard "Alisto" as "Alystos".
 # "alest" -- real test: Whisper heard "Alisto" as "Alestor".
-WAKE_FRAGMENTS = ("alist", "alisto", "alista", "aristo", "alerto", "ales", "alyst", "alest")
+# "listo" -- real test at 3 m: Whisper heard "Alisto tabang" as "ang listong
+# tapang" (dropped the leading "a" into the previous word).
+WAKE_FRAGMENTS = ("alist", "alisto", "alista", "aristo", "alerto", "ales", "alyst", "alest", "listo")
 
 
 def transcribe(wav_path):
