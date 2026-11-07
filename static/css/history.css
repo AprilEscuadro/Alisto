@@ -64,7 +64,9 @@
   margin-bottom: 20px;
 }
 
-.summary-cards.four-up { grid-template-columns: repeat(4, 1fr); }
+.summary-cards.four-up {
+  grid-template-columns: repeat(4, 1fr);
+}
 
 .summary-card {
   position: relative;
@@ -88,24 +90,64 @@
   justify-content: center;
 }
 
-.summary-icon svg { width: 20px; height: 20px; }
+.summary-icon svg {
+  width: 20px;
+  height: 20px;
+}
 
-.summary-icon.danger { background: var(--danger-light); color: var(--danger); }
-.summary-icon.muted { background: var(--muted-light); color: var(--muted); }
-.summary-icon.primary { background: var(--primary-light); color: var(--primary); }
-.summary-icon.success { background: var(--success-light); color: var(--success); }
-.summary-icon.warning { background: var(--warning-light); color: var(--warning); }
-.summary-icon.purple { background: var(--purple-light); color: var(--purple); }
+.summary-icon.danger {
+  background: var(--danger-light);
+  color: var(--danger);
+}
 
-.summary-content { display: flex; flex-direction: column; gap: 2px; }
-.summary-label { font-size: 13px; color: var(--text-soft); font-weight: 500; }
+.summary-icon.muted {
+  background: var(--muted-light);
+  color: var(--muted);
+}
+
+.summary-icon.primary {
+  background: var(--primary-light);
+  color: var(--primary);
+}
+
+.summary-icon.success {
+  background: var(--success-light);
+  color: var(--success);
+}
+
+.summary-icon.warning {
+  background: var(--warning-light);
+  color: var(--warning);
+}
+
+.summary-icon.purple {
+  background: var(--purple-light);
+  color: var(--purple);
+}
+
+.summary-content {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.summary-label {
+  font-size: 13px;
+  color: var(--text-soft);
+  font-weight: 500;
+}
+
 .summary-value {
   font-family: "Nunito", sans-serif;
   font-size: 26px;
   font-weight: 800;
   line-height: 1.1;
 }
-.summary-sub { font-size: 12px; color: var(--text-soft); }
+
+.summary-sub {
+  font-size: 12px;
+  color: var(--text-soft);
+}
 
 /* ---- Filter tabs ---- */
 .filter-tabs {
@@ -133,16 +175,48 @@
   transition: all 0.15s ease;
 }
 
-.filter-tab svg { width: 14px; height: 14px; }
-.filter-tab:hover { border-color: var(--primary); color: var(--primary); }
-.filter-tab.active { background: var(--primary); border-color: var(--primary); color: #fff; }
+.filter-tab svg {
+  width: 14px;
+  height: 14px;
+}
 
-.filter-tab .dot { width: 8px; height: 8px; border-radius: 50%; display: inline-block; }
-.filter-tab .dot.emergency { background: var(--danger); }
-.filter-tab .dot.offline { background: var(--muted); }
-.filter-tab .dot.online { background: var(--success); }
-.filter-tab .dot.success { background: var(--success); }
-.filter-tab .dot.attention { background: var(--warning); }
+.filter-tab:hover {
+  border-color: var(--primary);
+  color: var(--primary);
+}
+
+.filter-tab.active {
+  background: var(--primary);
+  border-color: var(--primary);
+  color: #fff;
+}
+
+.filter-tab .dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  display: inline-block;
+}
+
+.filter-tab .dot.emergency {
+  background: var(--danger);
+}
+
+.filter-tab .dot.offline {
+  background: var(--muted);
+}
+
+.filter-tab .dot.online {
+  background: var(--success);
+}
+
+.filter-tab .dot.success {
+  background: var(--success);
+}
+
+.filter-tab .dot.attention {
+  background: var(--warning);
+}
 
 /* ---- History table ---- */
 .history-table-wrap {
@@ -178,10 +252,20 @@
   color: var(--text);
 }
 
-.history-table tbody tr:last-child td { border-bottom: none; }
-.history-table tbody tr:hover { background: #fafbfd; }
+.history-table tbody tr:last-child td {
+  border-bottom: none;
+}
 
-.col-datetime small { display: block; color: var(--text-soft); font-size: 12px; margin-top: 2px; }
+.history-table tbody tr:hover {
+  background: #fafbfd;
+}
+
+.col-datetime small {
+  display: block;
+  color: var(--text-soft);
+  font-size: 12px;
+  margin-top: 2px;
+}
 
 .history-type {
   display: inline-flex;
@@ -193,14 +277,33 @@
   font-weight: 700;
 }
 
-.history-type svg { width: 13px; height: 13px; }
-.history-type.emergency,
-.history-type.alert { background: var(--danger-light); color: var(--danger); }
-.history-type.med,
-.history-type.medication { background: var(--primary-light); color: var(--primary); }
-.history-type.device { background: var(--success-light); color: var(--success); }
+.history-type svg {
+  width: 13px;
+  height: 13px;
+}
 
-.history-person { display: flex; align-items: center; gap: 10px; }
+.history-type.emergency,
+.history-type.alert {
+  background: var(--danger-light);
+  color: var(--danger);
+}
+
+.history-type.med,
+.history-type.medication {
+  background: var(--primary-light);
+  color: var(--primary);
+}
+
+.history-type.device {
+  background: var(--success-light);
+  color: var(--success);
+}
+
+.history-person {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
 
 .history-person-avatar {
   width: 34px;
@@ -215,11 +318,28 @@
   overflow: hidden;
 }
 
-.history-person-avatar img { width: 100%; height: 100%; object-fit: cover; }
-.history-person-avatar svg { width: 16px; height: 16px; }
-.history-person small { display: block; color: var(--text-soft); font-size: 12px; }
+.history-person-avatar img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
 
-.history-details { display: flex; flex-direction: column; gap: 4px; }
+.history-person-avatar svg {
+  width: 16px;
+  height: 16px;
+}
+
+.history-person small {
+  display: block;
+  color: var(--text-soft);
+  font-size: 12px;
+}
+
+.history-details {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
 
 .history-detail-badge {
   align-self: flex-start;
@@ -231,9 +351,20 @@
   color: var(--muted);
 }
 
-.history-detail-badge.success { background: var(--success-light); color: var(--success); }
-.history-detail-badge.warning { background: var(--warning-light); color: var(--warning); }
-.history-detail-badge.danger { background: var(--danger-light); color: var(--danger); }
+.history-detail-badge.success {
+  background: var(--success-light);
+  color: var(--success);
+}
+
+.history-detail-badge.warning {
+  background: var(--warning-light);
+  color: var(--warning);
+}
+
+.history-detail-badge.danger {
+  background: var(--danger-light);
+  color: var(--danger);
+}
 
 .col-location {
   display: flex;
@@ -243,14 +374,20 @@
   font-size: 12.5px;
 }
 
-.col-location svg { width: 13px; height: 13px; }
+.col-location svg {
+  width: 13px;
+  height: 13px;
+}
 
 .col-chevron a {
   display: inline-flex;
   color: var(--text-soft);
 }
 
-.col-chevron svg { width: 16px; height: 16px; }
+.col-chevron svg {
+  width: 16px;
+  height: 16px;
+}
 
 .history-empty {
   text-align: center;
@@ -268,9 +405,16 @@
   margin-bottom: 12px;
 }
 
-.pagination-summary { font-size: 12.5px; color: var(--text-soft); }
+.pagination-summary {
+  font-size: 12.5px;
+  color: var(--text-soft);
+}
 
-.pagination-controls { display: flex; align-items: center; gap: 6px; }
+.pagination-controls {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
 
 .page-btn {
   min-width: 32px;
@@ -286,11 +430,31 @@
   cursor: pointer;
 }
 
-.page-btn svg { width: 14px; height: 14px; }
-.page-btn:hover:not(:disabled) { border-color: var(--primary); color: var(--primary); }
-.page-btn.active { background: var(--primary); border-color: var(--primary); color: #fff; }
-.page-btn:disabled { opacity: 0.4; cursor: not-allowed; }
-.page-ellipsis { color: var(--text-soft); padding: 0 2px; }
+.page-btn svg {
+  width: 14px;
+  height: 14px;
+}
+
+.page-btn:hover:not(:disabled) {
+  border-color: var(--primary);
+  color: var(--primary);
+}
+
+.page-btn.active {
+  background: var(--primary);
+  border-color: var(--primary);
+  color: #fff;
+}
+
+.page-btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.page-ellipsis {
+  color: var(--text-soft);
+  padding: 0 2px;
+}
 
 /* pagination + filter pills that are <a>/<span>, not real <button> elements —
    they don't get flex/underline resets for free like buttons do */
@@ -315,18 +479,38 @@ span.page-btn.active {
   justify-content: center;
 }
 
-.main-footer { text-align: center; color: var(--text-soft); font-size: 12.5px; margin-top: 32px; }
+.main-footer {
+  text-align: center;
+  color: var(--text-soft);
+  font-size: 12.5px;
+  margin-top: 32px;
+}
 
 @media (max-width: 900px) {
-  .summary-cards, .summary-cards.four-up { grid-template-columns: 1fr 1fr; }
-  .history-table-wrap { overflow-x: auto; }
-  .history-table { min-width: 720px; }
+
+  .summary-cards,
+  .summary-cards.four-up {
+    grid-template-columns: 1fr 1fr;
+  }
+
+  .history-table-wrap {
+    overflow-x: auto;
+  }
+
+  .history-table {
+    min-width: 720px;
+  }
 }
 
 /* ---- Filters: tabs are links, date range is a select ---- */
-a.filter-tab { text-decoration: none; }
+a.filter-tab {
+  text-decoration: none;
+}
 
-.filter-range { padding-right: 6px; }
+.filter-range {
+  padding-right: 6px;
+}
+
 .filter-range select {
   border: none;
   background: transparent;
@@ -338,11 +522,23 @@ a.filter-tab { text-decoration: none; }
 }
 
 /* ---- Rows open the details modal ---- */
-#historyTableBody tr[data-activity-id] { cursor: pointer; }
-#historyTableBody tr[data-activity-id]:hover { background: var(--page-bg); }
+#historyTableBody tr[data-activity-id] {
+  cursor: pointer;
+}
 
-.history-detail-sub { color: var(--text-soft); font-size: 12px; }
-.history-detail-badge.info { background: var(--primary-light); color: var(--primary); }
+#historyTableBody tr[data-activity-id]:hover {
+  background: var(--page-bg);
+}
+
+.history-detail-sub {
+  color: var(--text-soft);
+  font-size: 12px;
+}
+
+.history-detail-badge.info {
+  background: var(--primary-light);
+  color: var(--primary);
+}
 
 .history-open-btn {
   display: inline-flex;
@@ -353,11 +549,24 @@ a.filter-tab { text-decoration: none; }
   padding: 4px;
   border-radius: 6px;
 }
-.history-open-btn:hover { background: var(--primary-light); color: var(--primary); }
-.history-open-btn svg { width: 16px; height: 16px; }
+
+.history-open-btn:hover {
+  background: var(--primary-light);
+  color: var(--primary);
+}
+
+.history-open-btn svg {
+  width: 16px;
+  height: 16px;
+}
 
 /* ---- Activity details modal ---- */
-.activity-dialog { max-width: 480px; width: 100%; text-align: left; }
+.activity-dialog {
+  max-width: 480px;
+  width: 100%;
+  text-align: left;
+}
+
 .activity-dialog-head {
   display: flex;
   align-items: center;
@@ -365,8 +574,15 @@ a.filter-tab { text-decoration: none; }
   gap: 12px;
   margin-bottom: 12px;
 }
-.activity-dialog-head .confirm-title { margin: 0; }
-.activity-dialog-body { font-size: 13.5px; }
+
+.activity-dialog-head .confirm-title {
+  margin: 0;
+}
+
+.activity-dialog-body {
+  font-size: 13.5px;
+}
+
 .activity-row {
   display: flex;
   justify-content: space-between;
@@ -374,9 +590,21 @@ a.filter-tab { text-decoration: none; }
   padding: 8px 0;
   border-bottom: 1px solid var(--border);
 }
-.activity-row span { color: var(--text-soft); }
-.activity-row strong { color: var(--text); text-align: right; }
-.activity-dialog-foot { margin-top: 16px; text-align: right; }
+
+.activity-row span {
+  color: var(--text-soft);
+}
+
+.activity-row strong {
+  color: var(--text);
+  text-align: right;
+}
+
+.activity-dialog-foot {
+  margin-top: 16px;
+  text-align: right;
+}
+
 .activity-open-link {
   display: inline-flex;
   padding: 9px 14px;
@@ -387,4 +615,116 @@ a.filter-tab { text-decoration: none; }
   font-weight: 700;
   text-decoration: none;
 }
-.activity-open-link:hover { background: var(--primary); color: #fff; }
+
+.activity-open-link:hover {
+  background: var(--primary);
+  color: #fff;
+}
+
+/* ==========================================================================
+   History: BHW-style look (pasted at the bottom so it overrides the above)
+   ========================================================================== */
+
+/* ---- stat cards: round icon, number first, then the label ---- */
+.summary-cards.four-up .summary-card {
+  align-items: center;
+  gap: 16px;
+}
+
+.summary-cards.four-up .summary-icon {
+  width: 52px;
+  height: 52px;
+  border-radius: 50%;
+}
+
+.summary-cards.four-up .summary-icon svg {
+  width: 24px;
+  height: 24px;
+}
+
+.summary-cards.four-up .summary-content {
+  gap: 0;
+}
+
+.summary-cards.four-up .summary-value {
+  order: -1;
+}
+
+.summary-cards.four-up .summary-label {
+  color: var(--text);
+  font-weight: 600;
+}
+
+.summary-cards.four-up .summary-sub {
+  margin-top: 2px;
+}
+
+/* ---- filter pills: light-blue when selected ---- */
+.filter-tab {
+  height: 34px;
+  padding: 0 16px;
+}
+
+html .filter-tab.active {
+  background: var(--primary-light);
+  border-color: var(--primary);
+  color: var(--primary);
+}
+
+/* ---- table: lighter header, tighter rows ---- */
+.history-table thead th {
+  padding: 14px 16px;
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0;
+  color: var(--text);
+  background: #fafbfd;
+}
+
+.history-table tbody td {
+  padding: 12px 16px;
+}
+
+/* Fix: this cell was display:flex, which broke the row line next to it */
+td.col-location {
+  display: table-cell;
+}
+
+td.col-location svg {
+  width: 13px;
+  height: 13px;
+  margin-right: 4px;
+  vertical-align: -2px;
+}
+
+/* ---- "Showing 1 to 10 of 20" + page numbers attached under the table ---- */
+html .history-table-wrap:has(+ .pagination) {
+  margin-bottom: 0;
+  border-bottom: none;
+  border-bottom-left-radius: 0;
+  border-bottom-right-radius: 0;
+}
+
+.history-table-wrap+.pagination {
+  margin: 0 0 12px;
+  padding: 14px 16px;
+  background: var(--card-bg);
+  border: 1px solid var(--border);
+  border-radius: 0 0 var(--radius-lg) var(--radius-lg);
+  box-shadow: var(--shadow-card);
+}
+
+.pagination-summary {
+  font-size: 13px;
+}
+
+.page-btn {
+  min-width: 34px;
+  height: 34px;
+  font-size: 13px;
+}
+
+/* ---- dark mode: the site never redefines --border for dark, so set it here ---- */
+html[data-theme="dark"] .history-table-wrap+.pagination {
+  border-color: rgba(255, 255, 255, 0.09);
+}

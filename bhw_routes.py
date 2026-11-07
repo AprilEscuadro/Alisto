@@ -428,18 +428,10 @@ def _bhw_layout_context():
     user = getattr(g, 'bhw_user', None)
     if not user:
         return {}
-    elders = _elders_in_barangay(g.barangay)
-    open_list = _open_alerts(elders)
-    open_count = len(open_list)
-    notif_items = [{
-        'title': (elders.get(a.get('elder_id')) or {}).get('full_name') or 'A resident',
-        'subtitle': ('Pressed the ALISTO device' if (a.get('trigger_type') or '').upper() == 'BUTTON'
-                     else 'Called for help') + ' — still active',
-        'when': ac.fmt_time(a.get('date_triggered')),
-        'href': url_for('bhw.alerts', alert=a['id']),
-    } for a in open_list[:8]]
+    # Only the COUNT stays here (sidebar "Alerts" badge). The bell loads its
+    # own items from /rbell (role_notifications.py).
+    open_count = len(_open_alerts(_elders_in_barangay(g.barangay)))
     return {
-        'bhw_notif_items': notif_items,
         'bhw_name': user.get('full_name') or 'BHW',
         'bhw_initials': _initials(user.get('full_name')),
         'bhw_photo': user.get('photoBase64') or None,

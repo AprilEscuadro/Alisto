@@ -58,6 +58,13 @@ button {
   padding: 28px 20px;
   display: flex;
   flex-direction: column;
+  /* Stays put while the page scrolls; the care plan card stays at the bottom */
+  position: sticky;
+  top: 0;
+  height: 100vh;
+  align-self: start;
+  overflow-y: auto;
+  scrollbar-width: thin;
 }
 
 .sidebar-logo {
@@ -3711,4 +3718,144 @@ html[data-theme="dark"] #viewLovedOneModal .btn-primary-pill,
 html[data-theme="dark"] .link-device-controls .btn-primary-pill {
   background: #2f6feb;
   color: #fff;
+}
+
+/* ============ CARD PAGER (My Loved Ones + Medication Reminders) ============ */
+.cp-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin: 4px 0 28px;
+}
+
+.cp-bar[hidden] {
+  display: none;
+}
+
+.loved-ones-grid:has(+ .cp-bar) {
+  margin-bottom: 20px;
+}
+
+.cp-summary {
+  font-size: 12.5px;
+  color: var(--muted);
+}
+
+.cp-controls {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.cp-btn {
+  min-width: 34px;
+  height: 34px;
+  padding: 0 10px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--white);
+  color: var(--muted);
+  font-family: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.cp-btn:hover:not(:disabled) {
+  border-color: var(--blue);
+  color: var(--blue);
+}
+
+.cp-btn.active {
+  background: var(--blue);
+  border-color: var(--blue);
+  color: #fff;
+}
+
+.cp-btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.cp-dots {
+  color: var(--muted);
+  padding: 0 2px;
+}
+
+/* ============ CARD PAGER (My Loved Ones + Medication Reminders) ============ */
+.cp-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin: 4px 0 28px;
+}
+
+.cp-bar[hidden] {
+  display: none;
+}
+
+.loved-ones-grid:has(+ .cp-bar) {
+  margin-bottom: 20px;
+}
+
+.cp-summary {
+  font-size: 12.5px;
+  color: var(--muted);
+}
+
+.cp-controls {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.cp-btn {
+  min-width: 34px;
+  height: 34px;
+  padding: 0 10px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--white);
+  color: var(--muted);
+  font-family: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.cp-btn:hover:not(:disabled) {
+  border-color: var(--blue);
+  color: var(--blue);
+}
+
+.cp-btn.active {
+  background: var(--blue);
+  border-color: var(--blue);
+  color: #fff;
+}
+
+.cp-btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.cp-dots {
+  color: var(--muted);
+  padding: 0 2px;
+}
+
+
+/* ============ MAPS STAY INSIDE THEIR BOX ============ */
+.leaflet-container {
+  position: relative;
+  z-index: 0;
+  isolation: isolate;
+}
+
+.sidebar {
+  z-index: 50;
 }

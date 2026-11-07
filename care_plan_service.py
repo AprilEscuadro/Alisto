@@ -318,7 +318,8 @@ def new_payment_no(doc_id):
 
 
 def get_plan_qr_codes():
-    """{months: {gcash_name, gcash_number, qr_image_url}} for each option."""
+    """{months: {gcash_name, gcash_number, qr_image_url, price}} for each option.
+    `price` is the TOTAL for that plan length (what the family must send)."""
     out = {}
     try:
         _exists, data = _settings_doc('app_settings', 'plan_qr_codes')
@@ -326,35 +327,41 @@ def get_plan_qr_codes():
         print(f'[care plan] could not read plan QR codes: {e}')
         data = {}
 
-    # Falls back to this until the admin sets a different QR per plan length
-    # in /admin/subscriptions.
     default_gcash_name = 'ALISTO'
     default_qr_image = '/static/images/alisto_qr.jpg'
+    monthly = get_plan()['price']
 
     for months in PLAN_MONTH_OPTIONS:
         entry = data.get(str(months)) or {}
+        try:
+            price = float(entry.get('price'))
+        except (TypeError, ValueError):
+            # default: monthly x months
+            price = round(monthly * months, 2)
         out[months] = {
             'gcash_name': entry.get('gcash_name') or default_gcash_name,
             'gcash_number': entry.get('gcash_number') or '',
             'qr_image_url': entry.get('qr_image_url') or default_qr_image,
+            'price': int(price) if price == int(price) else price,
         }
     return out
 
 
-def save_plan_qr_code(months, gcash_name, gcash_number, qr_image_url):
-    """Admin sets/updates the QR + GCash details for one plan length."""
+def save_plan_qr_code(months, gcash_name, gcash_number, qr_image_url, price=None):
+    """Admin sets/updates the QR, GCash details and price for one plan length."""
     if months not in PLAN_MONTH_OPTIONS:
         raise ValueError('Invalid plan length.')
     _SETTINGS_CACHE.pop(('app_settings', 'plan_qr_codes'), None)
-    ref = db.collection('app_settings').document('plan_qr_codes')
-    ref.set({
-        str(months): {
-            'gcash_name': gcash_name.strip(),
-            'gcash_number': gcash_number.strip(),
-            'qr_image_url': qr_image_url,
-            'updated_at': firestore.SERVER_TIMESTAMP,
-        }
-    }, merge=True)
+    entry = {
+        'gcash_name': gcash_name.strip(),
+        'gcash_number': gcash_number.strip(),
+        'qr_image_url': qr_image_url,
+        'updated_at': firestore.SERVER_TIMESTAMP,
+    }
+    if price is not None:
+        entry['price'] = float(price)
+    db.collection('app_settings').document('plan_qr_codes').set(
+        {str(months): entry}, merge=True)
 
 
 # ---------- payment submission checks ----------
@@ -368,8 +375,8 @@ def validate_payment_submission(months, amount_paid_raw, reference_no, plan=None
     Returns (ok, message, info). info = {'expected', 'amount_paid', 'unit_price'}.
     """
     plan = plan or get_plan()
-    unit_price = plan['price']
-    expected = round(unit_price * months, 2)
+    expected = round(float(get_plan_qr_codes()[months]['price']), 2)
+    unit_price = round(expected / months, 2)
     plural = 's' if months != 1 else ''
 
     if not re.fullmatch(r'\d{13}', reference_no or ''):

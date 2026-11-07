@@ -9,6 +9,7 @@ import admin_routes
 from bhw_routes import bhw_bp
 from inbox_routes import inbox_bp
 from notifications import notif_bp
+from role_notifications import rbell_bp
 import inbox_service as inbox
 import valid_id_store
 from firebase_admin import firestore, auth as firebase_auth
@@ -35,6 +36,7 @@ app.register_blueprint(admin_bp)  # admin panel at /admin
 app.register_blueprint(bhw_bp)    # BHW portal at /bhw
 app.register_blueprint(inbox_bp)  # inbox JSON API at /inbox/api
 app.register_blueprint(notif_bp)  # family notification bell at /notifications
+app.register_blueprint(rbell_bp)  # BHW + admin notification bell at /rbell
 
 read_meter.install(app)          # prints Firestore reads per page; /dev/reads
 
@@ -129,7 +131,9 @@ def _get_care_plan(elder_id=None):
         'status': state['label'], 'badge': state['badge'], 'icon': state['icon'],
         'headline': state['headline'], 'subline': subline,
         'days_left': state['days_left'],
-        'renew_date': state['paid_until'], 'price': plan['price'],
+        'renew_date': state['paid_until'],
+        # The "/ month" price is whatever the admin set for the 1-month plan.
+        'price': cps.get_plan_qr_codes()[1]['price'],
         'currency': plan.get('currency', 'PHP'),
     }
 
@@ -1575,6 +1579,7 @@ def _alert_card(row, elder, locations=None, phrases=None, sms_counts=None):
         'short_id': row['id'][:8].upper(),
         'type': 'false-alarm' if status == 'false_alarm' else 'emergency',
         'is_open': _is_open_alert(alert),
+        'status_key': status,   # 'active' | 'acknowledged' | 'resolved' | 'false_alarm'
         'elder_name': elder['name'],
         'elder_photo_url': elder.get('photo_url'),
         'relationship': elder.get('relationship') or 'Family',
@@ -1628,10 +1633,17 @@ def alerts():
         return redirect(url_for('login'))
 
     cards = _family_alert_cards()
+    # Same 4 numbers as the BHW Alerts page (counted from the newest alerts loaded).
+    stats = {
+        'active': sum(c['is_open'] for c in cards),
+        'responding': sum(c['status_key'] == 'acknowledged' for c in cards),
+        'resolved': sum(c['status_key'] == 'resolved' for c in cards),
+        'false_alarm': sum(c['status_key'] == 'false_alarm' for c in cards),
+    }
     return render_template(
         'family/alerts.html',
         full_name=session['full_name'], role=session['role'],
-        care_plan=_get_care_plan(), alerts=cards,
+        care_plan=_get_care_plan(), alerts=cards, stats=stats,
         emergency_count=sum(c['type'] == 'emergency' for c in cards),
         false_alarm_count=sum(c['type'] == 'false-alarm' for c in cards),
         notification_count=sum(c['is_open'] for c in cards),
@@ -2507,7 +2519,7 @@ def delete_medication_reminder(reminder_id):
 # barangay, an admin sees everything — all through _activity_feed().
 
 
-ACTIVITY_PAGE_SIZE = 20
+ACTIVITY_PAGE_SIZE = 10
 
 ACTIVITY_TYPES = {
     'alert': {
@@ -2643,6 +2655,7 @@ def _activity_row(doc_id, item, elder_id, elder):
         'detail_badge': item.get('badge') or '',
         'detail_badge_class': item.get('badge_class') or '',
         'location': item.get('location_address') or '',
+        'ref_id': item.get('ref_id'),
     }
 
 
@@ -2721,6 +2734,31 @@ def _paginate(rows, page, per_page=ACTIVITY_PAGE_SIZE):
     }
 
 
+def _fill_alert_locations(rows):
+    """History rows for alerts often have no address saved on the row itself.
+    For the rows given (one page only), take it from the alert's own location:
+    2 batched reads, at most one alert + one location per alert shown."""
+    need = [r for r in rows if r['type_filter'] == 'alert'
+            and not r['location'] and r.get('ref_id')]
+    if not need:
+        return
+    try:
+        refs = [db.collection(ALERT_COLLECTION).document(i)
+                for i in {r['ref_id'] for r in need}]
+        location_ids = {}
+        for doc in db.get_all(refs):
+            if doc.exists:
+                location_ids[doc.id] = (doc.to_dict() or {}).get('location_id')
+        locations = ac.alert_locations_bulk(db, location_ids.values())
+        for r in need:
+            lat, lng, address = locations.get(
+                location_ids.get(r['ref_id']), (None, None, None))
+            r['location'] = address or (
+                f'{lat:.5f}, {lng:.5f}' if lat is not None else '')
+    except Exception as e:
+        print(f'[history] could not look up alert locations: {e}')
+
+
 @app.route('/history')
 def history():
     if 'user_id' not in session:
@@ -2743,6 +2781,7 @@ def history():
     shown = in_range if active_type == 'all' else [
         r for r in in_range if r['type_filter'] == active_type]
     activities, pagination = _paginate(shown, page)
+    _fill_alert_locations(activities)
 
     open_alerts = _open_alerts_for_elders(elders)
 
@@ -2780,6 +2819,7 @@ def activity_details(activity_id):
     row = _activity_row(
         doc.id, item, item['elder_id'], elders[item['elder_id']])
     row.pop('local_time', None)
+    _fill_alert_locations([row])
 
     actor = 'ALISTO device' if item.get(
         'type') != 'device' or item.get('device_id') else 'System'
@@ -3023,8 +3063,8 @@ def pay_care_plan():
         return jsonify(success=False, message='Loved one not found.'), 404
 
     plan = cps.get_plan()
-    unit_price = plan['price']
-    expected = unit_price * months
+    expected = float(cps.get_plan_qr_codes()[months]['price'])
+    unit_price = round(expected / months, 2)
     if abs(amount_sent - expected) > 0.005:
         return jsonify(
             success=False,
@@ -3046,7 +3086,7 @@ def pay_care_plan():
         'device_id': cps.device_for_elder(elder_id),
         'months': months,
         'unit_price': unit_price,
-        'amount': unit_price * months,
+        'amount': expected,
         'amount_declared': amount_sent,
         'currency': plan.get('currency', 'PHP'),
         'method': 'gcash',
@@ -3064,7 +3104,7 @@ def pay_care_plan():
         'payment_no': payment_no, 'elder_id': elder_id,
         'elder_name': (elder_doc.to_dict() or {}).get('full_name', ''),
         'paid_by_user_id': session['user_id'], 'paid_by_name': session.get('full_name'),
-    }, f"{session.get('full_name') or 'Family'} sent ₱{unit_price * months:,} for "
+    }, f"{session.get('full_name') or 'Family'} sent ₱{cps.format_money(expected)} for "
         f"{months} month{'s' if months > 1 else ''} (GCash ref {reference_no}). "
         "Waiting for admin review.", notify='admins')
 

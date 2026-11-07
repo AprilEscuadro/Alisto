@@ -7,9 +7,14 @@
     <h1>Subscriptions</h1>
     <p>Manage all subscription plans and user subscriptions.</p>
   </div>
-  <a href="{{ url_for('admin.download_subscriptions') }}" class="btn btn-outline">
-    <i data-lucide="download"></i> Export
-  </a>
+  <div class="page-actions">
+    <button type="button" class="btn btn-purple" id="qrOpen">
+      <i data-lucide="qr-code"></i> Change QR
+    </button>
+    <a href="{{ url_for('admin.download_subscriptions') }}" class="btn btn-outline">
+      <i data-lucide="download"></i> Export
+    </a>
+  </div>
 </div>
 
 <!-- STAT CARDS -->
@@ -243,18 +248,139 @@
   </div>
 </section>
 
-<!-- PLAN REFERENCE -->
-<section class="plan-cards">
-  {% for key, plan in plans.items() %}
-  <div class="admin-card plan-card">
-    <div class="plan-head">
-      <strong>{{ plan.name }}</strong>
-      <span class="plan-price">&#8369;{{ plan.price }}<small>/ month</small></span>
+<!-- CHANGE QR MODAL -->
+<div class="qr-overlay" id="qrOverlay">
+  <form class="qr-modal" id="qrForm" method="POST" action="{{ url_for('admin.save_plan_qr') }}" role="dialog" aria-modal="true" aria-labelledby="qrTitle">
+    <input type="hidden" name="months" id="qrMonths" value="{{ plan_months[0] }}" />
+    <input type="hidden" name="qr_image" id="qrImageData" />
+
+    <div class="qr-head">
+      <h3 id="qrTitle">Change payment QR</h3>
+      <button type="button" class="qr-x" id="qrClose" aria-label="Close">&times;</button>
     </div>
-    <p class="text-muted">{{ plan.blurb }} · {{ rows | selectattr('plan_key', 'equalto', key) | list | length }} subscriber(s)</p>
-  </div>
-  {% endfor %}
-</section>
+
+    <div class="qr-body">
+      <div class="qr-tabs" id="qrTabs">
+        {% for m in plan_months %}
+        <button type="button" class="qr-tab {{ 'active' if loop.first }}" data-months="{{ m }}">{{ m }} month{{ '' if m == 1 else 's' }}</button>
+        {% endfor %}
+      </div>
+
+      <label class="qr-label" for="qrPrice">PRICE FOR THIS PLAN (&#8369;)</label>
+      <input type="number" class="qr-input" id="qrPrice" name="price" min="1" max="100000" step="0.01" required />
+
+      <div class="qr-preview"><img id="qrPreview" alt="QR preview" /></div>
+
+      <label class="qr-label" for="qrFile">UPLOAD NEW QR (PNG / JPG)</label>
+      <input type="file" id="qrFile" class="qr-file" accept="image/png,image/jpeg,image/webp" />
+      <small id="qrHint" style="display:block;margin:-6px 0 12px;font-size:12px;color:#64748b;">Upload the whole screenshot. Only the QR is kept.</small>
+
+      <label class="qr-label" for="qrName">GCASH NAME</label>
+      <input type="text" class="qr-input" id="qrName" name="gcash_name" maxlength="60" placeholder="Name on GCash" />
+
+      <label class="qr-label" for="qrNumber">GCASH NUMBER</label>
+      <input type="text" class="qr-input" id="qrNumber" name="gcash_number" maxlength="20" placeholder="09XX XXX XXXX" inputmode="tel" />
+    </div>
+
+    <div class="qr-foot">
+      <button type="button" class="btn btn-outline" id="qrCancel">Cancel</button>
+      <button type="submit" class="btn btn-purple">Save QR</button>
+    </div>
+  </form>
+</div>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jsQR/1.4.0/jsQR.min.js"></script>
+<script>
+  (function () {
+    const QR = {{ plan_qrs | tojson }};           // {"1": {...}, "3": {...}, ...}
+    const $ = (id) => document.getElementById(id);
+    // Edits per tab are kept in memory so switching tabs doesn't lose them,
+    // but each Save only submits the tab you are on.
+    let current = String({{ plan_months[0] }});
+
+    function render(m) {
+      current = String(m);
+      const info = QR[current] || {};
+      $('qrMonths').value = current;
+      $('qrPrice').value = info.price != null ? info.price : '';
+      $('qrHint').textContent = 'Upload the whole screenshot. Only the QR is kept.';
+      $('qrPreview').src = info.qr_image_url || '';
+      $('qrName').value = info.gcash_name || '';
+      $('qrNumber').value = info.gcash_number || '';
+      $('qrImageData').value = '';
+      $('qrFile').value = '';
+      document.querySelectorAll('#qrTabs .qr-tab').forEach((b) =>
+        b.classList.toggle('active', b.dataset.months === current));
+    }
+
+    const open = () => { render(current); $('qrOverlay').classList.add('open'); };
+    const close = () => $('qrOverlay').classList.remove('open');
+
+    $('qrOpen').addEventListener('click', open);
+    $('qrClose').addEventListener('click', close);
+    $('qrCancel').addEventListener('click', close);
+    $('qrOverlay').addEventListener('click', (e) => { if (e.target.id === 'qrOverlay') close(); });
+    document.addEventListener('keydown', (e) => { if (e.key === 'Escape') close(); });
+    $('qrTabs').addEventListener('click', (e) => {
+      const b = e.target.closest('.qr-tab');
+      if (b) render(b.dataset.months);
+    });
+
+    // Find the QR inside the photo and keep ONLY the QR (square + small white margin).
+    function cropToQR(img) {
+      const s = Math.min(1, 1400 / Math.max(img.width, img.height));
+      const w = Math.round(img.width * s), h = Math.round(img.height * s);
+      const c = document.createElement('canvas');
+      c.width = w; c.height = h;
+      const ctx = c.getContext('2d', { willReadFrequently: true });
+      ctx.fillStyle = '#fff';
+      ctx.fillRect(0, 0, w, h);
+      ctx.drawImage(img, 0, 0, w, h);
+
+      const code = window.jsQR &&
+        jsQR(ctx.getImageData(0, 0, w, h).data, w, h, { inversionAttempts: 'attemptBoth' });
+
+      let side = Math.max(w, h), sx = (w - side) / 2, sy = (h - side) / 2;   // fallback: whole image
+      if (code) {
+        const L = code.location;
+        const xs = [L.topLeftCorner.x, L.topRightCorner.x, L.bottomLeftCorner.x, L.bottomRightCorner.x];
+        const ys = [L.topLeftCorner.y, L.topRightCorner.y, L.bottomLeftCorner.y, L.bottomRightCorner.y];
+        const minX = Math.min(...xs), maxX = Math.max(...xs);
+        const minY = Math.min(...ys), maxY = Math.max(...ys);
+        const qrSide = Math.max(maxX - minX, maxY - minY);
+        side = qrSide * 1.16;                                  // 8% white margin each side
+        sx = (minX + maxX) / 2 - side / 2;
+        sy = (minY + maxY) / 2 - side / 2;
+      }
+
+      const out = document.createElement('canvas');
+      out.width = out.height = 520;
+      const o = out.getContext('2d');
+      o.fillStyle = '#fff';
+      o.fillRect(0, 0, 520, 520);
+      o.drawImage(c, sx, sy, side, side, 0, 0, 520, 520);
+      return { data: out.toDataURL('image/png'), found: !!code };
+    }
+
+    $('qrFile').addEventListener('change', (e) => {
+      const file = e.target.files[0];
+      if (!file) return;
+      const reader = new FileReader();
+      reader.onload = () => {
+        const img = new Image();
+        img.onload = () => {
+          const { data, found } = cropToQR(img);
+          $('qrImageData').value = data;
+          $('qrPreview').src = data;
+          $('qrHint').textContent = found
+            ? 'QR detected and cropped.'
+            : 'Could not detect a QR, so the whole image was used. Try a clearer screenshot.';
+        };
+        img.src = reader.result;
+      };
+      reader.readAsDataURL(file);
+    });
+  })();
+</script>
 
 <style>
   .rj-overlay { display:none; position:fixed; inset:0; z-index:1100; align-items:center; justify-content:center; padding:16px; background:rgba(15,23,42,.45); }

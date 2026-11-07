@@ -74,57 +74,10 @@
         </button>
 
         <div class="admin-topbar-right">
-          <div class="admin-notif" id="adminNotif">
-            <button
-              type="button"
-              class="admin-bell"
-              id="adminBellBtn"
-              aria-haspopup="true"
-              aria-expanded="false"
-              aria-label="{{ pending_count }} notification(s)"
-            >
-              <i data-lucide="bell"></i>
-              {% if pending_count %}
-              <span class="admin-bell-badge">{{ pending_count }}</span>
-              {% endif %}
-            </button>
-
-            <div class="notif-panel" id="adminNotifPanel" role="menu">
-              <div class="notif-head">
-                <strong>Notifications</strong>
-                {% if pending_count %}
-                <span class="notif-count">{{ pending_count }} pending</span>
-                {% endif %}
-              </div>
-
-              {% if notif_items %}
-              <div class="notif-list">
-                {% for item in notif_items %}
-                <a href="{{ item.href }}" class="notif-item" role="menuitem">
-                  <span class="notif-icon {{ item.tint }}"><i data-lucide="{{ item.icon }}"></i></span>
-                  <span class="notif-body">
-                    <strong>{{ item.title }}</strong>
-                    <small>{{ item.subtitle }}</small>
-                    <small class="text-muted">{{ item.when }}</small>
-                  </span>
-                  <i data-lucide="chevron-right"></i>
-                </a>
-                {% endfor %}
-              </div>
-
-              <a href="{{ url_for('admin.dashboard') }}" class="notif-footer">
-                {{ pending_count }} total notification{{ '' if pending_count == 1 else 's' }}
-                <i data-lucide="arrow-right"></i>
-              </a>
-              {% else %}
-              <div class="notif-empty">
-                <span class="empty-icon"><i data-lucide="bell-off"></i></span>
-                <strong>You're all caught up</strong>
-                <p>New registrations, active emergencies, offline devices, and expiring subscriptions will show up here.</p>
-              </div>
-              {% endif %}
-            </div>
-          </div>
+               {# shared bell: templates/_role_bell.html #}
+          {% set rbell_footer_url = url_for('admin.emergency_logs') %}
+          {% set rbell_footer_label = 'View emergency logs' %}
+          {% include '_role_bell.html' %}
 
           <div class="admin-profile" id="adminProfile">
             <button

@@ -1,0 +1,196 @@
+<!-- ============ NOTIFICATION BELL (shared by BHW and Admin) ============
+     Same behavior as the Family bell: items stay in the list, read ones turn
+     gray, the badge counts unread only. Emergencies are red, pinned on top,
+     and only stop counting when a BHW/admin responds.
+     Needs two variables set before the include: rbell_footer_url and
+     rbell_footer_label (the link at the bottom of the panel).
+     Data: /rbell (on open), /rbell/summary (count, every 60s),
+           /rbell/read (click an event / "Mark all as read").
+     Opening/closing the dropdown is done by admin.js (#adminNotif / #adminBellBtn). -->
+<div class="admin-notif" id="adminNotif">
+  <button type="button" class="admin-bell" id="adminBellBtn"
+          aria-haspopup="true" aria-expanded="false" aria-label="Notifications">
+    <i data-lucide="bell"></i>
+    <span class="admin-bell-badge" id="rbellCount" hidden>0</span>
+  </button>
+
+  <div class="notif-panel" id="adminNotifPanel" role="menu">
+    <div class="notif-head">
+      <strong>Notifications</strong>
+      <span class="notif-count" id="rbellChip" hidden></span>
+      <button type="button" class="rbell-markall" id="rbellMarkAll" hidden>Mark all as read</button>
+    </div>
+
+    <div class="notif-empty" id="rbellLoading"><p>Loading…</p></div>
+    <div class="notif-list" id="roleNotifList" hidden></div>
+    <div class="notif-empty" id="rbellEmpty" hidden>
+      <span class="empty-icon"><i data-lucide="bell-off"></i></span>
+      <strong>You're all caught up</strong>
+      <p>New emergencies, messages and updates will show up here.</p>
+    </div>
+
+    <a href="{{ rbell_footer_url }}" class="notif-footer">
+      {{ rbell_footer_label }} <i data-lucide="arrow-right"></i>
+    </a>
+  </div>
+</div>
+
+<style>
+  .rbell-markall {
+    border: none; background: none; padding: 0; cursor: pointer;
+    font-size: 12px; font-weight: 700; color: var(--blue, #2563eb);
+  }
+  .rbell-markall[hidden], #rbellCount[hidden], #rbellChip[hidden],
+  #roleNotifList[hidden], #rbellEmpty[hidden], #rbellLoading[hidden] { display: none; }
+  .notif-list { max-height: 380px; overflow-y: auto; }
+
+  /* Unread = colored. Read = gray, stays in the list. */
+  .notif-item.is-unread { background: var(--blue-bg, #e8f0ff); }
+  .notif-item.is-unread .notif-body strong::after {
+    content: ""; display: inline-block; width: 7px; height: 7px; margin-left: 6px;
+    border-radius: 50%; background: var(--blue, #2563eb); vertical-align: middle;
+  }
+  .notif-item.is-read .notif-icon { background: #f1f3f8; color: var(--admin-muted, #6b7489); }
+  .notif-item.is-read .notif-body strong { color: var(--admin-muted, #6b7489); font-weight: 600; }
+  /* Emergency: always red + pinned, even while "read" styling is applied elsewhere */
+  .notif-item.is-emergency { background: var(--red-bg, #fdecec); }
+  .notif-item.is-emergency .notif-body strong::after { background: var(--red, #e53935); }
+  .notif-body span {
+    font-size: 12px; color: var(--admin-muted, #6b7489);
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  }
+
+  html[data-theme="dark"] .notif-item.is-unread { background: rgba(37, 99, 235, 0.16); }
+  html[data-theme="dark"] .notif-item.is-emergency { background: rgba(229, 57, 53, 0.18); }
+  html[data-theme="dark"] .notif-item.is-read .notif-icon { background: #1c2742; color: #8a94ab; }
+  html[data-theme="dark"] .notif-item.is-read .notif-body strong { color: #8a94ab; }
+</style>
+
+<script>
+  (function () {
+    const wrap = document.getElementById("adminNotif");
+    const countEl = document.getElementById("rbellCount");
+    const chip = document.getElementById("rbellChip");
+    const list = document.getElementById("roleNotifList");
+    const empty = document.getElementById("rbellEmpty");
+    const loading = document.getElementById("rbellLoading");
+    const markAll = document.getElementById("rbellMarkAll");
+    if (!wrap) return;
+
+    function setCount(n) {
+      countEl.textContent = n > 99 ? "99+" : String(n);
+      countEl.hidden = !n;
+    }
+
+    let lastCount = -1, lastRun = 0;
+    async function refreshCount(fresh) {
+      if (document.hidden) return;
+      lastRun = Date.now();
+      try {
+        const res = await fetch("/rbell/summary" + (fresh === true ? "?fresh=1" : ""),
+          { headers: { Accept: "application/json" }, credentials: "same-origin" });
+        const data = await res.json();
+        if (!data.success) return;
+        setCount(data.count);
+        // A new emergency or message arrived while the panel is open: reload it.
+        if (data.count !== lastCount && wrap.classList.contains("open")) loadPanel();
+        lastCount = data.count;
+      } catch (e) { /* offline: keep the last count */ }
+    }
+    // bhw_alert_watch.js calls this every 15s; at most once per 10s goes out.
+    window.RoleBellRefresh = function () {
+      if (Date.now() - lastRun > 10000) refreshCount(true);
+    };
+
+    function el(tag, cls, text) {
+      const node = document.createElement(tag);
+      if (cls) node.className = cls;
+      if (text !== undefined) node.textContent = text;
+      return node;
+    }
+
+    function render(items) {
+      list.replaceChildren();
+      items.forEach((it) => {
+        let cls = "notif-item " + (it.unread ? "is-unread" : "is-read");
+        if (it.pinned) cls = "notif-item is-emergency";
+        const a = el("a", cls);
+        a.href = it.href;
+        a.dataset.id = it.id;
+        a.dataset.kind = it.kind;
+        a.setAttribute("role", "menuitem");
+        const icon = el("span", "notif-icon " + it.tint);
+        const i = el("i");
+        i.setAttribute("data-lucide", it.icon);
+        icon.append(i);
+        const body = el("span", "notif-body");
+        body.append(el("strong", "", it.title), el("span", "", it.subtitle),
+          el("small", "text-muted", it.when));
+        const arrow = el("i");
+        arrow.setAttribute("data-lucide", "chevron-right");
+        a.append(icon, body, arrow);
+        list.append(a);
+      });
+      list.hidden = !items.length;
+      empty.hidden = !!items.length;
+      if (window.lucide) window.lucide.createIcons();
+    }
+
+    async function loadPanel() {
+      loading.hidden = list.hidden;      // spinner only on the first open
+      try {
+        const res = await fetch("/rbell", { headers: { Accept: "application/json" }, credentials: "same-origin" });
+        const data = await res.json();
+        if (!data.success) throw new Error();
+        chip.textContent = data.unread_count + " unread";
+        chip.hidden = !data.unread_count;
+        markAll.hidden = !data.unread_count;
+        setCount(data.unread_count);
+        lastCount = data.unread_count;
+        render(data.items);
+      } catch (e) {
+        empty.hidden = false;
+        empty.querySelector("p").textContent = "Could not load notifications.";
+      } finally {
+        loading.hidden = true;
+      }
+    }
+
+    // admin.js toggles the "open" class; load the list whenever it opens.
+    new MutationObserver(() => {
+      if (wrap.classList.contains("open")) loadPanel();
+    }).observe(wrap, { attributes: true, attributeFilter: ["class"] });
+
+    // Click: event items are marked read here; a message is marked read by the
+    // Inbox when its conversation opens; an emergency stays until someone responds.
+    list.addEventListener("click", (e) => {
+      const a = e.target.closest(".notif-item");
+      if (!a || !a.classList.contains("is-unread")) return;
+      const kind = a.dataset.kind;
+      a.classList.replace("is-unread", "is-read");
+      setCount(Math.max(0, (parseInt(countEl.textContent, 10) || 0) - 1));
+      if (kind !== "message") {
+        fetch("/rbell/read", {
+          method: "POST", keepalive: true,
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ id: a.dataset.id }),
+        }).catch(() => {});
+      }
+    });
+
+    markAll.addEventListener("click", async (e) => {
+      e.stopPropagation();
+      try {
+        await fetch("/rbell/read", {
+          method: "POST", headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ all: true }),
+        });
+      } catch (err) { /* ignore */ }
+      loadPanel();
+    });
+
+    refreshCount(true);
+    setInterval(refreshCount, 60000);
+    document.addEventListener("visibilitychange", () => refreshCount());
+  })();
+</script>

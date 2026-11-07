@@ -318,15 +318,11 @@ def _admin_layout_context():
     """Values every admin page needs for the sidebar and top bar."""
     if session.get('role') != 'admin':
         return {}
-    items = _notif_items()
+    # The bell now loads its own items from /rbell (role_notifications.py).
     return {
         'admin_name': session.get('full_name', 'Administrator'),
         'admin_initial': _initials(session.get('full_name', 'Administrator'))[:1],
         'admin_photo': _admin_photo(session['user_id']),
-        'pending_count': len(items),
-        # The bell shows the eight most urgent; the rest are one click
-        # away on each item's own page (Users, Emergency Logs, etc.).
-        'notif_items': items[:8],
     }
 
 
@@ -718,11 +714,16 @@ def users():
                  'expired': f"Ended {s['paid_until']}"}.get(key, '')
         return {'key': key, 'label': s['label'], 'badge': plan_badge[key], 'until': until}
 
+    # Barangay of each elder, read from the address (same matching the BHW portal uses).
+    elder_barangay = {eid: _bg.find_in_parts(_address_parts(e.get('address')))
+                      for eid, e in elders}
+
     rows = []
 
     for elder_id, elder in elders:
         rows.append({
             'id': elder_id, 'display_id': _short_id('ELD', elder_id), 'type': 'elderly',
+            'barangay': elder_barangay.get(elder_id, ''),
             'name': elder.get('full_name') or 'Unnamed', 'initials': _initials(elder.get('full_name')),
             'phone': None, 'email': None,
             'devices': devices_per_elder.get(elder_id, 0),
@@ -751,6 +752,8 @@ def users():
             'id': user_id, 'type': role,
             'name': user.get('full_name') or 'Unnamed', 'initials': _initials(user.get('full_name')),
             'phone': user.get('contact_number') or None, 'email': user.get('email') or None,
+            # filled in below (family: from loved ones, BHW: assigned)
+            'barangay': '',
             'joined': _fmt_date(user.get('created_at')), 'sort': _sort_key(user.get('created_at')),
             'details': [
                 ['Full Name', user.get('full_name') or '—'],
@@ -777,10 +780,15 @@ def users():
                                             for e in linked) or '—'],
             ]
             row['plan'] = plan_for(linked)
+            # Barangay of the first loved one that has one.
+            row['barangay'] = next((elder_barangay[e] for e in linked
+                                    if elder_barangay.get(e)), '')
         else:
             approval = user.get('approval_status', 'pending')
             profile = bhw_profiles.get(user_id, {})
             row['display_id'] = _short_id('BHW', user_id)
+            assigned = profile.get('barangay_assigned') or ''
+            row['barangay'] = _bg.canonical(assigned) or assigned
             row['devices'] = 0
             if user.get('is_archived'):
                 row['status'] = 'archived'
@@ -816,6 +824,9 @@ def users():
 
     return render_template(
         'admin/users.html', active_page='users', rows=rows, stats=stats,
+        # Only the barangays that actually appear in the table.
+        barangay_options=sorted({r['barangay']
+                                for r in rows if r['barangay']}),
         years_of_service_options=YEARS_OF_SERVICE_OPTIONS,
         cebu_city_barangays=CEBU_CITY_BARANGAYS,
     )
@@ -1949,6 +1960,9 @@ def subscriptions():
         'admin/subscriptions.html', active_page='subscriptions',
         rows=rows, stats=stats, plans=PLANS, expiring_days=EXPIRING_SOON_DAYS,
         pending_payments=_pending_payments(), reject_reasons=cps.REJECT_REASONS,
+        plan_qrs=cps.get_plan_qr_codes(),
+        plan_months=cps.PLAN_MONTH_OPTIONS,
+        unit_price=cps.get_plan()['price'],
     )
 
 
@@ -1986,6 +2000,45 @@ def update_payment(payment_id, action):
             f"plan has been extended.", 'success')
     except Exception as e:
         flash(f'Could not apply this payment: {e}', 'error')
+    return redirect(url_for('admin.subscriptions'))
+
+
+@admin_bp.route('/subscriptions/qr', methods=['POST'])
+@admin_required
+def save_plan_qr():
+    """Admin changes the QR, GCash name/number and PRICE for ONE plan length."""
+    try:
+        months = int(request.form.get('months', 0))
+    except ValueError:
+        months = 0
+    if months not in cps.PLAN_MONTH_OPTIONS:
+        flash('Invalid plan length.', 'error')
+        return redirect(url_for('admin.subscriptions'))
+
+    try:
+        price = round(float(request.form.get('price', '').replace(',', '')), 2)
+    except ValueError:
+        price = 0
+    if not (1 <= price <= 100000):
+        flash('Enter a valid price (at least ₱1).', 'error')
+        return redirect(url_for('admin.subscriptions'))
+
+    name = (request.form.get('gcash_name') or '').strip()[:60]
+    number = re.sub(
+        r'[^\d+ ]', '', request.form.get('gcash_number') or '')[:20]
+    image = (request.form.get('qr_image') or '').strip()
+
+    if image:
+        if (len(image) > 300_000 or not re.match(
+                r'^data:image/(png|jpeg|webp);base64,[A-Za-z0-9+/=]+$', image)):
+            flash('That QR image is invalid or too large. Please try another.', 'error')
+            return redirect(url_for('admin.subscriptions'))
+    else:
+        image = cps.get_plan_qr_codes()[months]['qr_image_url']
+
+    cps.save_plan_qr_code(months, name, number, image, price)
+    flash(f'{months} month{"s" if months != 1 else ""} plan updated '
+          f'(₱{cps.format_money(price)}).', 'success')
     return redirect(url_for('admin.subscriptions'))
 
 

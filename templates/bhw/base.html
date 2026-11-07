@@ -63,46 +63,10 @@
         </button>
 
         <div class="admin-topbar-right">
-          <!-- NOTIFICATIONS -->
-          <div class="admin-notif" id="adminNotif">
-            <button type="button" class="admin-bell" id="adminBellBtn"
-                    aria-haspopup="true" aria-expanded="false"
-                    aria-label="{{ active_alert_count }} active alert(s)">
-              <i data-lucide="bell"></i>
-              <span class="admin-bell-badge" {% if not active_alert_count %}hidden{% endif %}>{{ active_alert_count }}</span>
-            </button>
-
-            <div class="notif-panel" id="adminNotifPanel" role="menu">
-              <div class="notif-head">
-                <strong>Notifications</strong>
-                <span class="notif-count" id="bhwNotifCount" {% if not active_alert_count %}hidden{% endif %}>{{ active_alert_count }} active</span>
-              </div>
-
-              <div class="notif-list" id="bhwNotifList" {% if not bhw_notif_items %}hidden{% endif %}>
-                {% for item in bhw_notif_items %}
-                <a href="{{ item.href }}" class="notif-item" role="menuitem">
-                  <span class="notif-icon tint-red"><i data-lucide="siren"></i></span>
-                  <span class="notif-body">
-                    <strong>{{ item.title }}</strong>
-                    <small>{{ item.subtitle }}</small>
-                    <small class="text-muted">{{ item.when }}</small>
-                  </span>
-                  <i data-lucide="chevron-right"></i>
-                </a>
-                {% endfor %}
-              </div>
-
-              <div class="notif-empty" id="bhwNotifEmpty" {% if bhw_notif_items %}hidden{% endif %}>
-                <span class="empty-icon"><i data-lucide="bell-off"></i></span>
-                <strong>You're all caught up</strong>
-                <p>Active emergencies in your barangay will show up here.</p>
-              </div>
-
-              <a href="{{ url_for('bhw.alerts') }}" class="notif-footer">
-                View all alerts <i data-lucide="arrow-right"></i>
-              </a>
-            </div>
-          </div>
+          <!-- NOTIFICATIONS (shared bell: templates/_role_bell.html) -->
+          {% set rbell_footer_url = url_for('bhw.alerts') %}
+          {% set rbell_footer_label = 'View all alerts' %}
+          {% include '_role_bell.html' %}
 
           <!-- PROFILE DROPDOWN -->
           <div class="admin-profile" id="adminProfile">
@@ -168,7 +132,15 @@
     </div>
 
     <script src="{{ url_for('static', filename='js/admin.js') }}"></script>
-    <div id="bhwWatch" data-url="{{ url_for('bhw.alerts_poll') }}" data-list="{{ url_for('bhw.alerts', group='active') }}" hidden></div>
+    <script>
+      window.ALISTO_WATCH = {
+        url: "{{ url_for('bhw.alerts_poll') }}",
+        listUrl: "{{ url_for('bhw.alerts', group='active') }}",
+        scope: "bhw",
+        /* the shared bell counts everything itself; only the sidebar Alerts badge is the watcher's */
+        badges: '.admin-nav-link[href$="/alerts"] .nav-badge',
+      };
+    </script>
     <script src="{{ url_for('static', filename='js/bhw_alert_watch.js') }}"></script>
     {% block scripts %}{% endblock %}
 

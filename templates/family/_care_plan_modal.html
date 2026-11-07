@@ -322,7 +322,13 @@
       ? n.toLocaleString('en-PH')
       : n.toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 }));
   const cpMonths = () => parseInt(document.querySelector('input[name="months"]:checked').value, 10) || 1;
-  const cpTotal = () => Math.round(CP_UNIT_PRICE * cpMonths() * 100) / 100;
+  // Price comes from what the admin set for THIS plan length.
+  const cpTotal = () => {
+    const info = CP_QR_CODES[cpMonths()] || {};
+    const p = Number(info.price);
+    return p > 0 ? Math.round(p * 100) / 100
+                 : Math.round(CP_UNIT_PRICE * cpMonths() * 100) / 100;
+  };
   const cpPlanText = (m) => m + ' month' + (m === 1 ? '' : 's');
 
   function openCarePlanModal() {

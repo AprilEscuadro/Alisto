@@ -106,7 +106,7 @@
     // BHW only: keeps the bell dropdown (same look as the admin's) in sync.
     function renderPanel(open) {
         var list = document.getElementById("bhwNotifList");
-        if (!list) return;                              // admin/family pages: no panel
+        if (!list) return;                              // the shared bell draws its own panel
         var empty = document.getElementById("bhwNotifEmpty");
         var count = document.getElementById("bhwNotifCount");
         list.innerHTML = "";
@@ -174,8 +174,10 @@
         save(SEEN, seen);
         setCount(open.length);
         renderPanel(open);
-        // Pop the bell open when a NEW emergency arrives (BHW pages only).
-        if (fresh.length && document.getElementById("bhwNotifList")) {
+        // Shared bell (BHW + Admin): refresh its count/list, and pop it open
+        // when a NEW emergency arrives.
+        if (window.RoleBellRefresh) window.RoleBellRefresh();
+        if (fresh.length && document.getElementById("roleNotifList")) {
             var bell = document.getElementById("adminNotif");
             if (bell) bell.classList.add("open");
         }

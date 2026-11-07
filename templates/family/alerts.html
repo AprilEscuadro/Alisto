@@ -255,6 +255,7 @@
           <a href="{{ url_for('alerts') }}" class="nav-item active">
             <i data-lucide="bell-ring"></i>
             <span>Alerts</span>
+            <span class="nav-badge" data-alert-badge{% if not family_active_alerts %} hidden{% endif %}>{{ family_active_alerts or 0 }}</span>
           </a>
           <a href="{{ url_for('medication_reminders') }}" class="nav-item">
             <i data-lucide="pill"></i>
@@ -267,7 +268,6 @@
           <a href="{{ url_for('inbox_page') }}" class="nav-item">
             <i data-lucide="inbox"></i>
             <span>Inbox</span>
-            <span class="nav-badge" data-inbox-badge{% if not inbox_unread %} hidden{% endif %}>{{ inbox_unread or 0 }}</span>
           </a>
           <a href="{{ url_for('settings') }}" class="nav-item">
             <i data-lucide="settings"></i>
@@ -322,12 +322,7 @@
           </div>
 
           <div class="header-right">
-            <a href="{{ url_for('alerts') }}" class="icon-btn" aria-label="Notifications">
-              <i data-lucide="bell"></i>
-              {% if notification_count %}
-              <span class="notif-dot">{{ notification_count }}</span>
-              {% endif %}
-            </a>
+            {% include 'family/_notif_bell.html' %}
 
             <button
               type="button"
@@ -389,183 +384,150 @@
             </div>
           </div>
 
-          <!-- ---- SUMMARY CARDS ---- -->
-          <section class="summary-cards">
-            <div class="summary-card">
-              <div class="summary-icon danger">
-                <i data-lucide="triangle-alert"></i>
-              </div>
-              <div class="summary-content">
-                <span class="summary-label">Emergency Alerts</span>
-                <span class="summary-value">{{ emergency_count }}</span>
-                <span class="summary-sub">Requires Immediate Attention</span>
-              </div>
-            </div>
-
-            <div class="summary-card">
-              <div class="summary-icon muted">
-                <i data-lucide="bell"></i>
-              </div>
-              <div class="summary-content">
-                <span class="summary-label">False Alarms</span>
-                <span class="summary-value">{{ false_alarm_count }}</span>
-                <span class="summary-sub">Cancelled Within 5 Seconds</span>
+           <!-- ---- STAT CARDS ---- -->
+          <section class="fa-stats">
+            <div class="fa-stat">
+              <span class="fa-stat-icon danger"><i data-lucide="siren"></i></span>
+              <div class="fa-stat-body">
+                <strong data-stat="active">{{ stats.active }}</strong>
+                <span>Active Alerts</span>
+                <button type="button" class="fa-stat-link js-alert-filter" data-filter="active">
+                  View all active <i data-lucide="arrow-right"></i>
+                </button>
               </div>
             </div>
-
-            <div class="summary-card">
-              <div class="summary-icon primary">
-                <i data-lucide="file-text"></i>
+            <div class="fa-stat">
+              <span class="fa-stat-icon warning"><i data-lucide="hand-heart"></i></span>
+              <div class="fa-stat-body">
+                <strong data-stat="responding">{{ stats.responding }}</strong>
+                <span>Responding</span>
+                <button type="button" class="fa-stat-link js-alert-filter" data-filter="responding">
+                  View responding <i data-lucide="arrow-right"></i>
+                </button>
               </div>
-              <div class="summary-content">
-                <span class="summary-label">Total Alerts</span>
-                <span class="summary-value">{{ alerts|length }}</span>
-                <span class="summary-sub">All Time</span>
+            </div>
+            <div class="fa-stat">
+              <span class="fa-stat-icon success"><i data-lucide="shield-check"></i></span>
+              <div class="fa-stat-body">
+                <strong data-stat="resolved">{{ stats.resolved }}</strong>
+                <span>Resolved Alerts</span>
+                <button type="button" class="fa-stat-link js-alert-filter" data-filter="resolved">
+                  View resolved <i data-lucide="arrow-right"></i>
+                </button>
+              </div>
+            </div>
+            <div class="fa-stat">
+              <span class="fa-stat-icon muted"><i data-lucide="flag"></i></span>
+              <div class="fa-stat-body">
+                <strong data-stat="false_alarm">{{ stats.false_alarm }}</strong>
+                <span>False Alarms</span>
+                <button type="button" class="fa-stat-link js-alert-filter" data-filter="false_alarm">
+                  View false alarms <i data-lucide="arrow-right"></i>
+                </button>
               </div>
             </div>
           </section>
 
-          <!-- ---- FILTER TABS ---- -->
-          <div class="filter-tabs" id="alertsFilters">
-            <button type="button" class="filter-tab active" data-filter="all">
-              All ({{ alerts|length }})
-            </button>
-            <button type="button" class="filter-tab" data-filter="active">
-              <span class="dot emergency"></span> Active ({{ notification_count }})
-            </button>
-            <button type="button" class="filter-tab" data-filter="emergency">
-              <span class="dot emergency"></span> Emergency ({{ emergency_count
-              }})
-            </button>
-            <button type="button" class="filter-tab" data-filter="false-alarm">
-              <span class="dot offline"></span> False Alarm ({{
-              false_alarm_count }})
-            </button>
-            <button type="button" class="filter-tab" data-filter="today">
-              <i data-lucide="calendar"></i> Today
-            </button>
-            <button type="button" class="filter-tab" data-filter="week">
-              <i data-lucide="calendar-days"></i> This Week
-            </button>
+          <!-- ---- FILTER PILLS (no search bar) ---- -->
+          <div class="fa-pills" id="alertPills" role="group" aria-label="Filter alerts">
+            <button type="button" class="fa-pill active" data-filter="">All</button>
+            <button type="button" class="fa-pill" data-filter="active">Active</button>
+            <button type="button" class="fa-pill" data-filter="responding">Responding</button>
+            <button type="button" class="fa-pill" data-filter="resolved">Resolved</button>
+            <button type="button" class="fa-pill" data-filter="false_alarm">False Alarm</button>
+            <label class="fa-range">
+              <i data-lucide="calendar"></i>
+              <select id="alertRange" aria-label="Date range">
+                <option value="all">All Time</option>
+                <option value="today">Today</option>
+                <option value="week">Last 7 Days</option>
+                <option value="month">Last 30 Days</option>
+              </select>
+            </label>
           </div>
 
-          <!-- ---- ALERTS LIST ---- -->
-          <section class="alerts-list" id="alertsList">
-            {% for alert in alerts %}
-            <div
-              class="alert-card {{ 'emergency' if alert.type == 'emergency' else 'false-alarm' }}{{ ' is-open' if alert.is_open }}"
-              data-status="{{ 'emergency' if alert.type == 'emergency' else 'false-alarm' }}"
-              data-created="{{ alert.created_iso }}"
-            >
-              <span
-                class="alert-type-badge {{ 'emergency' if alert.type == 'emergency' else 'false-alarm' }}"
-              >
-                {% if alert.type == 'emergency' %}
-                <i data-lucide="triangle-alert"></i> EMERGENCY {% else %}
-                <i data-lucide="bell"></i> FALSE ALARM {% endif %}
-              </span>
-
-              <div class="alert-body">
-                <div class="alert-avatar">
-                  {% if alert.elder_photo_url %}
-                  <img
-                    src="{{ alert.elder_photo_url }}"
-                    alt="{{ alert.elder_name }}"
-                  />
-                  {% else %}
-                  <span>{{ alert.elder_name[:1] }}</span>
-                  {% endif %}
-                </div>
-
-                <div class="alert-main">
-                  <div class="alert-heading">
-                    <strong>{{ alert.elder_name }}</strong>
-                    <span class="alert-relationship"
-                      >{{ alert.relationship }}</span
-                    >
-                  </div>
-                  <div class="alert-trigger">
-                    <i data-lucide="{{ alert.trigger_icon }}"></i>
-                    <span>{{ alert.trigger_label }}</span>
-                    {% if alert.trigger_phrase %}
-                    <em>"{{ alert.trigger_phrase }}"</em>
-                    {% endif %}
-                  </div>
-                </div>
-
-                <div class="alert-meta">
-                  <div class="meta-item">
-                    <i data-lucide="clock"></i>
-                    <span>{{ alert.timestamp }}</span>
-                  </div>
-                  <div class="meta-item">
-                    <i data-lucide="map-pin"></i>
-                    <span
-                      >{{ alert.location }}{% if alert.gps_verified %}<br /><span
-                        class="gps-verified"
-                        ><i data-lucide="check-circle-2"></i> GPS Verified</span
-                      >{% endif %}</span
-                    >
-                  </div>
-                </div>
-
-                <div class="alert-meta">
-                  <div class="meta-item">
-                    <i data-lucide="message-square"></i>
-                    <span>
-                      {% if alert.sms_sent_count %} SMS Sent to {{
-                      alert.sms_sent_count }} Contact{{ 's' if
-                      alert.sms_sent_count != 1 else '' }} {% else %} No SMS
-                      Sent {% endif %}
-                    </span>
-                  </div>
-                  <div class="meta-item">
-                    <i data-lucide="info"></i>
-                    <span>
-                      {% if alert.type == 'emergency' %} Status:
-                      <strong class="{{ alert.status_class }}"
-                        >{{ alert.status }}</strong
+          <!-- ---- ALERTS TABLE ---- -->
+          <section class="fa-table-card">
+            <div class="fa-table-scroll">
+              <table class="fa-table" id="alertsTable">
+                <thead>
+                  <tr>
+                    <th>Loved One</th>
+                    <th>Alert Type</th>
+                    <th>Time</th>
+                    <th>Location</th>
+                    <th>Status</th>
+                    <th class="fa-col-action">Action</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {% for alert in alerts %}
+                  {% set group = 'active' if alert.is_open else ({'acknowledged': 'responding', 'resolved': 'resolved', 'false_alarm': 'false_alarm'}.get(alert.status_key, 'resolved')) %}
+                  <tr
+                    data-alert-id="{{ alert.id }}"
+                    data-group="{{ group }}"
+                    data-created="{{ alert.created_iso }}"
+                    class="{{ 'fa-row-urgent' if alert.is_open }}"
+                  >
+                    <td>
+                      <div class="fa-user">
+                        <span class="fa-avatar">
+                          {% if alert.elder_photo_url %}
+                          <img src="{{ alert.elder_photo_url }}" alt="" />
+                          {% else %}{{ alert.elder_name[:1] }}{% endif %}
+                        </span>
+                        <div>
+                          <strong>{{ alert.elder_name }}</strong>
+                          <small>{{ alert.relationship }}</small>
+                        </div>
+                      </div>
+                    </td>
+                    <td>
+                      {% if alert.type == 'emergency' %}
+                      <span class="fa-type fa-type-red">
+                        <i data-lucide="triangle-alert"></i> Emergency
+                      </span>
+                      {% else %}
+                      <span class="fa-type fa-type-gray">
+                        <i data-lucide="bell"></i> False Alarm
+                      </span>
+                      {% endif %}
+                      <small class="fa-type-sub">{{ alert.trigger_label|title }}</small>
+                    </td>
+                    <td class="fa-nowrap">{{ alert.timestamp }}</td>
+                    <td class="fa-location">{{ alert.location }}</td>
+                    <td>
+                      <span class="fa-badge fa-badge-{{ group }}">{{ alert.status }}</span>
+                    </td>
+                    <td class="fa-col-action">
+                      <button
+                        type="button"
+                        class="fa-link-btn"
+                        data-alert-details="{{ alert.id }}"
+                        aria-label="View details for {{ alert.elder_name }}"
                       >
-                      {% else %} Reason: {{ alert.reason }} {% endif %}
-                    </span>
-                  </div>
-                </div>
-              </div>
+                        <i data-lucide="chevron-right"></i>
+                      </button>
+                    </td>
+                  </tr>
+                  {% endfor %}
+                  <tr class="fa-table-empty" {% if alerts %}hidden{% endif %}>
+                    <td colspan="6">
+                      <div class="fa-empty">
+                        <i data-lucide="bell-off"></i>
+                        <strong id="alertsEmptyTitle">No alerts recorded yet</strong>
+                        <p>Alerts from your loved ones' devices will show up here.</p>
+                      </div>
+                    </td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
 
-              <div class="alert-actions">
-                {% if alert.is_open %}
-                <button
-                  type="button"
-                  class="alert-btn alert-btn-danger"
-                  data-alert-action="acknowledge"
-                  data-alert-id="{{ alert.id }}"
-                >
-                  <i data-lucide="hand-heart"></i> I'm Responding
-                </button>
-                <button
-                  type="button"
-                  class="alert-btn alert-btn-success"
-                  data-alert-action="resolve"
-                  data-alert-id="{{ alert.id }}"
-                >
-                  <i data-lucide="check"></i> Resolve
-                </button>
-                {% endif %}
-                <button
-                  type="button"
-                  class="alert-btn"
-                  data-alert-details="{{ alert.id }}"
-                >
-                  View Details <i data-lucide="chevron-right"></i>
-                </button>
-              </div>
+            <div class="fa-table-footer">
+              <span class="fa-showing" id="alertsShowing"></span>
+              <nav class="fa-pager" id="alertsPager" aria-label="Alert pages"></nav>
             </div>
-            {% else %}
-            <div class="empty-state">
-              <i data-lucide="bell-ring"></i>
-              <p>No alerts recorded yet.</p>
-            </div>
-            {% endfor %}
           </section>
 
           <footer class="main-footer">
@@ -633,56 +595,145 @@
         });
       }
 
-      // Filter tabs
-      const filterButtons = document.querySelectorAll(
-        "#alertsFilters .filter-tab",
-      );
-      const alertCards = document.querySelectorAll("#alertsList .alert-card");
-      let activeFilter = "all";
+      // ---- Filter pills + page numbers (10 per page, like the BHW table) ----
+      (function () {
+        const PAGE_SIZE = 10;
+        const table = document.getElementById("alertsTable");
+        if (!table) return;
+        const rows = Array.from(table.querySelectorAll("tbody tr[data-alert-id]"));
+        const empty = table.querySelector(".fa-table-empty");
+        const emptyTitle = document.getElementById("alertsEmptyTitle");
+        const showing = document.getElementById("alertsShowing");
+        const pager = document.getElementById("alertsPager");
+        const pills = document.querySelectorAll("#alertPills .fa-pill");
+        let group = "";
+        let range = "all";
+        let page = 1;
+        let matches = rows;
 
-      function matchesFilter(card) {
-        if (activeFilter === "all") return true;
-        if (activeFilter === "active") return card.classList.contains("is-open");
-        if (activeFilter === "emergency" || activeFilter === "false-alarm") {
-          return card.dataset.status === activeFilter;
+        function pageList(pages) {
+          if (pages <= 7) return Array.from({ length: pages }, (_, i) => i + 1);
+          const list = [1];
+          const from = Math.max(2, page - 1);
+          const to = Math.min(pages - 1, page + 1);
+          if (from > 2) list.push("…");
+          for (let i = from; i <= to; i++) list.push(i);
+          if (to < pages - 1) list.push("…");
+          list.push(pages);
+          return list;
         }
-        if (!card.dataset.created) return false;
-        const created = new Date(card.dataset.created);
-        const now = new Date();
-        const startOfToday = new Date(
-          now.getFullYear(),
-          now.getMonth(),
-          now.getDate(),
-        );
-        if (activeFilter === "today") return created >= startOfToday;
-        if (activeFilter === "week") {
-          const weekAgo = new Date(startOfToday);
-          weekAgo.setDate(weekAgo.getDate() - 6);
-          return created >= weekAgo;
+
+        function pagerButton(label, target, opts) {
+          const o = opts || {};
+          const btn = document.createElement("button");
+          btn.type = "button";
+          btn.innerHTML = label;
+          btn.disabled = !!o.disabled;
+          if (o.active) {
+            btn.classList.add("active");
+            btn.setAttribute("aria-current", "page");
+          }
+          if (o.aria) btn.setAttribute("aria-label", o.aria);
+          btn.addEventListener("click", () => {
+            page = target;
+            render();
+          });
+          return btn;
         }
-        return true;
-      }
 
-      function applyAlertFilters() {
-        alertCards.forEach((card) => {
-          card.style.display = matchesFilter(card) ? "" : "none";
+        function renderPager(pages) {
+          pager.innerHTML = "";
+          if (pages <= 1) return;
+          pager.appendChild(pagerButton('<i data-lucide="chevron-left"></i>', page - 1, { disabled: page === 1, aria: "Previous page" }));
+          pageList(pages).forEach((p) => {
+            if (p === "…") {
+              const dots = document.createElement("span");
+              dots.textContent = "…";
+              pager.appendChild(dots);
+            } else {
+              pager.appendChild(pagerButton(String(p), p, { active: p === page }));
+            }
+          });
+          pager.appendChild(pagerButton('<i data-lucide="chevron-right"></i>', page + 1, { disabled: page === pages, aria: "Next page" }));
+          lucide.createIcons();
+        }
+
+        function render() {
+          const total = matches.length;
+          const pages = Math.max(1, Math.ceil(total / PAGE_SIZE));
+          page = Math.min(page, pages);
+          const start = (page - 1) * PAGE_SIZE;
+          const visible = new Set(matches.slice(start, start + PAGE_SIZE));
+          rows.forEach((row) => { row.hidden = !visible.has(row); });
+          if (empty) {
+            empty.hidden = total > 0;
+            if (rows.length && emptyTitle) emptyTitle.textContent = "No alerts in this filter";
+          }
+          showing.textContent = total
+            ? `Showing ${start + 1} to ${Math.min(start + PAGE_SIZE, total)} of ${total} alerts`
+            : "Showing 0 alerts";
+          renderPager(pages);
+        }
+
+        // An active emergency is never hidden by the date filter.
+        function inRange(row) {
+          if (range === "all" || row.dataset.group === "active") return true;
+          if (!row.dataset.created) return false;
+          const now = new Date();
+          const start = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+          start.setDate(start.getDate() - { today: 0, week: 6, month: 29 }[range]);
+          return new Date(row.dataset.created) >= start;
+        }
+
+        function updateStats() {
+          const counts = { active: 0, responding: 0, resolved: 0, false_alarm: 0 };
+          rows.forEach((row) => {
+            if (inRange(row) && row.dataset.group in counts) counts[row.dataset.group] += 1;
+          });
+          document.querySelectorAll("[data-stat]").forEach((el) => {
+            el.textContent = counts[el.dataset.stat];
+          });
+        }
+
+        function applyFilter(value) {
+          group = value || "";
+          pills.forEach((p) => p.classList.toggle("active", (p.dataset.filter || "") === group));
+          matches = rows.filter((row) => (!group || row.dataset.group === group) && inRange(row));
+          page = 1;
+          updateStats();
+          render();
+        }
+
+        pills.forEach((p) => p.addEventListener("click", () => applyFilter(p.dataset.filter)));
+
+        const rangeSelect = document.getElementById("alertRange");
+        if (rangeSelect) {
+          rangeSelect.addEventListener("change", () => {
+            range = rangeSelect.value;
+            applyFilter(group);
+          });
+        }
+        document.querySelectorAll(".js-alert-filter").forEach((b) => {
+          b.addEventListener("click", () => {
+            applyFilter(b.dataset.filter);
+            table.scrollIntoView({ behavior: "smooth", block: "start" });
+          });
         });
-      }
 
-      filterButtons.forEach((btn) => {
-        btn.addEventListener("click", () => {
-          filterButtons.forEach((b) => b.classList.remove("active"));
-          btn.classList.add("active");
-          activeFilter = btn.dataset.filter;
-          applyAlertFilters();
+        // Clicking anywhere on a row opens its details popup.
+        rows.forEach((row) => {
+          row.addEventListener("click", (e) => {
+            if (e.target.closest("button")) return;
+            const btn = row.querySelector("[data-alert-details]");
+            if (btn) btn.click();
+          });
         });
-      });
 
-      // Open straight to a filter from the URL, e.g. /alerts?filter=active
-      const startFilter = new URLSearchParams(window.location.search).get("filter");
-      const startButton = startFilter && document.querySelector(`#alertsFilters .filter-tab[data-filter="${startFilter}"]`);
-      if (startButton) startButton.click();
-
+        // Old links still work: /alerts?filter=active, /alerts?filter=false-alarm
+        const urlFilter = new URLSearchParams(window.location.search).get("filter");
+        const startGroup = { active: "active", "false-alarm": "false_alarm" }[urlFilter] || "";
+        applyFilter(startGroup);
+      })();
       // Respond / resolve
       async function updateAlert(alertId, action, button) {
         const question =

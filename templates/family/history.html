@@ -255,6 +255,7 @@
           <a href="{{ url_for('alerts') }}" class="nav-item">
             <i data-lucide="bell-ring"></i>
             <span>Alerts</span>
+            <span class="nav-badge" data-alert-badge{% if not family_active_alerts %} hidden{% endif %}>{{ family_active_alerts or 0 }}</span>
           </a>
           <a href="{{ url_for('medication_reminders') }}" class="nav-item">
             <i data-lucide="pill"></i>
@@ -267,7 +268,6 @@
           <a href="{{ url_for('inbox_page') }}" class="nav-item">
             <i data-lucide="inbox"></i>
             <span>Inbox</span>
-            <span class="nav-badge" data-inbox-badge{% if not inbox_unread %} hidden{% endif %}>{{ inbox_unread or 0 }}</span>
           </a>
           <a href="{{ url_for('settings') }}" class="nav-item">
             <i data-lucide="settings"></i>
@@ -465,7 +465,7 @@
                   <th>Type</th>
                   <th>Person</th>
                   <th>Details</th>
-                  <th>Location / Notes</th>
+                  <th>Location</th>
                   <th></th>
                 </tr>
               </thead>

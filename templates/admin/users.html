@@ -71,6 +71,12 @@
       <option value="family">Family</option>
       <option value="bhw">BHW</option>
     </select>
+    <select id="barangayFilter" aria-label="Barangay">
+      <option value="">Barangay</option>
+      {% for b in barangay_options %}
+      <option value="{{ b }}">{{ b }}</option>
+      {% endfor %}
+    </select>
     <select id="statusFilter" aria-label="Status">
       <option value="">Status</option>
       <option value="active">Active</option>
@@ -113,6 +119,7 @@
         <tr>
           <th>User</th>
           <th>Type</th>
+          <th>Barangay</th>
           <th>Contact</th>
           <th>Devices</th>
           <th>Subscription</th>
@@ -129,6 +136,7 @@
           data-email="{{ row.email or '' }}"
           data-phone="{{ row.phone or '' }}"
           data-type="{{ row.type }}"
+          data-barangay="{{ row.barangay }}"
           data-type-label="{{ 'BHW' if row.type == 'bhw' else row.type|capitalize }}"
           data-status="{{ row.status }}"
           data-devices="{{ row.devices }}"
@@ -148,6 +156,7 @@
             </div>
           </td>
           <td><span class="badge badge-{{ row.type }}">{{ 'BHW' if row.type == 'bhw' else row.type|capitalize }}</span></td>
+          <td>{% if row.barangay %}{{ row.barangay }}{% else %}<span class="text-muted">—</span>{% endif %}</td>
           <td>
             {% if row.phone or row.email %}
             <div class="contact-cell">
@@ -212,7 +221,7 @@
         </tr>
         {% endfor %}
         <tr class="table-empty" id="usersEmpty" {% if rows %}hidden{% endif %}>
-          <td colspan="8">
+          <td colspan="9">
             <div class="empty-state">
               <span class="empty-icon"><i data-lucide="users-round"></i></span>
               <strong>No users found</strong>
