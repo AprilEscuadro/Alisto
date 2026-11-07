@@ -264,11 +264,17 @@ def parse_balance(text):
         return None
 
 
-def check_load_balance(ussd_code=None):
+def check_load_balance(ussd_code=None, should_abort=None):
     """Dials the balance USSD code and returns (amount, reply_text).
     amount is None when the reply had no peso amount in it; reply_text is
     None when the modem got no reply at all. Always closes the USSD menu
-    afterwards so it doesn't sit open on the network."""
+    afterwards so it doesn't sit open on the network.
+
+    `should_abort` is an optional callable checked while waiting for the
+    carrier's reply (up to USSD_TIMEOUT_S = 25s). The caller holds the shared
+    SIM port for that whole time, so an emergency SMS that starts meanwhile
+    would otherwise wait up to 25s for it. When it returns True the check is
+    dropped within about a second and the port is released."""
     code = ussd_code or balance_code_for(read_operator())
     if not code:
         print("check_load_balance: unknown carrier and no balance_ussd set -- skipped.")
@@ -284,7 +290,11 @@ def check_load_balance(ussd_code=None):
         ser.write(f'AT+CUSD=1,"{code}",15\r\n'.encode())
         deadline = time.monotonic() + USSD_TIMEOUT_S
         buf = b""
+        aborted = False
         while time.monotonic() < deadline:
+            if should_abort is not None and should_abort():
+                aborted = True
+                break
             chunk = ser.read(256)
             if chunk:
                 buf += chunk
@@ -298,6 +308,10 @@ def check_load_balance(ussd_code=None):
         ser.close()
     except Exception as e:
         print(f"check_load_balance failed: {e}")
+        return None, None
+
+    if aborted:
+        print("check_load_balance: stopped early to free the SIM port for an emergency.")
         return None, None
 
     match = re.search(r'\+CUSD:\s*\d+,"([^"]*)"(?:,(\d+))?', resp, re.S)

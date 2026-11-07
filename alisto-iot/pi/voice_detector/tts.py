@@ -66,7 +66,13 @@ LOW_BATTERY_OUTPUT_RAW = "/home/alisto/alisto_audio/low_battery_announce.raw"  #
 # hard clipping.
 SYN_CONFIG = SynthesisConfig(volume=1.0)
 
-SOFT_LIMIT_DRIVE = 2.0   # higher = louder/more compressed; 1.5 is gentler
+# higher = louder/more compressed; 1.5 is gentler. Measured on a speech-like
+# signal (peaks at full scale, as Piper produces): drive 2.0 -> 3.0 is +1.5 dB
+# louder (~19% more amplitude) with the sound a bit harsher; 4.0 is +2.4 dB but
+# clearly distorted. 3.0 is the practical software maximum for the louder
+# 8 ohm speaker -- going beyond buys almost no volume and just sounds "basag".
+# Set it back to 2.0 if the speech sounds too harsh.
+SOFT_LIMIT_DRIVE = 3.0
 SOFT_LIMIT_CEILING = 0.95  # leaves a little headroom under full scale
 
 ANNOUNCEMENTS = {

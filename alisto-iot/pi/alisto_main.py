@@ -236,7 +236,21 @@ def sync_clock_from_rtc(ser):
         print(f"WARNING: failed to set system clock: {e}")
 
 
-def stream_audio(ser, path):
+def stream_audio(ser, path, clear_stale_cancel=False):
+    """Streams one raw PCM file to the ESP32's speaker.
+
+    `clear_stale_cancel=True` first forgets any earlier Cancel press. Used by
+    everything that is NOT an emergency announcement (medicine reminders,
+    WiFi/pairing announcements, ...). cancel_event is set by ANY
+    EVENT:CANCEL from the ESP32 -- even when no emergency is running -- and
+    was only cleared when the next emergency started, so one old press (or a
+    noisy button line) made the next reminder stop after a few seconds
+    ("Cancelled mid-announcement") for no reason. With this, only a press
+    DURING the audio stops it. The emergency announcement must NOT pass this:
+    a Cancel pressed while it is still being generated has to be honoured."""
+    if clear_stale_cancel:
+        cancel_event.clear()
+
     if not os.path.exists(path):
         print("Audio file missing:", path)
         return
@@ -880,7 +894,7 @@ def play_medicine_reminder(ser, medicine, dosage):
         try:
             audio_path = tts.synthesize_reminder(medicine, dosage)
             if audio_path:
-                stream_audio(ser, audio_path)
+                stream_audio(ser, audio_path, clear_stale_cancel=True)
             else:
                 print("Medicine reminder TTS unavailable -- skipping this reminder")
         finally:
@@ -1023,7 +1037,7 @@ def play_device_paired_announcement(ser, name):
         try:
             audio_path = tts.synthesize_device_paired(name)
             if audio_path:
-                stream_audio(ser, audio_path)
+                stream_audio(ser, audio_path, clear_stale_cancel=True)
             else:
                 print("Device-paired TTS unavailable -- skipping announcement")
         finally:
@@ -1171,7 +1185,7 @@ def play_wifi_connected_announcement(ser):
         try:
             audio_path = tts.synthesize_wifi_connected()
             if audio_path:
-                stream_audio(ser, audio_path)
+                stream_audio(ser, audio_path, clear_stale_cancel=True)
             else:
                 print("WiFi-connected TTS unavailable -- skipping announcement")
         finally:
@@ -1201,7 +1215,7 @@ def play_sms_failure_test(ser, reason):
         try:
             audio_path = tts.synthesize_sms_failure(reason)
             if audio_path:
-                stream_audio(ser, audio_path)
+                stream_audio(ser, audio_path, clear_stale_cancel=True)
         finally:
             dropped = frames.resume() if frames is not None else 0
             if dropped:
@@ -1333,7 +1347,10 @@ def load_balance_loop():
             continue
         try:
             with gps.port_lock:
-                amount, reply = check_load_balance(_balance_ussd_override())
+                amount, reply = check_load_balance(
+                    _balance_ussd_override(),
+                    # drop the check at once if an emergency starts (it holds the SIM port)
+                    should_abort=lambda: _emergency_in_progress)
             if reply is not None:
                 firestore_backend.set_device_load(serial_id, amount, reply)
                 print(
@@ -1378,7 +1395,7 @@ def play_low_battery_announcement(ser):
         try:
             audio_path = tts.synthesize_low_battery()
             if audio_path:
-                stream_audio(ser, audio_path)
+                stream_audio(ser, audio_path, clear_stale_cancel=True)
             else:
                 print("Low-battery TTS unavailable -- skipping announcement")
         finally:
