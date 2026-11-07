@@ -435,6 +435,30 @@
   height: 13px;
 }
 
+/* ---- pin to dashboard (left side of the footer) ---- */
+.card-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.pin-btn {
+  border: 0;
+  color: var(--muted);
+  font-weight: 600;
+}
+
+.pin-btn.pinned {
+  color: var(--blue);
+  font-weight: 700;
+}
+
+.pin-btn:disabled {
+  opacity: 0.5;
+  cursor: wait;
+}
+
 /* ---- empty state ---- */
 .empty-state {
   grid-column: 1 / -1;

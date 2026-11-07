@@ -195,13 +195,17 @@ def _elders_in_barangay(barangay):
     return dict(elders)
 
 
-def _devices_by_elder():
+def _devices_by_elder(elder_ids):
+    """Devices of these residents only, not every device in the system."""
     by_elder = {}
-    for doc in db.collection('device').stream():
-        device = doc.to_dict() or {}
-        if device.get('elder_id'):
-            by_elder.setdefault(device['elder_id'],
-                                []).append((doc.id, device))
+    ids = list(elder_ids)
+    for i in range(0, len(ids), 30):            # Firestore 'in' allows 30 at a time
+        for doc in (db.collection('device')
+                    .where('elder_id', 'in', ids[i:i + 30]).stream()):
+            device = doc.to_dict() or {}
+            if device.get('elder_id'):
+                by_elder.setdefault(device['elder_id'],
+                                    []).append((doc.id, device))
     return by_elder
 
 
@@ -220,38 +224,74 @@ def _open_alerts(elders):
     return out
 
 
-def _alerts_for(elder_ids, since=None):
-    """Raw alert documents belonging to these elders, newest first."""
+def _alerts_for(elder_ids, since=None, limit=None):
+    """Raw alert documents belonging to these elders, newest first.
+
+    since= and limit= are applied INSIDE the Firestore query, so only the
+    alerts actually shown are read (and paid for). Uses the emergency_alert
+    index (elder_id + date_triggered desc)."""
     if not elder_ids:
         return []
     ids = list(elder_ids)
     out = []
-    for i in range(0, len(ids), 30):            # Firestore 'in' allows 30 at a time
-        chunk = ids[i:i + 30]
+    try:
+        for i in range(0, len(ids), 30):        # Firestore 'in' allows 30 at a time
+            q = (db.collection(ac.ALERT_COLLECTION)
+                 .where('elder_id', 'in', ids[i:i + 30]))
+            if since:
+                q = q.where('date_triggered', '>=', since)
+            q = q.order_by('date_triggered',
+                           direction=firestore.Query.DESCENDING)
+            if limit:
+                q = q.limit(limit)
+            for doc in q.stream():
+                alert = doc.to_dict() or {}
+                alert['id'] = doc.id
+                out.append(alert)
+    except Exception as e:
+        # Missing index -> the error has a link that creates it in one click.
+        print(f'[bhw] CREATE THIS INDEX (elder_id + date_triggered desc): {e}')
+        return _alerts_for_unindexed(ids, since, limit)
+
+    oldest = datetime.min.replace(tzinfo=ac.PH_TIME)
+    out.sort(key=lambda a: ac.local(
+        a.get('date_triggered')) or oldest, reverse=True)
+    return out[:limit] if limit else out
+
+
+def _alerts_for_unindexed(ids, since=None, limit=None):
+    """Old way (reads every alert). Only used if the index is missing."""
+    out = []
+    for i in range(0, len(ids), 30):
         for doc in (db.collection(ac.ALERT_COLLECTION)
-                    .where('elder_id', 'in', chunk).stream()):
+                    .where('elder_id', 'in', ids[i:i + 30]).stream()):
             alert = doc.to_dict() or {}
             created = ac.local(alert.get('date_triggered'))
             if since and created and created < since:
                 continue
             alert['id'] = doc.id
             out.append(alert)
-
     oldest = datetime.min.replace(tzinfo=ac.PH_TIME)
     out.sort(key=lambda a: ac.local(
         a.get('date_triggered')) or oldest, reverse=True)
-    return out
+    return out[:limit] if limit else out
 
 
-def _alert_rows(alerts, elders):
+def _alert_rows(alerts, elders, lookups=True):
     """Turn raw alert documents into what the templates need. Batches the
     location/phrase/sms-count lookups once for the whole list instead of
     3 Firestore round trips PER alert -- that N+1 pattern was clearly
     noticeable once there was more than a handful of alerts."""
-    locations = ac.alert_locations_bulk(
-        db, (a.get('location_id') for a in alerts))
-    phrases = ac.alert_phrases_bulk(db, (a.get('phrase_id') for a in alerts))
-    sms_counts = ac.sms_sent_counts_bulk(db, (a.get('id') for a in alerts))
+    if lookups:
+        locations = ac.alert_locations_bulk(
+            db, (a.get('location_id') for a in alerts))
+        phrases = ac.alert_phrases_bulk(
+            db, (a.get('phrase_id') for a in alerts))
+        sms_counts = ac.sms_sent_counts_bulk(db, (a.get('id') for a in alerts))
+    else:
+        # Reports and CSVs never show location, phrase or SMS count,
+        # so those 3 extra reads per alert are skipped there.
+        locations, phrases, sms_counts = {}, {}, {}
 
     rows = []
     for alert in alerts:
@@ -311,7 +351,7 @@ def _elderly_rows(elders, open_alerts_by_elder=None, family_counts=None):
     """Residents in this barangay with their device status and alert state.
     Pass family_counts (device_info.family_counts) to include how many
     family accounts are connected; only the Elderly Users page needs it."""
-    devices_by_elder = _devices_by_elder()
+    devices_by_elder = _devices_by_elder(elders)
     open_alerts_by_elder = open_alerts_by_elder or {}
     family_counts = family_counts or {}
     order = ('online', 'weak', 'offline')
@@ -330,7 +370,8 @@ def _elderly_rows(elders, open_alerts_by_elder=None, family_counts=None):
         open_alert = open_alerts_by_elder.get(elder_id)
         sim = device_info.sim_number(device)
         load = device_info.load_info(device)
-        accounts_text = device_info.accounts_text(family_counts.get(elder_id, 0))
+        accounts_text = device_info.accounts_text(
+            family_counts.get(elder_id, 0))
 
         if open_alert:
             current_status = 'emergency'
@@ -424,12 +465,14 @@ def account_approved():
 @bhw_required
 def dashboard():
     elders = _elders_in_barangay(g.barangay)
-    alert_rows = _alert_rows(_alerts_for(set(elders)), elders)
+    # Only the 3 alerts the "Recent Alerts" card shows are read; the active
+    # count comes from the open alerts already kept in memory (0 reads).
+    alert_rows = _alert_rows(_alerts_for(set(elders), limit=3), elders)
     rows = _elderly_rows(elders, _open_alerts_by_elder(elders))
     with_device = [r for r in rows if r['device_status'] != 'none']
 
     stats = {
-        'active_alerts': sum(1 for a in alert_rows if a['is_open']),
+        'active_alerts': len(_open_alerts(elders)),
         'elderly_monitored': len(rows),
         'active_devices': sum(1 for r in with_device if r['device_status'] in ('online', 'weak')),
         'offline_devices': sum(1 for r in with_device if r['device_status'] == 'offline'),
@@ -444,11 +487,21 @@ def dashboard():
 
 # ---------- ALERTS ----------
 
+BHW_ALERTS_LIMIT = 30   # newest alerts read for the Alerts page
+
+
 @bhw_bp.route('/alerts')
 @bhw_required
 def alerts():
     elders = _elders_in_barangay(g.barangay)
-    rows = _alert_rows(_alerts_for(set(elders)), elders)
+    # Newest BHW_ALERTS_LIMIT only. Every open alert is still shown: they are
+    # served from memory and added on top if they fall outside that window.
+    rows = _alert_rows(_alerts_for(
+        set(elders), limit=BHW_ALERTS_LIMIT), elders)
+    shown = {r['id'] for r in rows}
+    missing_open = [a for a in _open_alerts(elders) if a['id'] not in shown]
+    if missing_open:
+        rows = _alert_rows(missing_open, elders) + rows
 
     stats = {
         'active': sum(1 for r in rows if r['is_open']),
@@ -597,7 +650,8 @@ def _range_start(key):
 def _report_data(range_key):
     elders = _elders_in_barangay(g.barangay)
     start = _range_start(range_key)
-    rows = _alert_rows(_alerts_for(set(elders), since=start), elders)
+    rows = _alert_rows(_alerts_for(set(elders), since=start), elders,
+                       lookups=False)
     residents = _elderly_rows(elders, _open_alerts_by_elder(elders))
 
     answered = [r['response_minutes']

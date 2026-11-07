@@ -344,7 +344,8 @@ def write_status_history(alert_id, status, remarks=None, doc_id=None):
             "remarks": remarks,
         }
         if doc_id:
-            db.collection("emergency_status_history").document(doc_id).set(data)
+            db.collection("emergency_status_history").document(
+                doc_id).set(data)
         else:
             db.collection("emergency_status_history").add(data)
     except Exception as e:
@@ -388,7 +389,8 @@ def write_emergency_alert(elder_id, device_id, title, lines, trigger_type="VOICE
     try:
         db = _get_db()
         collection = db.collection("emergency_alert")
-        doc_ref = collection.document(alert_id) if alert_id else collection.document()
+        doc_ref = collection.document(
+            alert_id) if alert_id else collection.document()
         try:
             # create(), not set(): if the outbox uploader already wrote the
             # finished record (this early write was stuck offline), this
@@ -505,7 +507,8 @@ def upload_alert_record(rec, when):
         # The early write already stamped a server-side trigger time; only
         # fill it in when that write never made it.
         alert["date_triggered"] = when
-    batch.set(db.collection("emergency_alert").document(alert_id), alert, merge=True)
+    batch.set(db.collection("emergency_alert").document(
+        alert_id), alert, merge=True)
 
     history = db.collection("emergency_status_history")
     batch.set(history.document(f"{alert_id}_h1"), {
@@ -633,6 +636,14 @@ def write_sms_delivery_log(notification_id, status, retry_count, failure_reason=
 # ---------------------------------------------------------------------
 # MEDICINE REMINDERS
 # ---------------------------------------------------------------------
+# The schedule is checked every 20s, but it only changes when someone edits
+# a reminder in the app/web. Re-reading it from Firestore every 20s cost
+# 4,320 queries a day (x every reminder) -- the biggest single read cost in
+# the whole system. Now the list is kept in memory and re-read every
+# MEDICINE_REFRESH_S, so an edit reaches the device within 2 minutes.
+MEDICINE_REFRESH_S = 120
+_med_cache = {"elder_id": None, "at": 0.0, "rows": []}
+
 
 def get_active_medicine_reminders(elder_id):
     """Returns a list of {id, medicine_name, reminder_time} for every
@@ -648,6 +659,9 @@ def get_active_medicine_reminders(elder_id):
     successfully fetched plenty of times earlier. To guard against that,
     every successful read is cached to disk, and a failed read falls back
     to that cache instead of returning nothing."""
+    if (_med_cache["elder_id"] == elder_id
+            and time.monotonic() - _med_cache["at"] < MEDICINE_REFRESH_S):
+        return _med_cache["rows"]
     try:
         db = _get_db()
         docs = (
@@ -676,6 +690,8 @@ def get_active_medicine_reminders(elder_id):
         except OSError as e:
             print(
                 f"firestore: failed to cache medicine reminders locally: {e}")
+        _med_cache.update(elder_id=elder_id,
+                          at=time.monotonic(), rows=reminders)
         return reminders
     except Exception as e:
         print(
@@ -803,7 +819,8 @@ def send_emergency_push(elder_id, title, body, alert_id=None, deadline_mono=None
     sent = 0
     for token in tokens:
         if expired():
-            print("firestore: push dropped -- too late to be a useful alarm (SMS already sent)")
+            print(
+                "firestore: push dropped -- too late to be a useful alarm (SMS already sent)")
             return True
         try:
             message = messaging.Message(
@@ -895,7 +912,8 @@ def get_emergency_contacts(elder_id, timeout_s=None):
     until WiFi came back."""
     def fetch():
         db = _get_db()
-        query = db.collection("emergency_contact").where("elder_id", "==", elder_id)
+        query = db.collection("emergency_contact").where(
+            "elder_id", "==", elder_id)
         docs = query.get()
         contacts = _active_contacts(docs)
         try:
@@ -922,7 +940,8 @@ def get_emergency_contacts(elder_id, timeout_s=None):
         t.join(timeout_s)
         if "contacts" in box:
             return box["contacts"]
-        raise box.get("error") or TimeoutError(f"no answer within {timeout_s}s")
+        raise box.get("error") or TimeoutError(
+            f"no answer within {timeout_s}s")
     except Exception as e:
         print(
             f"firestore: failed to read emergency contacts ({e}) -- falling back to local cache")

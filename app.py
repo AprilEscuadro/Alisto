@@ -1,4 +1,5 @@
-from flask import Flask, render_template, request, redirect, url_for, session, flash, jsonify, g
+import read_meter
+from flask import Flask, render_template, request, redirect, url_for, session, flash, jsonify, g, has_app_context
 from werkzeug.security import generate_password_hash, check_password_hash
 from werkzeug.utils import secure_filename
 from database import db
@@ -32,6 +33,8 @@ app.secret_key = os.environ['SECRET_KEY']
 app.register_blueprint(admin_bp)  # admin panel at /admin
 app.register_blueprint(bhw_bp)    # BHW portal at /bhw
 app.register_blueprint(inbox_bp)  # inbox JSON API at /inbox/api
+
+read_meter.install(app)          # prints Firestore reads per page; /dev/reads
 
 db = firestore.client()
 
@@ -618,6 +621,7 @@ def login():
             session['user_id'] = user_doc.id
             session['full_name'] = user['full_name']
             session['role'] = user['role']
+            session['pinned_elder_id'] = user.get('pinned_elder_id')
 
             previous = user.get('last_login_at')
             if hasattr(previous, 'astimezone'):
@@ -629,11 +633,13 @@ def login():
 
             if user['role'] == 'bhw':
                 user_doc.reference.update(updates)
-                flash(f"Welcome back, {user['full_name']}!", 'success')
+                flash(
+                    f"{'Welcome back' if session['previous_login'] else 'Welcome'}, {user['full_name']}!", 'success')
                 return redirect(url_for('bhw.dashboard'))
 
             user_doc.reference.update(updates)
-            flash(f"Welcome back, {user['full_name']}!", 'success')
+            flash(
+                f"{'Welcome back' if session['previous_login'] else 'Welcome'}, {user['full_name']}!", 'success')
             if user['role'] == 'admin':
                 return redirect(url_for('admin.dashboard'))
             return redirect(url_for('dashboard'))
@@ -686,10 +692,25 @@ def _valid_dob(dob):
     return None
 
 
+def _reminder_docs(elder_id):
+    """This elder's medication_reminder docs, read once per page load. The
+    My Loved Ones cards used to read them twice per loved one (Next Medicine
+    + the missed-medicine flag)."""
+    if not has_app_context():
+        # The dashboard reads this from a worker thread, which has no
+        # flask.g -- just read it directly there.
+        return list(db.collection('medication_reminder')
+                    .where('elder_id', '==', elder_id).stream())
+    cache = g.setdefault('_reminder_docs', {})
+    if elder_id not in cache:
+        cache[elder_id] = list(db.collection('medication_reminder')
+                               .where('elder_id', '==', elder_id).stream())
+    return cache[elder_id]
+
+
 def _has_missed_medicine(elder_id):
     try:
-        docs = (db.collection('medication_reminder')
-                .where('elder_id', '==', elder_id).stream())
+        docs = _reminder_docs(elder_id)
         for doc in docs:
             med = doc.to_dict() or {}
             if med.get('deleted_at') or med.get('is_active') is False:
@@ -792,17 +813,19 @@ def my_loved_ones():
 
     names = {i: {'name': d.get('full_name') or 'Unnamed'}
              for i, (d, _) in elders.items()}
-    open_alerts = [a for a in _alerts_for_elders(names)
-                   if _is_open_alert(a['data'])]
+    open_alerts = _open_alerts_for_elders(names)
     alert_elders = {a['elder_id'] for a in open_alerts}
 
     loved_ones = [
         _loved_one_snapshot(i, d, l, i in alert_elders)
         for i, (d, l) in elders.items()
     ]
-    # Emergencies first, then everyone else by name.
+    pinned_id = session.get('pinned_elder_id')
+    for e in loved_ones:
+        e['pinned'] = e['id'] == pinned_id
+    # Emergencies first, then the pinned loved one, then everyone by name.
     loved_ones.sort(key=lambda e: (e['badge_class'] != 'emergency',
-                                   e['name'].casefold()))
+                                   not e['pinned'], e['name'].casefold()))
 
     return render_template(
         'family/my_loved_ones.html',
@@ -1057,6 +1080,24 @@ def _get_elder_if_linked(elder_id):
     return elder_doc, links[0].to_dict() or {}
 
 
+@app.route('/loved-ones/<elder_id>/pin', methods=['POST'])
+def loved_one_pin(elder_id):
+    """Pin (or unpin) the loved one the Dashboard shows. One pin per family
+    account, saved on user_account so it follows them to any browser."""
+    if 'user_id' not in session or session.get('role') != 'family':
+        return jsonify(success=False, message='Please log in first.'), 401
+
+    elder_doc, _link = _get_elder_if_linked(elder_id)
+    if not elder_doc:
+        return jsonify(success=False, message='Loved one not found.'), 404
+
+    new_pin = None if session.get('pinned_elder_id') == elder_id else elder_id
+    db.collection('user_account').document(session['user_id']).update(
+        {'pinned_elder_id': new_pin})
+    session['pinned_elder_id'] = new_pin
+    return jsonify(success=True, pinned=bool(new_pin))
+
+
 @app.route('/loved-ones/<elder_id>/details')
 def loved_one_details_json(elder_id):
     if 'user_id' not in session:
@@ -1067,9 +1108,8 @@ def loved_one_details_json(elder_id):
         return jsonify(success=False, message='Loved one not found.'), 404
 
     elder_data = elder_doc.to_dict() or {}
-    alerts = _alerts_for_elders(
-        {elder_id: {'name': elder_data.get('full_name')}})
-    has_open_alert = any(_is_open_alert(a['data']) for a in alerts)
+    has_open_alert = bool(_open_alerts_for_elders(
+        {elder_id: {'name': elder_data.get('full_name')}}))
 
     elder = _loved_one_snapshot(
         elder_id, elder_data, link_data, has_open_alert)
@@ -1541,7 +1581,7 @@ def _alert_card(row, elder, locations=None, phrases=None, sms_counts=None):
 
 def _family_alert_cards():
     elders = _linked_elders_for_dashboard()
-    rows = _alerts_for_elders(elders)
+    rows = _alerts_for_elders(elders, limit=ALERTS_PAGE_LIMIT)
     locations = ac.alert_locations_bulk(
         db, (r['data'].get('location_id') for r in rows))
     phrases = ac.alert_phrases_bulk(
@@ -2213,8 +2253,7 @@ def medication_reminders():
             })
 
     schedules.sort(key=lambda s: s['sort_key'])
-    open_alerts = [a for a in _alerts_for_elders(
-        lookup) if _is_open_alert(a['data'])]
+    open_alerts = _open_alerts_for_elders(lookup)
 
     return render_template(
         'family/medication_reminders.html',
@@ -2591,13 +2630,29 @@ def _activity_row(doc_id, item, elder_id, elder):
     }
 
 
+HISTORY_MAX_ROWS = 300   # newest activity rows read per loved one
+
+
+def _recent_activity_docs(elder_id):
+    """Newest HISTORY_MAX_ROWS activity rows. activity_log grows every day
+    (medicine, device, alerts), so reading all of it on every History load
+    was one of the biggest read costs."""
+    q = db.collection('activity_log').where('elder_id', '==', elder_id)
+    try:
+        return list(q.order_by('created_at', direction=firestore.Query.DESCENDING)
+                    .limit(HISTORY_MAX_ROWS).stream())
+    except Exception as e:
+        # Missing index -> the error has a link that creates it in one click.
+        print(f'[history] CREATE THIS INDEX (elder_id + created_at desc): {e}')
+        return list(q.limit(HISTORY_MAX_ROWS).stream())
+
+
 def _activity_feed(elders):
     """Every activity row for the given elders, newest first."""
     rows = []
     for elder_id, elder in elders.items():
         try:
-            docs = (db.collection('activity_log')
-                    .where('elder_id', '==', elder_id).stream())
+            docs = _recent_activity_docs(elder_id)
             for doc in docs:
                 rows.append(_activity_row(
                     doc.id, doc.to_dict() or {}, elder_id, elder))
@@ -2673,8 +2728,7 @@ def history():
         r for r in in_range if r['type_filter'] == active_type]
     activities, pagination = _paginate(shown, page)
 
-    open_alerts = [a for a in _alerts_for_elders(
-        elders) if _is_open_alert(a['data'])]
+    open_alerts = _open_alerts_for_elders(elders)
 
     return render_template(
         'family/history.html',
@@ -3564,6 +3618,7 @@ def _initials(name: str) -> str:
 
 PH_TZ = timezone(timedelta(hours=8))
 DASHBOARD_ALERT_LIMIT = 3
+ALERTS_PAGE_LIMIT = 30      # newest alerts per loved one on the Alerts page
 
 
 def _to_ph(value):
@@ -3870,11 +3925,7 @@ def _next_medicine(elder_id):
              'medicine_name': 'Add one in Medication Reminders',
              'date': '—'}
     try:
-        docs = list(
-            db.collection('medication_reminder')
-            .where('elder_id', '==', elder_id)
-            .stream()
-        )
+        docs = _reminder_docs(elder_id)
     except Exception as e:
         print(f'[dashboard] could not read reminders for {elder_id}: {e}')
         return empty
@@ -3922,14 +3973,19 @@ def dashboard():
         return redirect(url_for('bhw.inbox', **request.args))
 
     elders = _linked_elders_for_dashboard()
-    all_alerts = _alerts_for_elders(elders)
-    open_alerts = [a for a in all_alerts if _is_open_alert(a['data'])]
+    # Open alerts come from memory (0 reads); the Recent Alerts card only
+    # needs the newest few, so only those are read.
+    open_alerts = _open_alerts_for_elders(elders)
+    all_alerts = _alerts_for_elders(elders, limit=DASHBOARD_ALERT_LIMIT)
 
-    # Which loved one to feature: whoever has an open emergency first,
-    # otherwise the first one alphabetically.
+    # Which loved one to feature: an open emergency always comes first,
+    # then the one pinned in My Loved Ones, otherwise the first by name.
     elderly_id = None
+    pinned_id = session.get('pinned_elder_id')
     if open_alerts:
         elderly_id = open_alerts[0]['elder_id']
+    elif pinned_id in elders:
+        elderly_id = pinned_id
     elif elders:
         elderly_id = min(elders, key=lambda i: elders[i]['name'].casefold())
 
@@ -4053,9 +4109,22 @@ DEVICE_ONLINE_WINDOW = timedelta(minutes=10)
 ALERT_COLLECTION = 'emergency_alert'
 
 
+_LOCATION_CACHE = {}            # serial -> (time, location dict)
+LOCATION_CACHE_SECONDS = 30     # the Pi only writes a new point every ~5 min
+
+
 def _latest_device_location(device_serial):
     if not device_serial:
         return None
+    hit = _LOCATION_CACHE.get(device_serial)
+    if hit and time.time() - hit[0] < LOCATION_CACHE_SECONDS:
+        return hit[1]
+    loc = _read_latest_device_location(device_serial)
+    _LOCATION_CACHE[device_serial] = (time.time(), loc)
+    return loc
+
+
+def _read_latest_device_location(device_serial):
     try:
         docs = list(
             db.collection('device_location')
@@ -4076,6 +4145,7 @@ def _latest_device_location(device_serial):
         rows = [d.to_dict() or {} for d in
                 db.collection('device_location')
                 .where('device_id', '==', device_serial)
+                .limit(50)
                 .stream()]
     except Exception as e:
         print(f'[location] could not read device_location: {e}')

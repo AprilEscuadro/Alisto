@@ -28,6 +28,7 @@ An expired plan never switches off emergency alerts: safety first.
 """
 import calendar
 import re
+import time
 from datetime import datetime, timedelta, timezone
 
 from firebase_admin import firestore
@@ -97,14 +98,32 @@ def add_months(dt, months):
 
 
 # ---------- settings ----------
+# These settings docs are read on EVERY family page (sidebar care-plan card
+# and the pay modal) but almost never change, so each is read at most once
+# a minute per server instead of on every page load.
+_SETTINGS_CACHE = {}
+SETTINGS_CACHE_SECONDS = 60
+
+
+def _settings_doc(collection, doc_id):
+    """(exists, data) for a rarely-changing settings document."""
+    key = (collection, doc_id)
+    hit = _SETTINGS_CACHE.get(key)
+    if hit and time.time() - hit[0] < SETTINGS_CACHE_SECONDS:
+        return hit[1]
+    doc = db.collection(collection).document(doc_id).get()
+    value = (doc.exists, (doc.to_dict() or {}) if doc.exists else {})
+    _SETTINGS_CACHE[key] = (time.time(), value)
+    return value
+
 
 def get_plan():
     plan = dict(DEFAULT_PLAN)
     try:
-        doc = db.collection('care_plan').document('default').get()
-        if doc.exists:
+        exists, data = _settings_doc('care_plan', 'default')
+        if exists:
             plan.update(
-                {k: v for k, v in (doc.to_dict() or {}).items() if v is not None})
+                {k: v for k, v in data.items() if v is not None})
     except Exception as e:
         print(f'[care plan] could not read plan: {e}')
     try:
@@ -117,10 +136,10 @@ def get_plan():
 def get_payment_methods():
     methods = dict(DEFAULT_PAYMENT_METHODS)
     try:
-        doc = db.collection('app_settings').document('payment_methods').get()
-        if doc.exists:
+        exists, data = _settings_doc('app_settings', 'payment_methods')
+        if exists:
             methods.update(
-                {k: v for k, v in (doc.to_dict() or {}).items() if v is not None})
+                {k: v for k, v in data.items() if v is not None})
     except Exception as e:
         print(f'[care plan] could not read payment methods: {e}')
     return methods
@@ -206,10 +225,13 @@ def pending_elder_ids(elder_ids):
     pending = set()
     for elder_id in elder_ids:
         try:
-            for doc in db.collection('payment').where('elder_id', '==', elder_id).stream():
-                if (doc.to_dict() or {}).get('status') == 'pending':
-                    pending.add(elder_id)
-                    break
+            # 1 read instead of every payment this elder ever made.
+            for doc in (db.collection('payment')
+                        .where('elder_id', '==', elder_id)
+                        .where('status', '==', 'pending')
+                        .limit(1).stream()):
+                pending.add(elder_id)
+                break
         except Exception as e:
             print(f'[care plan] could not read payments for {elder_id}: {e}')
     return pending
@@ -299,8 +321,7 @@ def get_plan_qr_codes():
     """{months: {gcash_name, gcash_number, qr_image_url}} for each option."""
     out = {}
     try:
-        doc = db.collection('app_settings').document('plan_qr_codes').get()
-        data = (doc.to_dict() or {}) if doc.exists else {}
+        _exists, data = _settings_doc('app_settings', 'plan_qr_codes')
     except Exception as e:
         print(f'[care plan] could not read plan QR codes: {e}')
         data = {}
@@ -324,6 +345,7 @@ def save_plan_qr_code(months, gcash_name, gcash_number, qr_image_url):
     """Admin sets/updates the QR + GCash details for one plan length."""
     if months not in PLAN_MONTH_OPTIONS:
         raise ValueError('Invalid plan length.')
+    _SETTINGS_CACHE.pop(('app_settings', 'plan_qr_codes'), None)
     ref = db.collection('app_settings').document('plan_qr_codes')
     ref.set({
         str(months): {

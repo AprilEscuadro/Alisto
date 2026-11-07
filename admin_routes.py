@@ -390,21 +390,38 @@ def _bhw_by_barangay():
     return out
 
 
+def _per_request(key, builder):
+    """Run builder() once per page load. Admin pages used to read the same
+    whole collection (elders, devices, alerts) 2-3 times in ONE request."""
+    cache = g.setdefault('_admin_reads', {})
+    if key not in cache:
+        cache[key] = builder()
+    return cache[key]
+
+
+def _device_docs():
+    """[(serial, device dict)] for every device, read once per page load."""
+    return _per_request('devices', lambda: [
+        (doc.id, doc.to_dict() or {}) for doc in db.collection('device').stream()])
+
+
 def _all_elders():
-    return {
-        doc.id: (doc.to_dict() or {})
-        for doc in db.collection('elder_profile').stream()
-        if not (doc.to_dict() or {}).get('deleted_at')
-    }
+    def read():
+        return {
+            doc.id: data
+            for doc in db.collection('elder_profile').stream()
+            for data in [doc.to_dict() or {}]
+            if not data.get('deleted_at')
+        }
+    return dict(_per_request('elders', read))
 
 
 def _devices_by_elder():
     by_elder = {}
-    for doc in db.collection('device').stream():
-        device = doc.to_dict() or {}
+    for serial, device in _device_docs():
         if device.get('elder_id'):
             by_elder.setdefault(device['elder_id'],
-                                []).append((doc.id, device))
+                                []).append((serial, device))
     return by_elder
 
 
@@ -424,24 +441,49 @@ def _alert_code(doc_id, created_at):
     return f'AL-{year}-{doc_id[-4:].upper()}'
 
 
-def _all_alert_rows(since=None):
-    """Every alert in the system, newest first, with the resident joined in."""
+def _alert_docs(since=None, limit=None):
+    """[(id, alert)] read from Firestore, once per page load per (since, limit).
+    since/limit go INTO the query, so only the alerts a page needs are read."""
+    def read():
+        q = db.collection(ac.ALERT_COLLECTION)
+        if since or limit:
+            if since:
+                q = q.where('date_triggered', '>=', since)
+            q = q.order_by('date_triggered',
+                           direction=firestore.Query.DESCENDING)
+            if limit:
+                q = q.limit(limit)
+        return [(doc.id, doc.to_dict() or {}) for doc in q.stream()]
+    return _per_request(('alerts', since, limit), read)
+
+
+def _open_alert_count():
+    """Alerts still needing a response, from memory (0 reads)."""
+    return sum(1 for a in ac.open_alerts(db).values()
+               if ac.row_status(a) in ac.OPEN_STATUSES)
+
+
+def _all_alert_rows(since=None, limit=None, lookups=True):
+    """Alerts newest first, with the resident joined in. Pass since= and/or
+    limit= to read only part of them; lookups=False skips the location and
+    phrase reads for pages that never show them (reports, CSVs)."""
+    return _rows_from_alerts(_alert_docs(since, limit), lookups)
+
+
+def _rows_from_alerts(alerts, lookups=True):
     elders = _all_elders()
     devices_by_elder = _devices_by_elder()
-
-    docs = list(db.collection(ac.ALERT_COLLECTION).stream())
-    alerts = [(doc.id, doc.to_dict() or {}) for doc in docs]
-    if since:
-        alerts = [(i, a) for i, a in alerts
-                  if not (ac.local(a.get('date_triggered')) and ac.local(a.get('date_triggered')) < since)]
 
     # Batched once for the whole page instead of 3 Firestore round trips
     # PER alert -- that N+1 pattern was clearly noticeable once there was
     # more than a handful of alerts.
-    locations = ac.alert_locations_bulk(
-        db, (a.get('location_id') for _, a in alerts))
-    phrases = ac.alert_phrases_bulk(
-        db, (a.get('phrase_id') for _, a in alerts))
+    if lookups:
+        locations = ac.alert_locations_bulk(
+            db, (a.get('location_id') for _, a in alerts))
+        phrases = ac.alert_phrases_bulk(
+            db, (a.get('phrase_id') for _, a in alerts))
+    else:
+        locations, phrases = {}, {}
 
     rows = []
     for alert_id, alert in alerts:
@@ -498,8 +540,12 @@ def _resident_rows():
     """Every elder with their device status and whether they have an open alert."""
     elders = _all_elders()
     devices_by_elder = _devices_by_elder()
+    # Open alerts come from memory (0 reads) instead of re-reading every
+    # alert in the system just to find the open ones.
+    open_alerts = [(i, a) for i, a in ac.open_alerts(db).items()
+                   if ac.row_status(a) in ac.OPEN_STATUSES]
     open_by_elder = {r['elder_id']: r for r in reversed(
-        _all_alert_rows()) if r['is_open']}
+        _rows_from_alerts(open_alerts))}
     order = ('online', 'weak', 'offline')
 
     rows = []
@@ -562,23 +608,24 @@ def _fmt_minutes(minutes):
 @admin_required
 def dashboard():
     users = _active_docs('user_account')
-    elders = _active_docs('elder_profile')
-    devices = list(db.collection('device').stream())
-    alerts = _all_alert_rows()
+    elders = _all_elders()
+    devices = _device_docs()
+    month_start = datetime.now(ac.PH_TIME).replace(
+        day=1, hour=0, minute=0, second=0, microsecond=0)
+    # Only what the page shows: the newest 3 alerts, and this month's for
+    # the summary donut. Active count comes from memory (0 reads).
+    recent_alerts = _all_alert_rows(limit=3)
+    this_month = _all_alert_rows(since=month_start, lookups=False)
     residents = _resident_rows()
 
     stats = {
-        'active_alerts': sum(1 for a in alerts if a['is_open']),
+        'active_alerts': _open_alert_count(),
         'total_elderly': len(elders),
         'total_bhws': sum(1 for _, u in users
                           if u.get('role') == 'bhw' and u.get('approval_status') == 'approved'),
         'total_devices': len(devices),
     }
 
-    month_start = datetime.now(ac.PH_TIME).replace(
-        day=1, hour=0, minute=0, second=0, microsecond=0)
-    this_month = [a for a in alerts if (
-        ac.local(a['created_at']) or month_start) >= month_start]
     summary = {
         'active': sum(1 for a in this_month if a['is_open']),
         'acknowledged': sum(1 for a in this_month if a['status'] == 'acknowledged'),
@@ -589,7 +636,7 @@ def dashboard():
 
     return render_template(
         'admin/dashboard.html', active_page='dashboard',
-        stats=stats, recent_alerts=alerts[:3], alert_summary=summary,
+        stats=stats, recent_alerts=recent_alerts, alert_summary=summary,
         donut={
             'active_pct': summary['active'] / total * 100,
             'ack_pct': (summary['active'] + summary['acknowledged']) / total * 100,
@@ -648,7 +695,8 @@ def users():
     subs = {doc.id: doc.to_dict() or {}
             for doc in db.collection('subscription').stream()}
     pending_ids = cps.pending_elder_ids([e for e, _ in elders])
-    plan_rank = {'active': 0, 'expiring': 1, 'pending': 2, 'expired': 3, 'none': 4}
+    plan_rank = {'active': 0, 'expiring': 1,
+                 'pending': 2, 'expired': 3, 'none': 4}
     plan_badge = {'active': 'active', 'expiring': 'pending', 'pending': 'pending',
                   'expired': 'rejected', 'none': 'archived'}
 
@@ -656,7 +704,8 @@ def users():
         """Best plan among these elders (a family can watch more than one)."""
         best = None
         for e in elder_ids:
-            s = cps.subscription_state(subs.get(e), has_pending=e in pending_ids)
+            s = cps.subscription_state(
+                subs.get(e), has_pending=e in pending_ids)
             key = 'pending' if s['label'] == 'Pending' else s['status']
             if best is None or plan_rank[key] < plan_rank[best[0]]:
                 best = (key, s)
@@ -1371,12 +1420,12 @@ def _map_points(residents):
 @admin_required
 def map_view():
     residents = _resident_rows()
-    alerts = _all_alert_rows()
+    alerts = _all_alert_rows(limit=4)           # the "recent" list shows 4
     barangays = sorted({r['barangay'] for r in residents if r['barangay']})
     located = [r for r in residents if r['latitude'] and r['longitude']]
 
     stats = {
-        'active_alerts': sum(1 for a in alerts if a['is_open']),
+        'active_alerts': _open_alert_count(),
         'online': sum(1 for r in residents if r['device_status'] in ('online', 'weak')),
         'offline': sum(1 for r in residents if r['device_status'] == 'offline'),
         'areas': len(barangays),
@@ -1513,8 +1562,12 @@ def emergency_logs():
     if range_key not in LOG_RANGES:
         range_key = 'all'
 
-    rows = _all_alert_rows(since=_range_start(range_key))
+    # One read of every alert (the stats need all of them); the selected
+    # range is filtered from it instead of reading the alerts a second time.
     everything = _all_alert_rows()
+    since = _range_start(range_key)
+    rows = [r for r in everything if not since
+            or (ac.local(r['created_at']) or since) >= since]
     month_start = datetime.now(ac.PH_TIME).replace(
         day=1, hour=0, minute=0, second=0, microsecond=0)
 
@@ -1574,7 +1627,7 @@ def update_alert_status(alert_id, action):
 @admin_required
 def download_logs():
     rows = _all_alert_rows(since=_range_start(
-        request.args.get('range', 'all')))
+        request.args.get('range', 'all')), lookups=False)
     buffer = io.StringIO()
     writer = csv.writer(buffer)
     writer.writerow(['Alert ID', 'Device', 'Resident', 'Age', 'Location', 'Barangay',
@@ -1610,9 +1663,9 @@ def reports(fmt=None):
         range_key = 'last_30'
 
     start = _range_start(range_key)
-    rows = _all_alert_rows(since=start)
+    rows = _all_alert_rows(since=start, lookups=False)
     residents = _resident_rows()
-    devices = list(db.collection('device').stream())
+    devices = _device_docs()
     users = _active_docs('user_account')
 
     stats = {
@@ -1734,7 +1787,7 @@ def _spark_points(values, peak):
 @admin_required
 def download_report():
     rows = _all_alert_rows(since=_range_start(
-        request.args.get('range', 'last_30')))
+        request.args.get('range', 'last_30')), lookups=False)
     buffer = io.StringIO()
     writer = csv.writer(buffer)
     writer.writerow(['Alert ID', 'Resident', 'Barangay', 'Type', 'Severity', 'Status',

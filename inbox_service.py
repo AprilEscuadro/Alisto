@@ -147,9 +147,20 @@ def unread_total(key, use_cache=False):
         hit = _unread_cache.get(key)
         if hit and time.time() - hit[0] < UNREAD_CACHE_SECONDS:
             return hit[1]
-    total = 0
-    for doc in db.collection(THREADS).where(unread_field(key), '>', 0).stream():
-        total += int(((doc.to_dict() or {}).get('unread') or {}).get(key) or 0)
+    field = unread_field(key)
+    query = db.collection(THREADS).where(field, '>', 0)
+    try:
+        # One SUM aggregation costs about 1 read, however many threads have
+        # unread messages. Reading each thread cost 1 read per thread, every
+        # 30 seconds, on every open page (39 reads per poll for admin).
+        result = query.sum(field).get()
+        total = int(result[0][0].value or 0)
+    except Exception as e:
+        print(f'[inbox] unread sum failed, counting threads instead: {e}')
+        total = 0
+        for doc in query.stream():
+            total += int(((doc.to_dict() or {}).get('unread')
+                         or {}).get(key) or 0)
     _unread_cache[key] = (time.time(), total)
     return total
 

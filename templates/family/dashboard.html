@@ -186,7 +186,7 @@
           <!-- ---- WELCOME HEADER ---- -->
           <div class="welcome-header">
             <h1 class="page-title">
-              Welcome back, {{ full_name.split(' ')[0] }}!
+              {{ 'Welcome back' if session.get('previous_login') else 'Welcome' }}, {{ full_name.split(' ')[0] }}!
             </h1>
             <p class="page-subtitle">
               Here's the latest update from your loved one's ALISTO device.
@@ -238,11 +238,13 @@
                   {% if device.sim_number is defined %}
                   <div class="device-sim-info">
                     <span><i data-lucide="smartphone"></i> {{ device.sim_number or 'No number reported' }}</span>
-                    <span class="{% if device.load and device.load.low %}load-low{% endif %}">
+                    {% if device.load %}
+                    <span class="{% if device.load.low %}load-low{% endif %}">
                       <i data-lucide="wallet"></i>
-                      Load: {{ device.load.text if device.load else 'Not checked yet' }}
+                      Load: {{ device.load.text }}
                     </span>
-                    {% if device.load %}<small>Checked {{ device.load.checked }}</small>{% endif %}
+                    <small>Checked {{ device.load.checked }}</small>
+                    {% endif %}
                   </div>
                   {% endif %}
                 </div>

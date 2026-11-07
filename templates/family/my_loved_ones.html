@@ -926,6 +926,16 @@
               <div class="card-footer">
                 <button
                   type="button"
+                  class="card-btn pin-btn{% if elder.pinned %} pinned{% endif %}"
+                  data-pin-id="{{ elder.id }}"
+                  aria-pressed="{{ 'true' if elder.pinned else 'false' }}"
+                  title="{{ 'Unpin from Dashboard' if elder.pinned else 'Show this loved one on the Dashboard' }}"
+                >
+                  <i data-lucide="pin"></i>
+                  <span>{{ 'Pinned' if elder.pinned else 'Pin to Dashboard' }}</span>
+                </button>
+                <button
+                  type="button"
                   class="card-btn view-details-btn"
                   data-elder-id="{{ elder.id }}"
                 >
@@ -2478,6 +2488,30 @@
         });
 
         window.loadEmergencyContacts = load;
+      })();
+    </script>
+    <script>
+      // ---- Pin a loved one to the Dashboard ----
+      (function () {
+        const grid = document.getElementById("lovedOnesGrid");
+        if (!grid) return;
+        grid.addEventListener("click", async (e) => {
+          const btn = e.target.closest("[data-pin-id]");
+          if (!btn) return;
+          btn.disabled = true;
+          try {
+            const res = await fetch(`/loved-ones/${btn.dataset.pinId}/pin`, {
+              method: "POST",
+              headers: { Accept: "application/json" },
+            });
+            const data = await res.json();
+            if (!data.success) throw new Error(data.message);
+            window.location.reload(); // only one pin, so every card may change
+          } catch (err) {
+            btn.disabled = false;
+            alert((err && err.message) || "Could not update the pin. Please try again.");
+          }
+        });
       })();
     </script>
   <script src="{{ url_for('static', filename='js/family_nav.js') }}"></script>

@@ -46,7 +46,7 @@ import whisper_asr         # noqa: E402
 sys.path.insert(0, "/home/alisto")
 from alisto_sms import send_sms, read_own_sim_number, read_sim_health, sms_failure_reason, check_load_balance  # noqa: E402 (existing, working, own serial port)
 import gps  # noqa: E402  (SIM7600's built-in GNSS -- shares that same port,
-            # but never used at the same time as send_sms(), see below)
+# but never used at the same time as send_sms(), see below)
 import reverse_geocode  # noqa: E402  (offline lat/lon -> barangay name)
 import firestore_backend  # noqa: E402  (Admin SDK -- finds who claimed this device)
 import outbox  # noqa: E402  (offline store-and-forward for emergency alerts)
@@ -87,8 +87,8 @@ SMS_RETRY_DELAY_S = 8  # widened from 3 -- a modem still finishing an
 # hammering an unresponsive modem with more commands.
 
 REMINDER_CHECK_INTERVAL_S = 20  # granularity of the schedule check -- fine
-                                 # enough to reliably catch every "HH:MM"
-                                 # minute boundary without busy-looping
+# enough to reliably catch every "HH:MM"
+# minute boundary without busy-looping
 # The schedule itself is no longer hardcoded -- see medicine_reminder_loop()
 # below, which reads it live from Firestore's medication_reminder
 # collection (added through the app), scoped to this device's elder_id.
@@ -230,7 +230,8 @@ def sync_clock_from_rtc(ser):
         if result.returncode == 0:
             print(f"System clock synced from RTC: {rtc_time}")
         else:
-            print(f"WARNING: failed to set system clock: {result.stderr.strip()}")
+            print(
+                f"WARNING: failed to set system clock: {result.stderr.strip()}")
     except Exception as e:
         print(f"WARNING: failed to set system clock: {e}")
 
@@ -296,7 +297,8 @@ def stream_audio(ser, path):
             # has more chances to hit one. The lead has to stay within what
             # the ESP32 can buffer without dropping bytes (8192-byte serial
             # RX buffer + ~8192 bytes of I2S DMA = ~0.5s); 0.2s fits easily.
-            remaining = (sent / AUDIO_BYTES_PER_SEC) - (time.monotonic() - start) - AUDIO_LEAD_S
+            remaining = (sent / AUDIO_BYTES_PER_SEC) - \
+                (time.monotonic() - start) - AUDIO_LEAD_S
             if remaining > 0:
                 time.sleep(remaining)
 
@@ -413,7 +415,8 @@ def outbox_uploader_loop():
     last_contacts_refresh = None
     while True:
         try:
-            done = outbox.process_pending(firestore_backend.upload_alert_record, _outbox_push)
+            done = outbox.process_pending(
+                firestore_backend.upload_alert_record, _outbox_push)
             if done:
                 print(f"outbox: uploaded {done} alert(s) to Firestore")
         except Exception as e:
@@ -443,7 +446,8 @@ def _announce_sms_failure(ser):
         with gps.port_lock:
             health = read_sim_health()
         reason = sms_failure_reason(health)
-        print(f"SMS FAILED for every contact -- SIM health: {health} -> {reason}")
+        print(
+            f"SMS FAILED for every contact -- SIM health: {health} -> {reason}")
         audio_path = tts.synthesize_sms_failure(reason)
         if audio_path:
             stream_audio(ser, audio_path)
@@ -475,7 +479,8 @@ def trigger_emergency(ser, source, category="UNKNOWN", message=None):
         send_command(ser, "CMD:STATUS_LED_OFF")
 
         try:
-            print(f"\n*** EMERGENCY TRIGGERED (source={source}, category={category}) ***")
+            print(
+                f"\n*** EMERGENCY TRIGGERED (source={source}, category={category}) ***")
             cancel_event.clear()
 
             own_serial = firestore_backend.get_own_serial()
@@ -513,10 +518,12 @@ def trigger_emergency(ser, source, category="UNKNOWN", message=None):
                         lines=(message or DEFAULT_MESSAGE).split("\n"),
                     )
                 except Exception as e:
-                    print(f"outbox: could not save alert {alert_id} locally: {e}")
+                    print(
+                        f"outbox: could not save alert {alert_id} locally: {e}")
                 _run_in_background(
                     _bg_create_alert, alert_id, _elder_id, own_serial,
-                    alert_title, (message or DEFAULT_MESSAGE).split("\n"), trigger_type,
+                    alert_title, (message or DEFAULT_MESSAGE).split(
+                        "\n"), trigger_type,
                 )
 
             if source == "voice":
@@ -607,9 +614,11 @@ def trigger_emergency(ser, source, category="UNKNOWN", message=None):
                         gps_args = (lat, lon, barangay)
                     else:
                         final_message += f"\nLast known: {place} {gps.age_text(fix_age_s)}"
-                    print(f"GPS: including {'cached' if fix_age_s is None else 'LAST KNOWN (' + gps.age_text(fix_age_s) + ')'} location {fix} -> {barangay}")
+                    print(
+                        f"GPS: including {'cached' if fix_age_s is None else 'LAST KNOWN (' + gps.age_text(fix_age_s) + ')'} location {fix} -> {barangay}")
                 else:
-                    print("GPS: no fix at all (fresh or saved) -- sending without location")
+                    print(
+                        "GPS: no fix at all (fresh or saved) -- sending without location")
 
                 # Everything that needs Firestore (push, alert doc update,
                 # location row, logs) now runs on background threads, started
@@ -623,11 +632,13 @@ def trigger_emergency(ser, source, category="UNKNOWN", message=None):
                     _outbox_update(
                         alert_id, lines=final_message.split("\n"),
                         gps=(
-                            {"lat": gps_args[0], "lon": gps_args[1], "barangay": gps_args[2]}
+                            {"lat": gps_args[0], "lon": gps_args[1],
+                                "barangay": gps_args[2]}
                             if gps_args else None
                         ),
                     )
-                    _run_in_background(_bg_push, _elder_id, alert_id, alert_title)
+                    _run_in_background(_bg_push, _elder_id,
+                                       alert_id, alert_title)
 
                 # Real recipients (added through the app's Contacts screen)
                 # instead of the single hardcoded number -- falls back to
@@ -641,17 +652,20 @@ def trigger_emergency(ser, source, category="UNKNOWN", message=None):
                     if _elder_id is not None else []
                 )
                 if not contacts:
-                    print("No emergency contacts found -- falling back to default recipient.")
+                    print(
+                        "No emergency contacts found -- falling back to default recipient.")
                     contacts = [{"contact_id": None, "contact_num": None}]
 
-                results = []  # (contact_id, ok, attempts) for the post-send log
+                # (contact_id, ok, attempts) for the post-send log
+                results = []
                 for contact in contacts:
                     recipient = contact["contact_num"]
                     label = recipient or "default recipient"
                     ok = False
                     attempt = 0
                     for attempt in range(1, SMS_RETRY_ATTEMPTS + 1):
-                        print(f"Sending SMS to {label} (attempt {attempt}/{SMS_RETRY_ATTEMPTS})...")
+                        print(
+                            f"Sending SMS to {label} (attempt {attempt}/{SMS_RETRY_ATTEMPTS})...")
                         # port_lock keeps this from ever overlapping the
                         # background GPS poll's own use of the same SIM port.
                         with gps.port_lock:
@@ -661,7 +675,8 @@ def trigger_emergency(ser, source, category="UNKNOWN", message=None):
                         if attempt < SMS_RETRY_ATTEMPTS:
                             time.sleep(SMS_RETRY_DELAY_S)
                     results.append((contact["contact_id"], ok, attempt))
-                    print(f"SMS to {label} sent." if ok else f"SMS to {label} FAILED after {SMS_RETRY_ATTEMPTS} attempts.")
+                    print(
+                        f"SMS to {label} sent." if ok else f"SMS to {label} FAILED after {SMS_RETRY_ATTEMPTS} attempts.")
                 any_ok = any(ok for _, ok, _ in results)
                 if alert_id:
                     _outbox_update(
@@ -678,7 +693,8 @@ def trigger_emergency(ser, source, category="UNKNOWN", message=None):
                     # Nothing got through to anyone -- say so out loud, with
                     # the likely reason, instead of failing in silence.
                     _announce_sms_failure(ser)
-                send_command(ser, "CMD:CANCEL")  # reset ESP32 state for next trigger
+                # reset ESP32 state for next trigger
+                send_command(ser, "CMD:CANCEL")
 
         finally:
             # Stamp the watchdog BEFORE clearing the flag: the mic has been
@@ -692,8 +708,10 @@ def trigger_emergency(ser, source, category="UNKNOWN", message=None):
             dropped = frames.resume() if frames is not None else 0
             _progress["t"] = time.monotonic()
             if dropped:
-                print(f"(discarded {dropped} boundary frame(s) after emergency handling)")
-            send_command(ser, "CMD:STATUS_LED_ON")  # back to solid = listening again
+                print(
+                    f"(discarded {dropped} boundary frame(s) after emergency handling)")
+            # back to solid = listening again
+            send_command(ser, "CMD:STATUS_LED_ON")
 
 
 def _blink_status_led(ser, stop_event, interval_s=0.2):
@@ -705,7 +723,8 @@ def _blink_status_led(ser, stop_event, interval_s=0.2):
     state = False
     while not stop_event.is_set():
         state = not state
-        send_command(ser, "CMD:STATUS_LED_ON" if state else "CMD:STATUS_LED_OFF")
+        send_command(
+            ser, "CMD:STATUS_LED_ON" if state else "CMD:STATUS_LED_OFF")
         stop_event.wait(interval_s)
 
 
@@ -717,11 +736,13 @@ def apply_capture_gain():
         return
     try:
         result = subprocess.run(
-            ["amixer", "-c", config.CAPTURE_CARD, "-q", "sset", "PGA", str(config.CAPTURE_PGA)],
+            ["amixer", "-c", config.CAPTURE_CARD, "-q",
+                "sset", "PGA", str(config.CAPTURE_PGA)],
             capture_output=True, text=True, timeout=5,
         )
         if result.returncode == 0:
-            print(f"Mic capture gain set: PGA {config.CAPTURE_PGA} ({config.CAPTURE_PGA * 0.5:.1f} dB)")
+            print(
+                f"Mic capture gain set: PGA {config.CAPTURE_PGA} ({config.CAPTURE_PGA * 0.5:.1f} dB)")
         else:
             print(f"WARNING: could not set mic gain: {result.stderr.strip()}")
     except Exception as e:
@@ -823,7 +844,8 @@ def voice_listen_loop(ser):
             # UNKNOWN alert if no specific keyword matched -- an emergency
             # is never silently dropped just because the category isn't clear.
             category, message = categorize.categorize(text)
-            print(f"WAKE WORD + '{category}': '{text[:200]}' ({elapsed_s:.1f}s)")
+            print(
+                f"WAKE WORD + '{category}': '{text[:200]}' ({elapsed_s:.1f}s)")
             if os.path.exists(RANGE_TEST_FLAG):
                 # Test mode: report the detection but don't raise an emergency
                 # (no announcement, no SMS), so the pickup range can be tested.
@@ -837,7 +859,8 @@ def voice_listen_loop(ser):
             trigger_emergency(ser, "voice", category=category, message=message)
         else:
             print(f"no match: '{text[:80]}' ({elapsed_s:.1f}s)")
-            send_command(ser, "CMD:STATUS_LED_ON")  # back to solid = listening again
+            # back to solid = listening again
+            send_command(ser, "CMD:STATUS_LED_ON")
 
 
 def play_medicine_reminder(ser, medicine, dosage):
@@ -863,7 +886,8 @@ def play_medicine_reminder(ser, medicine, dosage):
         finally:
             dropped = frames.resume() if frames is not None else 0
             if dropped:
-                print(f"(discarded {dropped} boundary frame(s) after medicine reminder)")
+                print(
+                    f"(discarded {dropped} boundary frame(s) after medicine reminder)")
             send_command(ser, "CMD:STATUS_LED_ON")
 
 
@@ -982,7 +1006,9 @@ WIFI_FLAG_CHECK_INTERVAL_S = 5  # one-time post-setup event, not time-critical
 DEVICE_PAIRED_MARKER = "/home/alisto/.device_paired"  # local marker so a
 # restart doesn't repeat the "Congratulations" announcement once this unit
 # has already been claimed once
-DEVICE_PAIRING_CHECK_INTERVAL_S = 15
+DEVICE_PAIRING_CHECK_INTERVAL_S = 15   # while waiting to be claimed
+# once paired: only to notice an unlink/relink
+DEVICE_PAIRING_RECHECK_INTERVAL_S = 300
 
 
 def play_device_paired_announcement(ser, name):
@@ -1003,7 +1029,8 @@ def play_device_paired_announcement(ser, name):
         finally:
             dropped = frames.resume() if frames is not None else 0
             if dropped:
-                print(f"(discarded {dropped} boundary frame(s) after device-paired announcement)")
+                print(
+                    f"(discarded {dropped} boundary frame(s) after device-paired announcement)")
             send_command(ser, "CMD:STATUS_LED_ON")
 
 
@@ -1036,8 +1063,8 @@ def device_pairing_watcher_loop(ser):
     print(f"Device pairing: watching for serial {serial!r} to be claimed...")
 
     confirmed = False  # _elder_id may come from the on-disk cache at startup;
-                       # the first real Firestore answer still has to do the
-                       # "set Online" step even if the value is unchanged
+    # the first real Firestore answer still has to do the
+    # "set Online" step even if the value is unchanged
     while True:
         try:
             elder_id = firestore_backend.resolve_elder_id(serial)
@@ -1050,7 +1077,8 @@ def device_pairing_watcher_loop(ser):
             _elder_id = elder_id
             _save_cached_elder_id(elder_id)
             firestore_backend.set_device_status(serial, "Online")
-            print(f"Device pairing: resolved elder_id={elder_id!r} -- status set to Online.")
+            print(
+                f"Device pairing: resolved elder_id={elder_id!r} -- status set to Online.")
 
         if elder_id and not already_announced:
             full_name = None
@@ -1066,11 +1094,12 @@ def device_pairing_watcher_loop(ser):
                 pass
             play_device_paired_announcement(ser, full_name or "there")
 
-        time.sleep(DEVICE_PAIRING_CHECK_INTERVAL_S)
+        time.sleep(DEVICE_PAIRING_RECHECK_INTERVAL_S if confirmed
+                   else DEVICE_PAIRING_CHECK_INTERVAL_S)
 
 
 LOCATION_SYNC_INTERVAL_S = 30  # how often the cached fix is CHECKED -- matches
-                                # gps.py's own background poll interval
+# gps.py's own background poll interval
 # ...but a Firestore document is only WRITTEN when the device has actually
 # moved, or this long has passed. Every check used to write one (2,880 docs a
 # day per device, forever): the Firebase free tier allows 20,000 writes a day
@@ -1148,7 +1177,8 @@ def play_wifi_connected_announcement(ser):
         finally:
             dropped = frames.resume() if frames is not None else 0
             if dropped:
-                print(f"(discarded {dropped} boundary frame(s) after WiFi announcement)")
+                print(
+                    f"(discarded {dropped} boundary frame(s) after WiFi announcement)")
             send_command(ser, "CMD:STATUS_LED_ON")
 
 
@@ -1175,7 +1205,8 @@ def play_sms_failure_test(ser, reason):
         finally:
             dropped = frames.resume() if frames is not None else 0
             if dropped:
-                print(f"(discarded {dropped} boundary frame(s) after SMS-failure test)")
+                print(
+                    f"(discarded {dropped} boundary frame(s) after SMS-failure test)")
             send_command(ser, "CMD:STATUS_LED_ON")
 
 
@@ -1305,7 +1336,8 @@ def load_balance_loop():
                 amount, reply = check_load_balance(_balance_ussd_override())
             if reply is not None:
                 firestore_backend.set_device_load(serial_id, amount, reply)
-                print(f"Load check: {amount if amount is not None else 'no amount'} ({reply[:80]!r})")
+                print(
+                    f"Load check: {amount if amount is not None else 'no amount'} ({reply[:80]!r})")
         except Exception as e:
             print(f"Load check failed: {e}")
         time.sleep(LOAD_CHECK_INTERVAL_S)
@@ -1352,7 +1384,8 @@ def play_low_battery_announcement(ser):
         finally:
             dropped = frames.resume() if frames is not None else 0
             if dropped:
-                print(f"(discarded {dropped} boundary frame(s) after low-battery announcement)")
+                print(
+                    f"(discarded {dropped} boundary frame(s) after low-battery announcement)")
             send_command(ser, "CMD:STATUS_LED_ON")
 
 
@@ -1407,7 +1440,8 @@ WATCHDOG_BUSY_STALL_S = 600
 def watchdog_stalled(now, last_progress, listening, emergency):
     """True when the voice loop has made no progress for longer than it
     legitimately could."""
-    limit = WATCHDOG_STALL_S if (listening and not emergency) else WATCHDOG_BUSY_STALL_S
+    limit = WATCHDOG_STALL_S if (
+        listening and not emergency) else WATCHDOG_BUSY_STALL_S
     return now - last_progress > limit
 
 
@@ -1471,20 +1505,25 @@ def main():
         print(f"SIM health at startup: check failed ({e})")
     threading.Thread(target=gps.poll_loop, daemon=True).start()
 
-    threading.Thread(target=medicine_reminder_loop, args=(ser,), daemon=True).start()
-    threading.Thread(target=wifi_connected_watcher_loop, args=(ser,), daemon=True).start()
-    threading.Thread(target=device_pairing_watcher_loop, args=(ser,), daemon=True).start()
+    threading.Thread(target=medicine_reminder_loop,
+                     args=(ser,), daemon=True).start()
+    threading.Thread(target=wifi_connected_watcher_loop,
+                     args=(ser,), daemon=True).start()
+    threading.Thread(target=device_pairing_watcher_loop,
+                     args=(ser,), daemon=True).start()
     threading.Thread(target=location_sync_loop, daemon=True).start()
     threading.Thread(target=sync_sim_number, daemon=True).start()
     threading.Thread(target=load_balance_loop, daemon=True).start()
     threading.Thread(target=heartbeat_loop, daemon=True).start()
-    threading.Thread(target=battery_monitor_loop, args=(ser,), daemon=True).start()
+    threading.Thread(target=battery_monitor_loop,
+                     args=(ser,), daemon=True).start()
 
     global _elder_id
     if _elder_id is None:
         _elder_id = _load_cached_elder_id()
         if _elder_id:
-            print(f"Using cached elder_id {_elder_id!r} until Firestore confirms it.")
+            print(
+                f"Using cached elder_id {_elder_id!r} until Firestore confirms it.")
     threading.Thread(target=outbox_uploader_loop, daemon=True).start()
 
     print("ALISTO EMERGENCY SYSTEM READY")
