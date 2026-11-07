@@ -563,7 +563,58 @@ def update_alert(alert_id, action):
     return redirect(url_for('bhw.alerts', alert=alert_id))
 
 
+@bhw_bp.route('/alerts/bulk', methods=['POST'])
+@bhw_required
+def bulk_update_alerts():
+    """Responding / Resolved / False Alarm for every ticked row at once."""
+    action = request.form.get('action')
+    ids = list(dict.fromkeys(request.form.getlist('alert_ids')))[:50]
+    if action not in ('acknowledge', 'resolve', 'false-alarm') or not ids:
+        flash('Tick at least one alert first.', 'error')
+        return redirect(url_for('bhw.alerts'))
+
+    mine = _elders_in_barangay(g.barangay)
+    done = skipped = 0
+    acked_elders = set()   # acknowledge() also acknowledges that elder's other open alerts
+
+    for alert_id in ids:
+        ref = db.collection(ac.ALERT_COLLECTION).document(alert_id)
+        doc = ref.get()
+        alert = doc.to_dict() if doc.exists else None
+        # A BHW may only act on alerts from their own barangay.
+        if not alert or alert.get('elder_id') not in mine:
+            skipped += 1
+            continue
+
+        status = ac.row_status(alert)
+        if action == 'acknowledge':
+            ok = status == 'active' and ac.acknowledge(
+                db, ref, alert_id, session['user_id'])
+            if ok:
+                acked_elders.add(alert.get('elder_id'))
+            elif status == 'acknowledged' and alert.get('elder_id') in acked_elders:
+                ok = True   # already covered by another ticked alert of the same resident
+        else:
+            ok = status in ('active', 'acknowledged')
+            if ok:
+                ac.resolve(db, ref, alert_id, session['user_id'],
+                           false_alarm=(action == 'false-alarm'))
+
+        if ok:
+            done += 1
+        else:
+            skipped += 1
+
+    label = {'acknowledge': 'Responding', 'resolve': 'Resolved',
+             'false-alarm': 'False Alarm'}[action]
+    msg = f"{done} alert{'s' if done != 1 else ''} marked {label}."
+    if skipped:
+        msg += f" {skipped} skipped (already handled)."
+    flash(msg, 'success' if done else 'info')
+    return redirect(url_for('bhw.alerts'))
+
 # ---------- ELDERLY USERS ----------
+
 
 @bhw_bp.route('/elderly')
 @bhw_required

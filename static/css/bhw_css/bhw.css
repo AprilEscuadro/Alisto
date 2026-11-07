@@ -1721,3 +1721,152 @@ html[data-theme="dark"] .admin-logo img {
 .notif-empty[hidden] {
   display: none !important;
 }
+
+/* ---------- Alerts page: table and detail panel same height ---------- */
+.alerts-layout {
+  align-items: stretch;
+}
+
+.alerts-main {
+  display: flex;
+  flex-direction: column;
+}
+
+.alerts-main .admin-table-card {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  margin-bottom: 0;
+}
+
+.alerts-main .admin-table-card .table-scroll {
+  flex: 1;
+}
+
+.alerts-main .admin-table-card .table-footer {
+  margin-top: auto;
+}
+
+.alert-detail {
+  position: static;
+}
+
+/* ---------- Alerts page: checkboxes + bulk bar ---------- */
+.alerts-table .col-select {
+  width: 40px;
+  padding-right: 0;
+}
+
+.alerts-table input[type="checkbox"] {
+  width: 16px;
+  height: 16px;
+  cursor: pointer;
+  accent-color: var(--admin-primary);
+}
+
+.alerts-table tbody tr.row-checked td {
+  background: #eaf1ff;
+}
+
+html[data-theme="dark"] .alerts-table tbody tr.row-checked td {
+  background: #1d3157;
+}
+
+.bulk-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 10px;
+  padding: 10px 16px;
+  border-bottom: 1px solid var(--admin-border);
+  background: var(--admin-bg);
+}
+
+.bulk-bar[hidden] {
+  display: none;
+}
+
+.bulk-count {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--admin-muted);
+}
+
+.bulk-count b {
+  color: var(--admin-primary);
+}
+
+.bulk-buttons {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+/* ---------- Alerts page: spacing + roomier detail panel ---------- */
+.alerts-toolbar {
+  gap: 14px 16px;
+  margin-bottom: 20px;
+}
+
+.alerts-toolbar .search-box {
+  height: 44px;
+}
+
+.pill-group {
+  gap: 10px;
+}
+
+.pill {
+  height: 38px;
+  padding: 0 18px;
+}
+
+.alerts-layout {
+  gap: 20px;
+}
+
+@media (min-width: 1201px) {
+  .alerts-layout {
+    grid-template-columns: minmax(0, 1fr) 320px;
+  }
+}
+
+/* Label on top, value below, so long text no longer squeezes into a narrow column */
+.detail-head {
+  padding: 16px 20px 0;
+}
+
+.detail-person {
+  padding: 4px 22px 20px;
+}
+
+.detail-list {
+  padding: 6px 22px 14px;
+}
+
+.detail-list div {
+  grid-template-columns: 1fr;
+  gap: 4px;
+  padding: 12px 0;
+  line-height: 1.45;
+  border-bottom: 1px solid var(--admin-border);
+}
+
+.detail-list div:last-child {
+  border-bottom: none;
+}
+
+.detail-list dt {
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.detail-list dd {
+  font-size: 14px;
+}
+
+.detail-actions {
+  padding: 6px 22px 22px;
+}

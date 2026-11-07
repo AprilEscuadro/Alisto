@@ -127,6 +127,27 @@
           message: 'It will stop showing as active.',
           okLabel: 'Mark False Alarm', danger: true,
         };
+      } else if (form.classList.contains('js-confirm-bulk')) {
+        const n = Number($('#bulkCount').textContent) || 0;
+        const what = `${n} alert${n === 1 ? '' : 's'}`;
+        const copy = {
+          'acknowledge': {
+            title: `Mark ${what} as Responding?`,
+            message: 'This confirms that you are responding to these residents.',
+            okLabel: 'Yes, Responding', danger: false,
+          },
+          'resolve': {
+            title: `Mark ${what} as Resolved?`,
+            message: 'They will be closed as resolved. This cannot be undone.',
+            okLabel: 'Yes, Resolved', danger: false,
+          },
+          'false-alarm': {
+            title: `Mark ${what} as False Alarm?`,
+            message: 'They will be closed as false alarms and stop showing as active. This cannot be undone.',
+            okLabel: 'Yes, False Alarm', danger: true,
+          },
+        };
+        request = copy[$('#bulkAction').value] || null;
       } else if (form.classList.contains('js-confirm-add-devices')) {
         const lines = $('#serial_numbers', form).value.split('\n').map((l) => l.trim()).filter(Boolean);
         const n = lines.length;
@@ -557,7 +578,7 @@
     // Clicking anywhere on a row opens that alert, not just the button.
     $$('tbody tr[data-alert-id]', table).forEach((row) => {
       row.addEventListener('click', (e) => {
-        if (e.target.closest('a, button, form')) return;
+        if (e.target.closest('a, button, form, input, label, .col-select')) return;
         const link = $('a[href]', row);
         if (link) window.location = link.href;
       });
@@ -573,6 +594,57 @@
     // Open straight to a filter from the URL, e.g. /bhw/alerts?group=active
     const startGroup = new URLSearchParams(window.location.search).get('group');
     if (startGroup) apply(startGroup);
+  }
+
+  // ---------- Alerts: tick rows, then Responding / Resolved / False Alarm ----------
+  function setupBulkAlerts() {
+    const table = $('#alertsTable');
+    const bar = $('#bulkForm');
+    const all = $('#alertSelectAll');
+    if (!table || !bar || !all) return;
+
+    const boxes = () => $$('tbody .alert-check', table);
+    const visibleBoxes = () => boxes().filter((b) => !b.closest('tr').hidden);
+
+    function sync() {
+      const checked = boxes().filter((b) => b.checked);
+      bar.hidden = checked.length === 0;
+      $('#bulkCount').textContent = checked.length;
+      const vis = visibleBoxes();
+      all.checked = vis.length > 0 && vis.every((b) => b.checked);
+      all.indeterminate = !all.checked && vis.some((b) => b.checked);
+      boxes().forEach((b) => b.closest('tr').classList.toggle('row-checked', b.checked));
+    }
+
+    // Select-all only ticks rows you can see (current filter + page).
+    all.addEventListener('change', () => {
+      visibleBoxes().forEach((b) => { b.checked = all.checked; });
+      sync();
+    });
+    table.addEventListener('change', (e) => {
+      if (e.target.classList.contains('alert-check')) sync();
+    });
+
+    // When a filter, search or page change hides rows, un-tick them so a
+    // hidden alert can never be updated by accident.
+    new MutationObserver(() => {
+      boxes().forEach((b) => { if (b.closest('tr').hidden) b.checked = false; });
+      sync();
+    }).observe(table.tBodies[0], { attributes: true, attributeFilter: ['hidden'], subtree: true });
+
+    bar.addEventListener('click', (e) => {
+      if (e.target.closest('#bulkClear')) {
+        boxes().forEach((b) => { b.checked = false; });
+        sync();
+        return;
+      }
+      const btn = e.target.closest('[data-bulk]');
+      if (!btn) return;
+      $('#bulkAction').value = btn.dataset.bulk;
+      bar.requestSubmit();
+    });
+
+    sync();
   }
 
   // ---------- Register serial numbers window ----------
@@ -709,6 +781,7 @@
     setupRowMenus();
     setupModal();
     setupAlertFilters();   // creates the hidden select the alerts table filters on
+    setupBulkAlerts();
     FILTER_TABLES.forEach(setupFilterTable);
     setupAddDevices();
     setupAddUser();

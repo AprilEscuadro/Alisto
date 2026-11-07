@@ -45,28 +45,39 @@
   </div>
 </section>
 
+<div class="alerts-toolbar">
+  <label class="search-box">
+    <i data-lucide="search"></i>
+    <input type="search" id="alertSearch" placeholder="Search alerts by name or type..." aria-label="Search alerts" />
+  </label>
+  <div class="pill-group" id="alertPills" role="group" aria-label="Filter alerts">
+    <button type="button" class="pill active" data-filter="">All</button>
+    <button type="button" class="pill" data-filter="active">Active</button>
+    <button type="button" class="pill" data-filter="responding">Responding</button>
+    <button type="button" class="pill" data-filter="resolved">Resolved</button>
+    <button type="button" class="pill" data-filter="false_alarm">False Alarm</button>
+  </div>
+</div>
+
 <section class="alerts-layout">
   <div class="alerts-main">
-    <!-- SEARCH + FILTER PILLS -->
-    <div class="alerts-toolbar">
-      <label class="search-box">
-        <i data-lucide="search"></i>
-        <input type="search" id="alertSearch" placeholder="Search alerts by name or type..." aria-label="Search alerts" />
-      </label>
-      <div class="pill-group" id="alertPills" role="group" aria-label="Filter alerts">
-        <button type="button" class="pill active" data-filter="">All</button>
-        <button type="button" class="pill" data-filter="active">Active</button>
-        <button type="button" class="pill" data-filter="responding">Responding</button>
-        <button type="button" class="pill" data-filter="resolved">Resolved</button>
-        <button type="button" class="pill" data-filter="false_alarm">False Alarm</button>
-      </div>
-    </div>
 
     <div class="admin-card admin-table-card">
+      <form method="POST" action="{{ url_for('bhw.bulk_update_alerts') }}" id="bulkForm" class="bulk-bar js-confirm-bulk" hidden>
+        <input type="hidden" name="action" id="bulkAction" />
+        <span class="bulk-count"><b id="bulkCount">0</b> selected</span>
+        <div class="bulk-buttons">
+          <button type="button" class="btn btn-sm btn-outline" data-bulk="acknowledge"><i data-lucide="circle-check"></i> Responding</button>
+          <button type="button" class="btn btn-sm btn-primary" data-bulk="resolve"><i data-lucide="shield-check"></i> Resolved</button>
+          <button type="button" class="btn btn-sm btn-outline btn-danger" data-bulk="false-alarm"><i data-lucide="flag"></i> False Alarm</button>
+          <button type="button" class="link-btn" id="bulkClear">Clear</button>
+        </div>
+      </form>
       <div class="table-scroll">
         <table class="admin-table alerts-table" id="alertsTable">
           <thead>
             <tr>
+              <th class="col-select"><input type="checkbox" id="alertSelectAll" aria-label="Select all alerts on this page" /></th>
               <th>Resident</th>
               <th>Alert Type</th>
               <th>Time</th>
@@ -84,6 +95,9 @@
               data-group="{{ 'active' if row.is_open else ('responding' if row.status == 'acknowledged' else ('false_alarm' if 'false_alarm' in (row.status, row.type) else ('medication' if row.type == 'medication' else 'resolved'))) }}"
                             class="{% if row.is_open %}row-urgent{% endif %} {% if detail and detail.id == row.id %}row-selected{% endif %}"
             >
+              <td class="col-select">
+                <input type="checkbox" class="alert-check" form="bulkForm" name="alert_ids" value="{{ row.id }}" aria-label="Select alert for {{ row.name }}" />
+              </td>
               <td>
                 <div class="user-cell">
                   <span class="admin-avatar-lg avatar-elderly">{{ row.initials }}</span>
@@ -111,7 +125,7 @@
             </tr>
             {% endfor %}
             <tr class="table-empty" {% if rows %}hidden{% endif %}>
-              <td colspan="6">
+              <td colspan="7">
                 <div class="empty-state">
                   <span class="empty-icon"><i data-lucide="bell-off"></i></span>
                   {% if rows %}

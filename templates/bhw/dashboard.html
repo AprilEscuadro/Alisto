@@ -53,7 +53,6 @@
   <div class="admin-card">
     <div class="admin-card-header">
       <h2 class="card-title-alert"><i data-lucide="bell"></i> Active Alerts</h2>
-      <a href="{{ url_for('bhw.alerts') }}" class="card-link">View all alerts <i data-lucide="arrow-right"></i></a>
     </div>
 
     <div class="dashboard-map-wrap">
@@ -80,7 +79,6 @@
   <div class="admin-card">
     <div class="admin-card-header">
       <h2 class="card-title-icon"><i data-lucide="clock"></i> Recent Alerts</h2>
-      <a href="{{ url_for('bhw.alerts') }}" class="card-link">View all <i data-lucide="arrow-right"></i></a>
     </div>
 
     {% if recent_alerts %}
