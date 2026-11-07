@@ -47,17 +47,43 @@
 </section>
 
 <!-- TOOLBAR -->
-<section class="admin-toolbar">
+<section class="admin-toolbar devices-toolbar">
   <div class="toolbar-filters">
     <label class="search-box">
       <i data-lucide="search"></i>
-      <input type="search" id="deviceSearch" placeholder="Search serial number..." aria-label="Search serial number" />
+      <input type="search" id="deviceSearch" placeholder="Search serial number, user, barangay..." aria-label="Search devices" />
     </label>
     <select id="deviceStatusFilter" aria-label="Status">
       <option value="">All statuses</option>
       <option value="available">Available</option>
       <option value="registered">Registered</option>
     </select>
+    <select id="deviceBarangayFilter" aria-label="Barangay">
+      <option value="">All barangays</option>
+      {% for b in barangay_options %}
+      <option value="{{ b }}">{{ b }}</option>
+      {% endfor %}
+    </select>
+    <select id="deviceAssignedFilter" aria-label="Assigned to">
+      <option value="">All users</option>
+      {% for name in assigned_options %}
+      <option value="{{ name }}">{{ name }}</option>
+      {% endfor %}
+    </select>
+    <select id="deviceLoadFilter" aria-label="Load">
+      <option value="">All loads</option>
+      <option value="low">Low load</option>
+      <option value="ok">Load OK</option>
+      <option value="unchecked">Not checked yet</option>
+    </select>
+    <select id="deviceSimFilter" aria-label="Device number">
+      <option value="">Any device number</option>
+      <option value="reported">Reported</option>
+      <option value="missing">Not reported</option>
+    </select>
+    <button type="button" class="btn btn-outline" id="deviceClearFilters">
+      <i data-lucide="filter-x"></i> Clear
+    </button>
   </div>
   <div class="toolbar-actions">
     <div class="export-menu" id="exportDevices">
@@ -84,6 +110,7 @@
           <th>Device Number</th>
           <th>Load</th>
           <th>Assigned To</th>
+          <th>Barangay</th>
           <th>Connected Accounts</th>
           <th>Status</th>
           <th class="col-actions">Actions</th>
@@ -91,7 +118,9 @@
       </thead>
       <tbody>
         {% for row in rows %}
-        <tr data-status="{{ row.status }}" data-serial="{{ row.serial }}">
+        <tr data-status="{{ row.status }}" data-serial="{{ row.serial }}"
+            data-barangay="{{ row.barangay }}" data-assigned="{{ row.assigned_to or '' }}"
+            data-load="{{ row.load_state }}" data-sim="{{ row.sim_state }}">
           <td><span class="serial-cell">{{ row.serial }}</span></td>
           <td class="nowrap">{% if row.sim_number %}{{ row.sim_number }}{% else %}<span class="text-muted">Not reported</span>{% endif %}</td>
           <td class="nowrap">
@@ -109,6 +138,7 @@
             <span class="text-muted">Not assigned</span>
             {% endif %}
           </td>
+          <td class="nowrap">{% if row.barangay %}{{ row.barangay }}{% else %}<span class="text-muted">—</span>{% endif %}</td>
           <td class="nowrap">{% if row.status == 'registered' %}{{ row.accounts_text }}{% else %}<span class="text-muted">—</span>{% endif %}</td>
           <td>
             {% if row.status == 'registered' %}
@@ -144,7 +174,7 @@
         </tr>
         {% endfor %}
         <tr class="table-empty" {% if rows %}hidden{% endif %}>
-          <td colspan="7">
+          <td colspan="8">
             <div class="empty-state">
               <span class="empty-icon"><i data-lucide="smartphone"></i></span>
               {% if rows %}
@@ -187,8 +217,8 @@
         <textarea
           id="serial_numbers"
           name="serial_numbers"
-          rows="7"
-          placeholder="ALISTO-0001&#10;ALISTO-0002&#10;ALISTO-0003"
+          rows="3"
+          placeholder="2026-0718ALISTO09X3"
           required
           autofocus
         ></textarea>
@@ -196,12 +226,6 @@
           Letters, numbers, and dashes only, 4 to 32 characters. Lowercase letters are saved as uppercase.
           <span id="serialCount"></span>
         </small>
-      </label>
-
-      <label class="field">
-        <span>Batch <span class="optional-tag">(optional)</span></span>
-        <input type="text" id="batch" name="batch" placeholder="e.g. Batch 1 - Sudlon II" />
-        <small class="field-hint">A label to help you tell groups of devices apart later.</small>
       </label>
 
       <div class="admin-modal-footer">

@@ -11,10 +11,6 @@
     <h1>Map View</h1>
     <p>Monitor device and emergency status across the community.</p>
   </div>
-  <label class="search-box search-box-wide">
-    <i data-lucide="search"></i>
-    <input type="search" id="mapSearch" placeholder="Search residents or barangays..." aria-label="Search residents or barangays" />
-  </label>
 </div>
 
 <!-- STAT CARDS -->
@@ -73,13 +69,10 @@
       <option value="none">No device</option>
     </select>
   </label>
-  <div class="map-legend-inline">
-    <strong>Legend</strong>
-    <span><i class="dot dot-red"></i> Active Alert</span>
-    <span><i class="dot dot-green"></i> Online</span>
-    <span><i class="dot dot-orange"></i> Weak Signal</span>
-    <span><i class="dot dot-gray"></i> Offline</span>
-  </div>
+  <label class="search-box map-search-wide">
+    <i data-lucide="search"></i>
+    <input type="search" id="mapSearch" placeholder="Search residents or barangays..." aria-label="Search residents or barangays" />
+  </label>
 </section>
 
 <section class="map-layout">
@@ -87,12 +80,21 @@
     <div class="map-frame">
       <div id="adminMap" class="map-full"></div>
     </div>
-    {% if missing_location %}
-    <p class="map-note">
-      <i data-lucide="triangle-alert"></i>
-      {{ missing_location }} resident{{ '' if missing_location == 1 else 's' }} not shown — their device has not reported a location yet.
-    </p>
-    {% endif %}
+    <div class="map-foot">
+      {% if missing_location %}
+      <p class="map-note">
+        <i data-lucide="triangle-alert"></i>
+        {{ missing_location }} resident{{ '' if missing_location == 1 else 's' }} not shown — their device has not reported a location yet.
+      </p>
+      {% endif %}
+      <div class="map-legend-inline">
+        <strong>Legend</strong>
+        <span><i class="dot dot-red"></i> Active Alert</span>
+        <span><i class="dot dot-green"></i> Online</span>
+        <span><i class="dot dot-orange"></i> Weak Signal</span>
+        <span><i class="dot dot-gray"></i> Offline</span>
+      </div>
+    </div>
   </div>
 
   <aside class="admin-card map-side">
@@ -102,9 +104,14 @@
     </div>
 
     {% if recent %}
-    <div class="map-list">
+    <div class="map-list" id="mapAlerts">
       {% for alert in recent %}
-      <a href="{{ url_for('admin.emergency_logs') }}" class="map-list-item {% if alert.is_open %}is-alert{% endif %}">
+      <a href="{{ url_for('admin.emergency_logs') }}"
+         class="map-list-item map-alert-item {% if alert.is_open %}is-alert{% endif %}"
+         data-name="{{ alert.name }}"
+         data-barangay="{{ alert.barangay }}"
+         data-status="{{ status_by_elder.get(alert.elder_id, 'none') }}"
+         {% if loop.index > 4 %}data-extra="1" hidden{% endif %}>
         <span class="admin-avatar-lg avatar-elderly">{{ alert.initials }}</span>
         <span class="map-list-body">
           <strong>{{ alert.name }}{% if alert.age %}, {{ alert.age }}{% endif %}</strong>
@@ -116,6 +123,7 @@
       </a>
       {% endfor %}
     </div>
+    <p class="map-empty" id="mapAlertsEmpty" hidden>No alerts match your search.</p>
     {% else %}
     <div class="empty-state">
       <span class="empty-icon"><i data-lucide="bell-off"></i></span>
@@ -308,12 +316,16 @@
       });
     });
 
-    // Search and the two dropdowns filter both the list and the pins.
+    // Search and the two dropdowns filter both the list and the pins,
+    // and the map moves to whatever is left.
     const search = document.getElementById('mapSearch');
     const barangay = document.getElementById('mapBarangayFilter');
     const status = document.getElementById('mapStatusFilter');
 
-    function applyFilters() {
+    // fit = true only when the admin changed a filter or typed a search.
+    // The 15-second poll calls applyFilters() without it, so a poll never
+    // yanks the map away from where the admin is looking.
+    function applyFilters(fit) {
       const q = search.value.trim().toLowerCase();
       const place = barangay.value;
       const state = status.value;
@@ -325,6 +337,22 @@
                         (!state || item.dataset.status === state));
       });
 
+      // Recent Map Alerts: normally the newest 4; while searching/filtering,
+      // every loaded alert that matches is shown.
+      const filtering = !!(q || place || state);
+      let shownAlerts = 0;
+      document.querySelectorAll('#mapAlerts .map-alert-item').forEach(function (item) {
+        const text = `${item.dataset.name} ${item.dataset.barangay}`.toLowerCase();
+        const match = (!q || text.includes(q)) &&
+                      (!place || item.dataset.barangay === place) &&
+                      (!state || item.dataset.status === state);
+        item.hidden = !(match && (filtering || !item.dataset.extra));
+        if (!item.hidden) shownAlerts++;
+      });
+      const alertsEmpty = document.getElementById('mapAlertsEmpty');
+      if (alertsEmpty) alertsEmpty.hidden = shownAlerts > 0;
+
+      const visible = [];
       currentPoints.forEach(function (p) {
         const marker = markers[p.id];
         if (!marker) return;
@@ -332,14 +360,37 @@
         const shown = (!q || text.includes(q)) &&
                       (!place || p.barangay === place) &&
                       (!state || p.status === state);
-        if (shown) marker.addTo(map);
-        else map.removeLayer(marker);
+        if (shown) {
+          marker.addTo(map);
+          visible.push(p);
+        } else {
+          map.removeLayer(marker);
+        }
+      });
+
+      if (fit === true) moveMapTo(visible);
+    }
+
+    function moveMapTo(visible) {
+      if (!visible.length) return; // walay match: dili ibalhin ang map
+      if (visible.length === 1) {
+        map.setView([visible[0].latitude, visible[0].longitude], 16, { animate: true });
+        markers[visible[0].id].openPopup();
+        return;
+      }
+      map.fitBounds(visible.map((p) => [p.latitude, p.longitude]), {
+        padding: [50, 50], maxZoom: 16, animate: true,
       });
     }
 
-    search.addEventListener('input', applyFilters);
-    barangay.addEventListener('change', applyFilters);
-    status.addEventListener('change', applyFilters);
+    let searchTimer;
+    search.addEventListener('input', function () {
+      applyFilters();                                          // list ug pins mo-update dayon
+      clearTimeout(searchTimer);
+      searchTimer = setTimeout(() => applyFilters(true), 350); // mo-move ang map inig undang sa type
+    });
+    barangay.addEventListener('change', () => applyFilters(true));
+    status.addEventListener('change', () => applyFilters(true));
   });
 </script>
 {% endblock %}

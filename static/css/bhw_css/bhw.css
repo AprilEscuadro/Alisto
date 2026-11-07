@@ -1870,3 +1870,65 @@ html[data-theme="dark"] .alerts-table tbody tr.row-checked td {
 .detail-actions {
   padding: 6px 22px 22px;
 }
+
+/* ============ MAP VIEW SIDE LIST: pages instead of a long scroll ============ */
+.map-side {
+  max-height: none;
+}
+
+.map-list {
+  overflow-y: visible;
+}
+
+.map-pager {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin: 10px 0 12px;
+}
+
+.map-pager[hidden] {
+  display: none;
+}
+
+.map-pager-info {
+  font-size: 12px;
+  color: var(--admin-muted);
+}
+
+.map-pager-controls {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.map-pager-btn {
+  min-width: 30px;
+  height: 30px;
+  padding: 0 8px;
+  border: 1px solid var(--admin-border);
+  border-radius: 8px;
+  background: #fff;
+  color: var(--admin-muted);
+  font-family: inherit;
+  font-size: 12.5px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.map-pager-btn:hover:not(:disabled) {
+  border-color: #2563eb;
+  color: #2563eb;
+}
+
+.map-pager-btn.active {
+  background: #2563eb;
+  border-color: #2563eb;
+  color: #fff;
+}
+
+.map-pager-btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}

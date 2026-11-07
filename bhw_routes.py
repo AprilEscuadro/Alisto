@@ -26,7 +26,7 @@ from werkzeug.security import check_password_hash, generate_password_hash
 import account_profile
 import alerts_common as ac
 import device_info
-from barangays import same_barangay
+from barangays import same_barangay, canonical
 from database import db
 
 bhw_bp = Blueprint('bhw', __name__, url_prefix='/bhw')
@@ -630,8 +630,184 @@ def elderly_users():
 @bhw_bp.route('/elderly/new')
 @bhw_required
 def add_elderly():
-    flash('Add Elderly in Community is not implemented yet.', 'info')
-    return redirect(url_for('bhw.elderly_users'))
+    # Old link: just open the Elderly Users page with the Add window open.
+    return redirect(url_for('bhw.elderly_users', add=1))
+
+
+# ---------- ADD ELDERLY IN COMMUNITY ----------
+
+# Relationships that are saved as contact_type FAMILY (everything else: OTHER).
+FAMILY_RELATIONS = {'Son/Daughter', 'Spouse',
+                    'Sibling', 'Grandchild', 'Relative'}
+
+
+def _clean_device_id(raw):
+    return re.sub(r'\s+', '', raw or '').upper()
+
+
+def _clean_ph_mobile(raw):
+    """'0917 123 4567' / '+639171234567' -> '09171234567', else None."""
+    digits = ''.join(ch for ch in (raw or '') if ch.isdigit())
+    if digits.startswith('63') and len(digits) == 12:
+        digits = '0' + digits[2:]
+    return digits if len(digits) == 11 and digits.startswith('09') else None
+
+
+def _dob_error(dob):
+    try:
+        born = datetime.strptime(dob, '%Y-%m-%d').date()
+    except ValueError:
+        return 'Enter a valid date of birth.'
+    if born > datetime.now(timezone(timedelta(hours=8))).date():
+        return 'Date of birth cannot be in the future.'
+    if born.year < 1900:
+        return 'Enter a valid date of birth.'
+    return None
+
+
+@bhw_bp.route('/elderly/check-device', methods=['POST'])
+@bhw_required
+def check_elderly_device():
+    """Live check for the Device ID box in the Add Elderly window."""
+    data = request.get_json(silent=True) or {}
+    serial = _clean_device_id(data.get('device_id'))
+    if not serial:
+        return jsonify(valid=False, message='Enter the Device ID.'), 400
+    doc = db.collection('device').document(serial).get()
+    if not doc.exists:
+        return jsonify(valid=False,
+                       message='No matching Device ID found. Check the sticker or QR on the device.')
+    if (doc.to_dict() or {}).get('is_registered'):
+        return jsonify(valid=False,
+                       message='This device is already linked to another resident.')
+    return jsonify(valid=True, message='Device ID verified.')
+
+
+@bhw_bp.route('/elderly/add', methods=['POST'])
+@bhw_required
+def add_elderly_submit():
+    f = request.form
+    full_name = f.get('full_name', '').strip()
+    dob = f.get('date_of_birth', '').strip()
+    occupation = f.get('occupation', '').strip()[:80]
+    house_no = f.get('house_no', '').strip()[:40]
+    street = f.get('street', '').strip()[:80]
+    city = f.get('city', '').strip()[:60] or 'Cebu City'
+    province = f.get('province', '').strip()[:60] or 'Cebu'
+    zip_code = f.get('zip_code', '').strip()[:10]
+    serial = _clean_device_id(f.get('device_id'))
+
+    c_name = f.get('contact_name', '').strip()[:80]
+    c_number_raw = f.get('contact_num', '').strip()
+    c_rel = f.get('contact_relationship', '').strip()
+    if c_rel == 'Other':
+        c_rel = f.get('contact_relationship_other', '').strip()
+    c_rel = c_rel[:60]
+
+    if len(full_name) < 2:
+        return jsonify(success=False, message="Enter the resident's full name."), 400
+    if not dob:
+        return jsonify(success=False, message='Enter the date of birth.'), 400
+    error = _dob_error(dob)
+    if error:
+        return jsonify(success=False, message=error), 400
+
+    contact = None
+    if c_name or c_number_raw:
+        number = _clean_ph_mobile(c_number_raw)
+        if not c_name or not number:
+            return jsonify(success=False, message='For the emergency contact, enter a name '
+                           'and a valid mobile number (09XXXXXXXXX).'), 400
+        contact = {'full_name': c_name,
+                   'relationship': c_rel, 'contact_num': number}
+
+    # The resident is always saved under THIS BHW's barangay, so they show up here.
+    barangay = canonical(g.barangay) or g.barangay
+    address = ', '.join(
+        filter(None, [house_no, street, barangay, city, province, zip_code]))
+
+    # Same person already registered here?
+    for elder in _elders_in_barangay(g.barangay).values():
+        if ((elder.get('full_name') or '').strip().casefold() == full_name.casefold()
+                and (elder.get('date_of_birth') or '') == dob):
+            return jsonify(success=False,
+                           message=f'{full_name} is already registered in this barangay.'), 409
+
+    try:
+        device_data = {}
+        if serial:
+            device_doc = db.collection('device').document(serial).get()
+            if not device_doc.exists:
+                return jsonify(success=False,
+                               message='No matching Device ID found. Check it, or leave it blank.'), 400
+            device_data = device_doc.to_dict() or {}
+            if device_data.get('is_registered'):
+                return jsonify(success=False,
+                               message='This device is already linked to another resident.'), 409
+
+        elder_ref = db.collection('elder_profile').document()
+        elder_ref.set({
+            'full_name': full_name,
+            'date_of_birth': dob,
+            'address': address,
+            'occupation': occupation or None,
+            'photo_url': None,
+            'created_at': firestore.SERVER_TIMESTAMP,
+            'created_by': session['user_id'],
+            'deleted_at': None,
+            'is_archived': 0,
+        })
+        elder_id = elder_ref.id
+
+        if serial:
+            db.collection('device').document(serial).set({
+                'elder_id': elder_id,
+                'is_registered': True,
+                'registered_at': firestore.SERVER_TIMESTAMP,
+                'registered_by': session['user_id'],
+                'serial_number': serial,
+                'gps': device_data.get('gps', 'Inactive'),
+                'sim_number': device_data.get('sim_number'),
+                'status': device_data.get('status', 'Offline'),
+            }, merge=True)
+
+        if contact:
+            db.collection('emergency_contact').add({
+                **contact,
+                'email_add': '',
+                'contact_type': 'FAMILY' if contact['relationship'] in FAMILY_RELATIONS else 'OTHER',
+                'elder_id': elder_id,
+                'status': 'ACTIVE',
+                'created_by': session['user_id'],
+                'created_at': firestore.SERVER_TIMESTAMP,
+                'updated_at': firestore.SERVER_TIMESTAMP,
+                'deleted_at': None,
+                'is_archived': False,
+            })
+
+        # History row (best effort: never blocks the registration)
+        try:
+            db.collection('activity_log').add({
+                'elder_id': elder_id, 'type': 'device',
+                'title': f'{full_name} was registered by the Barangay Health Worker',
+                'detail': f'Device {serial} linked' if serial else 'No device linked yet',
+                'badge': 'Linked' if serial else 'Pending',
+                'badge_class': 'success' if serial else 'warning',
+                'location_address': address,
+                'device_id': serial or None,
+                'actor_user_id': session['user_id'],
+                'ref_id': None,
+                'created_at': firestore.SERVER_TIMESTAMP,
+            })
+        except Exception as e:
+            print(f'[bhw] could not log activity: {e}')
+
+        # so the table shows them right away
+        _ELDERS_CACHE.pop(g.barangay, None)
+        return jsonify(success=True, message=f'{full_name} has been added to the community.')
+
+    except Exception as e:
+        return jsonify(success=False, message=f'Error: {str(e)}'), 500
 
 
 # ---------- MAP VIEW ----------

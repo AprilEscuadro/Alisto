@@ -143,6 +143,13 @@
           data-plan="{{ row.plan.key if row.plan else 'na' }}"
           data-joined="{{ row.joined }}"
           data-details='{{ row.details|tojson }}'
+          data-edit='{{ row.edit|tojson }}'
+          data-edit-url="{{ url_for('admin.edit_user', user_id=row.id) }}"
+          data-archive-url="{{ url_for('admin.archive_user', user_id=row.id) }}"
+          data-delete-url="{{ url_for('admin.delete_user', user_id=row.id) }}"
+          data-plan-label="{{ row.plan.label if row.plan else '' }}"
+          data-plan-until="{{ row.plan.until if row.plan else '' }}"
+          data-plan-badge="{{ row.plan.badge if row.plan else '' }}"
           {% if row.valid_id_url %}data-valid-id-url="{{ row.valid_id_url }}" data-valid-id-name="{{ row.valid_id_name }}"{% endif %}
           {% if row.type == 'bhw' %}data-approval-url="{{ url_for('admin.update_bhw_approval', user_id=row.id) }}"{% endif %}
         >
@@ -190,8 +197,8 @@
                 <i data-lucide="ellipsis-vertical"></i>
               </button>
               <div class="row-menu-list" role="menu">
-                <button type="button" class="js-view-details" role="menuitem">
-                  <i data-lucide="eye"></i> View details
+                <button type="button" class="js-open-profile" role="menuitem">
+                  <i data-lucide="eye"></i> View profile
                 </button>
                 {% if row.status == 'pending' %}
                 <form method="POST" action="{{ url_for('admin.update_bhw_approval', user_id=row.id) }}">
@@ -239,46 +246,15 @@
   </div>
 </section>
 
-<!-- DETAILS MODAL -->
-<div class="admin-modal" id="userModal" hidden>
-  <div class="admin-modal-backdrop" data-close-modal></div>
-  <div class="admin-modal-card" role="dialog" aria-modal="true" aria-labelledby="userModalTitle">
-    <div class="admin-modal-header">
-      <div class="user-cell">
-        <span class="admin-avatar-lg" id="userModalAvatar"></span>
-        <div>
-          <strong id="userModalTitle"></strong>
-          <small id="userModalSub"></small>
-        </div>
-      </div>
-      <button type="button" class="admin-modal-close" data-close-modal aria-label="Close">
-        <i data-lucide="x"></i>
-      </button>
-    </div>
-
-    <dl class="details-list" id="userModalDetails"></dl>
-
-    <div class="admin-modal-footer" id="userModalApproval" hidden>
-      <form method="POST" class="js-confirm-reject" id="userModalReject">
-        <input type="hidden" name="action" value="reject" />
-        <button type="submit" class="btn btn-outline btn-danger">Reject</button>
-      </form>
-      <form method="POST" id="userModalApprove">
-        <input type="hidden" name="action" value="approve" />
-        <button type="submit" class="btn btn-primary">Approve BHW</button>
-      </form>
-    </div>
-  </div>
-</div>
-
-<!-- ADD USER (BHW) MODAL -->
+<!-- ADD USER MODAL (Family or BHW). Same fields as the public registration page.
+     Posts to admin.add_user, which reuses the registration rules. -->
 <div class="admin-modal" id="addUserModal" hidden>
   <div class="admin-modal-backdrop" data-close-modal></div>
-  <div class="admin-modal-card" role="dialog" aria-modal="true" aria-labelledby="addUserTitle">
+  <div class="admin-modal-card au-card" role="dialog" aria-modal="true" aria-labelledby="addUserTitle">
     <div class="admin-modal-header">
       <div>
         <strong id="addUserTitle">Add User</strong>
-        <small class="text-muted">Creates a BHW account, approved immediately -- no self-signup review needed.</small>
+        <small class="text-muted">Creates a Family or BHW account that can sign in right away. No approval needed.</small>
       </div>
       <button type="button" class="admin-modal-close" data-close-modal aria-label="Close">
         <i data-lucide="x"></i>
@@ -287,70 +263,241 @@
 
     <div class="admin-alert admin-alert-error" id="addUserError" hidden></div>
 
-    <form method="POST" action="{{ url_for('admin.add_user') }}" id="addUserForm">
-      <label class="field">
-        <span>Full Name</span>
-        <input type="text" name="full_name" required autofocus />
-      </label>
-      <label class="field">
-        <span>Email</span>
-        <input type="email" name="email" required />
-      </label>
-      <label class="field">
-        <span>Contact Number</span>
-        <input type="text" name="contact_number" />
-      </label>
-      <label class="field">
-        <span>New Password</span>
-        <span class="password-wrap">
-          <input type="password" id="new_password" name="password" autocomplete="new-password" required />
-          <button type="button" class="password-eye" data-toggle-password="new_password" aria-label="Show password">
-            <i data-lucide="eye"></i>
-          </button>
-        </span>
-      </label>
-      <ul class="password-rules" id="passwordRules">
-        <li data-rule="length"><i data-lucide="circle-check"></i> At least 8 characters long</li>
-        <li data-rule="case"><i data-lucide="circle-check"></i> Include uppercase and lowercase letters</li>
-        <li data-rule="number"><i data-lucide="circle-check"></i> Include at least one number</li>
-        <li data-rule="special"><i data-lucide="circle-check"></i> Include at least one special character</li>
-      </ul>
-      <label class="field">
-        <span>Confirm Password</span>
-        <input type="password" name="confirm_password" autocomplete="new-password" required />
-      </label>
-      <label class="field">
-        <span>Date of Birth</span>
-        <input type="date" name="bhw_dob" required />
-      </label>
-      <label class="field">
-        <span>Barangay Assigned</span>
-        <select name="barangay_assigned" required>
-          <option value="" disabled selected>Select a barangay</option>
-          {% for barangay in cebu_city_barangays %}
-          <option value="{{ barangay }}">{{ barangay }}</option>
-          {% endfor %}
-        </select>
-      </label>
-      <label class="field">
-        <span>Years of Service</span>
-        <select name="years_of_service" required>
-          <option value="" disabled selected>Select years of service</option>
-          {% for option in years_of_service_options %}
-          <option value="{{ option }}">{{ option }}</option>
-          {% endfor %}
-        </select>
-      </label>
-      <label class="field">
-        <span>BHW ID Number</span>
-        <input type="text" name="bhw_id_number" required />
-      </label>
+    <form method="POST" action="{{ url_for('admin.add_user') }}" id="addUserForm" enctype="multipart/form-data">
+      <div class="au-columns">
+
+        <!-- LEFT: Create Your Account (same order as the registration page) -->
+        <section class="au-col">
+          <h3 class="au-title"><i data-lucide="user-round"></i> Create Account</h3>
+
+          <div class="au-row">
+            <label class="field">
+              <span>Full Name</span>
+              <input type="text" name="full_name" id="au_full_name" placeholder="Full Name" required autofocus />
+            </label>
+            <label class="field">
+              <span>Email</span>
+              <input type="email" name="email" placeholder="Email" required />
+            </label>
+          </div>
+
+          <div class="au-row">
+            <label class="field">
+              <span>Contact Number</span>
+              <input type="text" name="contact_number" placeholder="09XX XXX XXXX" />
+            </label>
+            <label class="field">
+              <span>Role</span>
+              <select name="role" id="au_role" required>
+                <option value="">-- Registering as --</option>
+                <option value="family">Family Member</option>
+                <option value="bhw">Barangay Health Worker (BHW)</option>
+              </select>
+            </label>
+          </div>
+
+          <fieldset class="au-fieldset" id="auBhwBarangay" hidden disabled>
+            <label class="field">
+              <span>Assigned Barangay</span>
+              <select name="barangay_assigned" id="au_barangay_assigned" required>
+                <option value="">Select assigned barangay</option>
+              </select>
+            </label>
+          </fieldset>
+
+          <div class="au-row">
+            <label class="field">
+              <span>Password</span>
+              <span class="password-wrap">
+                <input type="password" id="au_password" name="password" placeholder="Password" autocomplete="new-password" required />
+                <button type="button" class="password-eye" data-toggle-password="au_password" aria-label="Show password">
+                  <i data-lucide="eye"></i>
+                </button>
+              </span>
+            </label>
+            <label class="field">
+              <span>Confirm Password</span>
+              <span class="password-wrap">
+                <input type="password" id="au_confirm" name="confirm_password" placeholder="Confirm Password" autocomplete="new-password" required />
+                <button type="button" class="password-eye" data-toggle-password="au_confirm" aria-label="Show password">
+                  <i data-lucide="eye"></i>
+                </button>
+              </span>
+            </label>
+          </div>
+
+          <p class="rules-title">Password must:</p>
+          <ul class="password-rules au-rules" id="auRules">
+            <li data-rule="length"><i data-lucide="circle-check"></i> <span id="auLengthText">Be at least 6 characters</span></li>
+            <li data-rule="upper"><i data-lucide="circle-check"></i> Include an uppercase letter</li>
+            <li data-rule="lower"><i data-lucide="circle-check"></i> Include a lowercase letter</li>
+            <li data-rule="number"><i data-lucide="circle-check"></i> Include a number</li>
+            <li data-rule="special"><i data-lucide="circle-check"></i> Include a special character</li>
+            <li data-rule="match"><i data-lucide="circle-check"></i> Both passwords match</li>
+          </ul>
+        </section>
+
+        <!-- RIGHT: depends on the role -->
+        <section class="au-col">
+          <div class="au-pick" id="auPick">
+            <i data-lucide="mouse-pointer-click"></i>
+            <p>Choose a role on the left to continue.</p>
+          </div>
+
+          <!-- FAMILY: Device ID, Loved one's Personal Information, Home Address -->
+          <fieldset class="au-fieldset" id="auFamily" hidden disabled>
+            <input type="hidden" name="join_mode" id="au_join_mode" value="claim" />
+            <input type="hidden" name="existing_elder_id" id="au_existing_elder_id" value="" />
+            <input type="hidden" name="relationship" id="au_relationship" value="" />
+
+            <h3 class="au-title"><i data-lucide="qr-code"></i> Device ID</h3>
+            <div class="au-device">
+              <input type="text" name="device_id" id="au_device_id" placeholder="Enter Device ID" autocomplete="off" required />
+              <button type="button" class="btn btn-outline" id="auCheckDevice">Check</button>
+            </div>
+            <small class="field-hint" id="auDeviceMsg">The Device ID is on the ALISTO device or its package.</small>
+
+            <div class="admin-alert admin-alert-info au-join" id="auJoinNotice" hidden></div>
+
+            <h3 class="au-title"><i data-lucide="heart-handshake"></i> Loved one's Personal Information</h3>
+            <div class="au-row">
+              <label class="field">
+                <span>Full Name</span>
+                <input type="text" name="senior_full_name" id="au_senior_name" placeholder="Enter full name" required />
+              </label>
+              <label class="field">
+                <span>Date of Birth</span>
+                <input type="date" name="dob" id="au_dob" required />
+              </label>
+            </div>
+            <div class="au-row">
+              <label class="field">
+                <span>Relationship</span>
+                <select id="au_rel_select" required>
+                  <option value="">Select relationship</option>
+                  <option value="child">Son/Daughter</option>
+                  <option value="spouse">Spouse</option>
+                  <option value="sibling">Sibling</option>
+                  <option value="grandchild">Grandchild</option>
+                  <option value="caregiver">Caregiver</option>
+                  <option value="other">Other</option>
+                </select>
+              </label>
+              <label class="field">
+                <span>Family Member's Barangay</span>
+                <select name="family_barangay" id="au_family_barangay" required>
+                  <option value="">Select barangay</option>
+                </select>
+              </label>
+            </div>
+            <label class="field" id="auRelOtherWrap" hidden>
+              <span>Please specify</span>
+              <input type="text" id="au_rel_other" placeholder="e.g. Girlfriend, Boyfriend, Neighbor" />
+            </label>
+
+            <fieldset class="au-fieldset" id="auAddress">
+              <h3 class="au-title"><i data-lucide="house"></i> Home Address</h3>
+              <div class="au-row">
+                <label class="field">
+                  <span>House / Building No.</span>
+                  <input type="text" name="house_no" placeholder="House / Building No." />
+                </label>
+                <label class="field">
+                  <span>Street</span>
+                  <input type="text" name="street" placeholder="Street" />
+                </label>
+              </div>
+              <div class="au-row">
+                <label class="field">
+                  <span>Barangay</span>
+                  <select name="barangay" id="au_barangay" required>
+                    <option value="">Select barangay</option>
+                  </select>
+                </label>
+                <label class="field">
+                  <span>City / Municipality</span>
+                  <select name="city" id="au_city" required>
+                    <option value="">Select city / municipality</option>
+                    <option value="Cebu City">Cebu City</option>
+                  </select>
+                </label>
+              </div>
+              <div class="au-row">
+                <label class="field">
+                  <span>Province</span>
+                  <select name="province" id="au_province" required>
+                    <option value="">Select province</option>
+                    <option value="Cebu">Cebu</option>
+                  </select>
+                </label>
+                <label class="field">
+                  <span>Zip Code</span>
+                  <input type="text" name="zip_code" placeholder="Zip Code" inputmode="numeric" maxlength="4" />
+                </label>
+              </div>
+            </fieldset>
+          </fieldset>
+
+          <!-- BHW: Professional Information -->
+          <fieldset class="au-fieldset" id="auBhw" hidden disabled>
+            <h3 class="au-title"><i data-lucide="briefcase"></i> Professional Information</h3>
+            <div class="au-row">
+              <label class="field">
+                <span>Date of Birth</span>
+                <input type="date" name="bhw_dob" id="au_bhw_dob" required />
+              </label>
+              <label class="field">
+                <span>Health Center</span>
+                <select name="health_center" id="au_health_center" required>
+                  <option value="">Select your barangay first</option>
+                </select>
+              </label>
+            </div>
+            <div class="au-row">
+              <label class="field">
+                <span>Years of Service</span>
+                <select name="years_of_service" required>
+                  <option value="">Select years of service</option>
+                  {% for option in years_of_service_options %}
+                  <option value="{{ option }}">{{ option }}</option>
+                  {% endfor %}
+                </select>
+              </label>
+              <label class="field">
+                <span>BHW ID Number</span>
+                <input type="text" name="bhw_id_number" placeholder="Enter the BHW ID number" required />
+              </label>
+            </div>
+            <label class="field">
+              <span>Upload Valid ID <span class="field-hint">(Optional · JPG, PNG, PDF · max 700 KB)</span></span>
+              <input type="file" name="valid_id" id="au_valid_id" accept=".jpg,.jpeg,.png,.pdf" />
+            </label>
+          </fieldset>
+        </section>
+      </div>
 
       <div class="admin-modal-footer">
         <button type="button" class="btn btn-outline" data-close-modal>Cancel</button>
         <button type="submit" class="btn btn-primary">Add User</button>
       </div>
     </form>
+  </div>
+</div>
+<!-- USER PROFILE MODAL (opens when a row is clicked) -->
+<script id="upOptions" type="application/json">{{ {'barangays': cebu_city_barangays, 'years': years_of_service_options}|tojson }}</script>
+<div class="up-modal" id="upModal" hidden>
+  <div class="up-backdrop" data-up-close></div>
+  <div class="up-card" role="dialog" aria-modal="true" aria-labelledby="upName">
+    <button type="button" class="up-close" data-up-close aria-label="Close"><i data-lucide="x"></i></button>
+    <header class="up-hero">
+      <span class="up-avatar" id="upAvatar"></span>
+      <div class="up-hero-text">
+        <h2 id="upName"></h2>
+        <div class="up-badges" id="upBadges"></div>
+      </div>
+    </header>
+    <div class="up-body" id="upBody"></div>
+    <footer class="up-foot" id="upFoot"></footer>
   </div>
 </div>
 {% endblock %}

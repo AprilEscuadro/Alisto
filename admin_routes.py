@@ -810,6 +810,32 @@ def users():
 
         rows.append(row)
 
+    # What the "Edit" form in the user modal starts with (raw values).
+    elder_by_id = dict(elders)
+    account_by_id = dict(accounts)
+    for r in rows:
+        if r['type'] == 'elderly':
+            e = elder_by_id.get(r['id'], {})
+            addr = e.get('address')
+            r['edit'] = {
+                'full_name': e.get('full_name') or '',
+                'date_of_birth': str(e.get('date_of_birth') or ''),
+                # Only plain-text addresses can be edited; None hides the field.
+                'address': addr if isinstance(addr, str) else None,
+            }
+            continue
+        u = account_by_id.get(r['id'], {})
+        r['edit'] = {'full_name': u.get('full_name') or '',
+                     'contact_number': u.get('contact_number') or ''}
+        if r['type'] == 'bhw':
+            p = bhw_profiles.get(r['id'], {})
+            r['edit'].update({
+                'date_of_birth': str(p.get('date_of_birth') or ''),
+                'barangay_assigned': _bg.canonical(p.get('barangay_assigned') or '') or p.get('barangay_assigned') or '',
+                'years_of_service': p.get('years_of_service') or '',
+                'bhw_id_number': p.get('bhw_id_number') or '',
+            })
+
     # Pending BHWs first so the admin sees them right away, then newest first.
     rows.sort(key=lambda r: (r['status'] != 'pending', -r['sort']))
 
@@ -1059,88 +1085,145 @@ import barangays as _bg  # noqa: E402
 @admin_bp.route('/users/new', methods=['GET', 'POST'])
 @admin_required
 def add_user():
-    """Creates a BHW account directly, already approved -- skips the
-    self-signup + review flow a real BHW goes through (see app.py's
-    _register_bhw()), for when an admin is onboarding someone they've
-    already vetted in person. Family and Elderly accounts still only ever
-    come from the app/website's own self-service registration (which also
-    needs a device to claim or join) -- this route doesn't touch that.
+    """Adds a Family or BHW account from the admin panel.
 
-    POSTed via fetch() (see setupAddUser() in admin.js), not a plain form
-    submit -- a validation error used to only ever show up as a flash
-    banner at the top of the page after the modal had already closed on
-    redirect, easy to miss while scrolled down filling a long form (real
-    testing: an admin's duplicate-email submission looked like it had
-    silently done nothing). Errors are returned as JSON instead, so the
-    modal can show the message inline and keep what was typed. Success
-    still flashes (shown after the page reload the client does next)."""
+    The form has the SAME fields as the public registration page, and this
+    route hands them to that page's own handler (app.register), so every rule
+    is identical: duplicate email, Device ID check, join-an-existing-loved-one,
+    barangay and health center, BHW ID, valid ID file, and so on.
+
+    The only difference: a BHW added here is approved on the spot (the admin
+    is the one vouching for them), instead of waiting in the pending list.
+
+    POSTed via fetch() (see setupAddUser() in admin.js). Errors come back as
+    JSON so the modal can show them inline and keep what was typed.
+    """
     if request.method == 'GET':
         return redirect(url_for('admin.users'))
 
-    full_name = request.form.get('full_name', '').strip()
+    from flask import current_app
+    role = request.form.get('role', '').strip()
     email = request.form.get('email', '').strip().lower()
-    contact_number = request.form.get('contact_number', '').strip()
-    password = request.form.get('password', '')
-    confirm_password = request.form.get('confirm_password', '')
-    dob = request.form.get('bhw_dob', '').strip()
-    barangay_assigned = request.form.get('barangay_assigned', '').strip()
-    # Only one health center exists system-wide (HEALTH_CENTERS), so there's
-    # nothing for the admin to actually choose -- assigned automatically
-    # instead of showing a single-option dropdown.
-    health_center = HEALTH_CENTERS[0]
-    years_of_service = request.form.get('years_of_service', '').strip()
-    bhw_id_number = request.form.get('bhw_id_number', '').strip()
+    full_name = request.form.get('full_name', '').strip()
+    if role not in ('family', 'bhw'):
+        return jsonify(success=False, message='Please choose a role: Family Member or BHW.'), 400
 
-    if not all([full_name, email, password, dob, barangay_assigned, years_of_service, bhw_id_number]):
-        return jsonify(success=False, message='Please fill up all required fields.'), 400
-    if password != confirm_password:
-        return jsonify(success=False, message='Password and confirm password do not match.'), 400
-    missing = [label for rule, label in PASSWORD_RULES if not rule(password)]
-    if missing:
-        return jsonify(success=False, message='Password needs ' + ', '.join(missing) + '.'), 400
-    barangay_assigned = _bg.canonical(barangay_assigned) or ''
-    if barangay_assigned not in CEBU_CITY_BARANGAYS:
-        return jsonify(success=False, message='Please select a valid barangay.'), 400
-    if years_of_service not in YEARS_OF_SERVICE_OPTIONS:
-        return jsonify(success=False, message='Please select a valid years of service option.'), 400
-    try:
-        if datetime.strptime(dob, '%Y-%m-%d').date() > datetime.now().date():
-            return jsonify(success=False, message='Date of birth cannot be in the future.'), 400
-    except ValueError:
-        return jsonify(success=False, message='Please enter a valid date of birth.'), 400
+    if role == 'bhw':
+        # Admin-created BHW accounts keep the stricter portal password rules.
+        password = request.form.get('password', '')
+        missing = [label for rule,
+                   label in PASSWORD_RULES if not rule(password)]
+        if missing:
+            return jsonify(success=False, message='Password needs ' + ', '.join(missing) + '.'), 400
 
-    if list(db.collection('user_account').where('email', '==', email).limit(1).stream()):
-        return jsonify(success=False, message='An account with this email already exists.'), 400
-    if list(db.collection('bhw_profile').where('bhw_id_number', '==', bhw_id_number).limit(1).stream()):
-        return jsonify(success=False, message='This BHW ID number is already registered.'), 400
+    result = current_app.view_functions['register']()
+    response = result[0] if isinstance(result, tuple) else result
+    status = result[1] if isinstance(result, tuple) and len(
+        result) > 1 else response.status_code
+    payload = response.get_json(silent=True) or {}
+    if not payload.get('success'):
+        return jsonify(success=False, message=payload.get('message') or 'Could not add this user.'), status
 
-    user_ref = db.collection('user_account').document()
-    user_ref.set({
-        'full_name': full_name, 'email': email,
-        'password_hash': generate_password_hash(password),
-        'role': 'bhw', 'contact_number': contact_number,
-        'approval_status': 'approved',
-        'approval_reviewed_at': firestore.SERVER_TIMESTAMP,
-        'approval_reviewed_by': session['user_id'],
-        'created_at': firestore.SERVER_TIMESTAMP, 'deleted_at': None, 'is_archived': 0,
-    })
-    db.collection('bhw_profile').add({
-        'user_id': user_ref.id,
-        'barangay_assigned': barangay_assigned,
-        'date_of_birth': dob,
-        'health_center': health_center,
-        'years_of_service': years_of_service,
-        'bhw_id_number': bhw_id_number,
-        'valid_id_filename': None,
-        'valid_id_stored_as': None,
-        'created_at': firestore.SERVER_TIMESTAMP,
-    })
+    if role == 'bhw':
+        for doc in db.collection('user_account').where('email', '==', email).limit(1).stream():
+            doc.reference.update({
+                'approval_status': 'approved',
+                'approval_reviewed_at': firestore.SERVER_TIMESTAMP,
+                'approval_reviewed_by': session['user_id'],
+            })
+        flash(f'{full_name} was added as a BHW and can sign in immediately.', 'success')
+        return jsonify(success=True, message='BHW added.')
 
-    flash(f'{full_name} was added as a BHW and can sign in immediately.', 'success')
-    return jsonify(success=True, message='BHW added.')
+    flash(f'{full_name} was added as a family member and can sign in immediately.', 'success')
+    return jsonify(success=True, message='Family member added.')
 
+
+@admin_bp.route('/users/<user_id>/edit', methods=['POST'])
+@admin_required
+def edit_user(user_id):
+    """Edit a user's profile details from the Users page modal.
+
+    Elderly -> elder_profile (name, date of birth, address when it is plain text)
+    Family  -> user_account (name, phone)
+    BHW     -> user_account + bhw_profile (name, phone, DOB, barangay,
+               years of service, BHW ID)
+
+    Email is NOT editable here: it is the login. Replies with JSON like
+    add_user() so the modal can show the error inline."""
+    kind = request.form.get('type')
+    full_name = request.form.get('full_name', '').strip()
+    if not full_name:
+        return jsonify(success=False, message='Full name is required.'), 400
+
+    dob = request.form.get('date_of_birth', '').strip()
+    if dob:
+        try:
+            if datetime.strptime(dob, '%Y-%m-%d').date() > datetime.now().date():
+                return jsonify(success=False, message='Date of birth cannot be in the future.'), 400
+        except ValueError:
+            return jsonify(success=False, message='Please enter a valid date of birth.'), 400
+
+    stamp = {'updated_at': firestore.SERVER_TIMESTAMP,
+             'updated_by': session['user_id']}
+
+    # ----- elderly -----
+    if kind == 'elderly':
+        ref = db.collection('elder_profile').document(user_id)
+        doc = ref.get()
+        if not doc.exists:
+            return jsonify(success=False, message='That user could not be found.'), 404
+        update = {'full_name': full_name, 'date_of_birth': dob, **stamp}
+        # A structured (dict) address is left alone; only plain text is editable.
+        if 'address' in request.form and isinstance((doc.to_dict() or {}).get('address', ''), str):
+            update['address'] = request.form.get('address', '').strip()
+        ref.update(update)
+        flash(f'{full_name} was updated.', 'success')
+        return jsonify(success=True, message='Saved.')
+
+    # ----- family / bhw -----
+    ref = db.collection('user_account').document(user_id)
+    doc = ref.get()
+    user = doc.to_dict() if doc.exists else None
+    if not user or user.get('role') not in ('family', 'bhw'):
+        return jsonify(success=False, message='That user could not be found.'), 404
+
+    phone = request.form.get('contact_number', '').strip()
+    if phone and not re.fullmatch(r'[0-9+\-\s()]{7,20}', phone):
+        return jsonify(success=False, message='Please enter a valid phone number.'), 400
+
+    if user.get('role') == 'bhw':
+        barangay = _bg.canonical(request.form.get(
+            'barangay_assigned', '').strip()) or ''
+        years = request.form.get('years_of_service', '').strip()
+        bhw_id = request.form.get('bhw_id_number', '').strip()
+        if barangay not in CEBU_CITY_BARANGAYS:
+            return jsonify(success=False, message='Please select a valid barangay.'), 400
+        if years not in YEARS_OF_SERVICE_OPTIONS:
+            return jsonify(success=False, message='Please select a valid years of service option.'), 400
+        if not bhw_id:
+            return jsonify(success=False, message='BHW ID number is required.'), 400
+
+        profiles = list(db.collection('bhw_profile').where(
+            'user_id', '==', user_id).limit(1).stream())
+        for other in db.collection('bhw_profile').where('bhw_id_number', '==', bhw_id).stream():
+            if (other.to_dict() or {}).get('user_id') != user_id:
+                return jsonify(success=False, message='This BHW ID number is already registered.'), 400
+
+        profile_update = {'barangay_assigned': barangay, 'date_of_birth': dob,
+                          'years_of_service': years, 'bhw_id_number': bhw_id, **stamp}
+        if profiles:
+            profiles[0].reference.update(profile_update)
+        else:
+            db.collection('bhw_profile').add({
+                'user_id': user_id, 'health_center': HEALTH_CENTERS[0],
+                'created_at': firestore.SERVER_TIMESTAMP, **profile_update})
+
+    ref.update({'full_name': full_name, 'contact_number': phone, **stamp})
+    flash(f'{full_name} was updated.', 'success')
+    return jsonify(success=True, message='Saved.')
 
 # ---------- DEVICES ----------
+
 
 # Serial numbers are pre-registered here by the admin. A family can only sign up
 # with a serial number that already exists in this collection.
@@ -1157,8 +1240,10 @@ def _clean_serial(raw):
 @admin_bp.route('/devices')
 @admin_required
 def devices():
-    elders = {doc.id: (doc.to_dict() or {}).get('full_name') or 'Unnamed'
-              for doc in db.collection('elder_profile').stream()}
+    elder_docs = {doc.id: (doc.to_dict() or {})
+                  for doc in db.collection('elder_profile').stream()}
+    elders = {eid: d.get('full_name') or 'Unnamed'
+              for eid, d in elder_docs.items()}
 
     family_counts = device_info.family_counts(db)
 
@@ -1168,13 +1253,19 @@ def devices():
         elder_id = device.get('elder_id')
         registered = bool(device.get('is_registered'))
         accounts = family_counts.get(elder_id, 0) if registered else 0
+        sim_number = device_info.sim_number(device)
+        load = device_info.load_info(device)
         rows.append({
             'serial': doc.id,
             'assigned_to': elders.get(elder_id) if registered else None,
             'elder_id': elder_id if registered else None,
+            'barangay': (_barangay_of(elder_docs.get(elder_id, {}).get('address'))
+                         if registered else ''),
             'status': 'registered' if registered else 'available',
-            'sim_number': device_info.sim_number(device),
-            'load': device_info.load_info(device),
+            'sim_number': sim_number,
+            'sim_state': 'reported' if sim_number else 'missing',
+            'load': load,
+            'load_state': ('low' if load['low'] else 'ok') if load else 'unchecked',
             'accounts': accounts,
             'accounts_text': device_info.accounts_text(accounts),
             'sort': _sort_key(device.get('created_at')),
@@ -1189,7 +1280,13 @@ def devices():
         'available': sum(1 for r in rows if r['status'] == 'available'),
     }
 
-    return render_template('admin/devices.html', active_page='devices', rows=rows, stats=stats)
+    barangay_options = sorted({r['barangay'] for r in rows if r['barangay']})
+    assigned_options = sorted({r['assigned_to'] for r in rows if r['assigned_to']},
+                              key=str.lower)
+
+    return render_template(
+        'admin/devices.html', active_page='devices', rows=rows, stats=stats,
+        barangay_options=barangay_options, assigned_options=assigned_options)
 
 
 @admin_bp.route('/devices/add', methods=['POST'])
@@ -1198,7 +1295,6 @@ def add_devices():
     """Pre-register one or many serial numbers. One serial per line."""
     raw_lines = (request.form.get('serial_numbers')
                  or '').replace(',', '\n').splitlines()
-    batch = (request.form.get('batch') or '').strip()
 
     typed = [line for line in (l.strip() for l in raw_lines) if line]
     if not typed:
@@ -1228,7 +1324,6 @@ def add_devices():
             'serial_number': serial,
             'is_registered': False,
             'elder_id': None,
-            'batch': batch,
             'created_at': firestore.SERVER_TIMESTAMP,
             'added_by': session['user_id'],
         })
@@ -1431,7 +1526,8 @@ def _map_points(residents):
 @admin_required
 def map_view():
     residents = _resident_rows()
-    alerts = _all_alert_rows(limit=4)           # the "recent" list shows 4
+    # shows 4; the rest appear only while searching
+    alerts = _all_alert_rows(limit=20)
     barangays = sorted({r['barangay'] for r in residents if r['barangay']})
     located = [r for r in residents if r['latitude'] and r['longitude']]
 
@@ -1445,7 +1541,8 @@ def map_view():
     return render_template(
         'admin/map_view.html', active_page='map_view',
         residents=residents, points=_map_points(residents), barangays=barangays, stats=stats,
-        recent=alerts[:4], missing_location=len(residents) - len(located),
+        recent=alerts[:20], missing_location=len(residents) - len(located),
+        status_by_elder={r['id']: r['map_status'] for r in residents},
     )
 
 

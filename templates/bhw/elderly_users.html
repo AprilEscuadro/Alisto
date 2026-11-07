@@ -2,9 +2,250 @@
 {% block title %}Elderly Users{% endblock %}
 
 {% block head %}
+<script src="https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.js"></script>
 <style>
   .load-low { color: #dc2626; }
   .load-checked { display: block; font-size: 11.5px; margin-top: 2px; }
+
+  /* ---------- Add Elderly: landscape glass / iOS style ---------- */
+  .ae-overlay {
+    display: none; position: fixed; inset: 0; z-index: 1200;
+    align-items: center; justify-content: center; padding: 16px;
+    background: rgba(15, 23, 42, 0.32);
+    -webkit-backdrop-filter: blur(14px) saturate(140%);
+    backdrop-filter: blur(14px) saturate(140%);
+  }
+  .ae-overlay.open { display: flex; }
+  .ae-modal {
+    --brand: #5088fe; --ink: #0f172a; --muted: #6b7280;
+    --field: rgba(120, 120, 128, 0.12);
+    --hair: rgba(15, 23, 42, 0.08);
+    display: flex; flex-direction: column;
+    width: 100%; max-width: 1000px; max-height: calc(100vh - 32px);
+    overflow-y: auto; scrollbar-width: none;   /* safety net only, scrollbar hidden */
+    border-radius: 28px;
+    background: rgba(255, 255, 255, 0.78);
+    -webkit-backdrop-filter: blur(40px) saturate(180%);
+    backdrop-filter: blur(40px) saturate(180%);
+    border: 1px solid rgba(255, 255, 255, 0.65);
+    box-shadow: 0 30px 80px rgba(15, 23, 42, 0.28), inset 0 1px 0 rgba(255, 255, 255, 0.8);
+    font-family: -apple-system, BlinkMacSystemFont, "SF Pro Display", "Inter", "Segoe UI", sans-serif;
+    color: var(--ink);
+  }
+  .ae-modal::-webkit-scrollbar { display: none; }
+
+  .ae-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; padding: 22px 28px 4px; }
+  .ae-head h3 { margin: 0; font-size: 22px; font-weight: 800; letter-spacing: -0.02em; }
+  .ae-head p { margin: 3px 0 0; font-size: 13px; color: var(--muted); }
+  .ae-close {
+    flex: none; width: 32px; height: 32px; border: none; border-radius: 50%;
+    background: var(--field); color: #475569; cursor: pointer; display: grid; place-items: center;
+  }
+  .ae-close:hover { background: rgba(120, 120, 128, 0.2); }
+
+  .ae-body { display: grid; grid-template-columns: 1fr 1fr; padding: 4px 28px 0; }
+  .ae-col { min-width: 0; }
+  .ae-col:first-child { padding-right: 24px; }
+  .ae-col:last-child { padding-left: 24px; border-left: 1px solid var(--hair); }
+
+  .ae-section { margin: 14px 0 8px 2px; font-size: 12px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; color: var(--muted); }
+  .ae-section small { text-transform: none; letter-spacing: 0; font-weight: 500; }
+  .ae-row { display: grid; grid-template-columns: 1fr 1fr; gap: 10px 12px; }
+  .ae-field { margin-bottom: 10px; min-width: 0; }
+  .ae-row .ae-field { margin-bottom: 0; }
+  .ae-span { grid-column: 1 / -1; }
+  .ae-label { display: block; font-size: 12.5px; font-weight: 600; color: var(--muted); margin: 0 0 5px 2px; }
+  .ae-input, .ae-select {
+    width: 100%; box-sizing: border-box; height: 44px; padding: 0 14px;
+    border: 1.5px solid transparent; border-radius: 14px;
+    background: var(--field); font: inherit; font-size: 15px; color: var(--ink);
+    transition: border-color .15s, background .15s;
+  }
+  .ae-input:focus, .ae-select:focus { outline: none; background: #fff; border-color: var(--brand); }
+  .ae-input[readonly] { color: var(--muted); cursor: not-allowed; }
+  .ae-input.ok { border-color: #34c759; }
+  .ae-input.bad { border-color: #f59e0b; background: #fffbeb; }
+  .ae-hint { min-height: 17px; margin: 5px 2px 0; font-size: 12px; color: var(--muted); }
+  .ae-hint.good { color: #15803d; }
+  .ae-hint.warn { color: #b45309; }
+  .ae-note { margin: 10px 2px 0; font-size: 12px; line-height: 1.45; color: var(--muted); }
+
+  /* Device ID box with the scan button on the right */
+  .ae-input-wrap { position: relative; display: flex; align-items: center; }
+  .ae-input-wrap .ae-input { padding-right: 58px; }
+  .ae-scan-btn {
+    position: absolute; right: 6px; width: 34px; height: 34px; border: none; border-radius: 11px;
+    background: rgba(80, 136, 254, 0.14); color: #5088fe; cursor: pointer;
+    display: inline-flex; align-items: center; justify-content: center;
+    transition: background .15s, transform .1s;
+  }
+  .ae-scan-btn:hover { background: rgba(80, 136, 254, 0.24); }
+  .ae-scan-btn:active { transform: scale(0.94); }
+  .ae-scan-btn svg { width: 19px; height: 19px; }
+
+  /* camera view: covers the right column while scanning */
+  .ae-right { position: relative; }
+  .ae-scanner {
+    position: absolute; inset: 12px 0 12px 24px; z-index: 5;
+    border-radius: 22px; overflow: hidden; background: #0b0f17;
+    display: flex; align-items: flex-end; justify-content: center;
+  }
+  .ae-scanner[hidden] { display: none; }
+  .ae-scanner video { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
+  .ae-scan-frame {
+    position: absolute; top: 50%; left: 50%; width: 52%; aspect-ratio: 1;
+    transform: translate(-50%, -56%); border-radius: 22px;
+    box-shadow: 0 0 0 2px rgba(255, 255, 255, 0.9), 0 0 0 999px rgba(0, 0, 0, 0.35);
+  }
+  .ae-scan-hint { position: relative; margin: 0 auto 14px; padding: 0 12px; text-align: center; font-size: 12.5px; color: #fff; text-shadow: 0 1px 2px rgba(0, 0, 0, 0.5); }
+  .ae-scan-stop {
+    position: absolute; top: 12px; right: 12px; height: 34px; padding: 0 14px;
+    border: none; border-radius: 12px; cursor: pointer;
+    background: rgba(255, 255, 255, 0.22); color: #fff; font: inherit; font-size: 12.5px; font-weight: 700;
+    -webkit-backdrop-filter: blur(10px); backdrop-filter: blur(10px);
+  }
+  @media (max-width: 820px) { .ae-scanner { inset: 12px 0; min-height: 280px; } }
+
+  .ae-foot { display: flex; align-items: center; gap: 14px; padding: 14px 28px 22px; }
+  .ae-msg { flex: 1; min-height: 18px; font-size: 13px; }
+  .ae-msg.success { color: #15803d; }
+  .ae-msg.error { color: #dc2626; }
+  .ae-actions { display: flex; gap: 12px; flex: none; }
+  .ae-btn { height: 48px; padding: 0 28px; border: none; border-radius: 15px; font: inherit; font-size: 15.5px; font-weight: 700; cursor: pointer; transition: transform .1s, opacity .15s; }
+  .ae-btn:active { transform: scale(0.985); }
+  .ae-btn.ghost { background: var(--field); color: #334155; }
+  .ae-btn.primary { background: var(--brand); color: #fff; min-width: 190px; box-shadow: 0 8px 20px rgba(80, 136, 254, 0.35); }
+  .ae-btn:disabled { opacity: .45; cursor: not-allowed; box-shadow: none; }
+
+  @media (max-height: 720px) {
+    .ae-head { padding-top: 16px; }
+    .ae-section { margin-top: 10px; }
+    .ae-input, .ae-select { height: 40px; font-size: 14px; }
+    .ae-field { margin-bottom: 8px; }
+    .ae-foot { padding: 10px 28px 16px; }
+    .ae-btn { height: 44px; }
+  }
+  @media (max-width: 820px) {
+    .ae-body { grid-template-columns: 1fr; }
+    .ae-col:first-child { padding-right: 0; }
+    .ae-col:last-child { padding-left: 0; border-left: none; }
+    .ae-head, .ae-body, .ae-foot { padding-left: 20px; padding-right: 20px; }
+    .ae-foot { flex-direction: column; align-items: stretch; }
+    .ae-actions { display: grid; grid-template-columns: 1fr 2fr; }
+  }
+  html[data-theme="dark"] .ae-modal { --ink: #e6ebf5; --muted: #9aa6bf; --field: rgba(255,255,255,.08); --hair: rgba(255,255,255,.1); background: rgba(22, 30, 54, 0.82); border-color: rgba(255,255,255,.1); }
+  html[data-theme="dark"] .ae-input:focus, html[data-theme="dark"] .ae-select:focus { background: rgba(255,255,255,.14); }
+  html[data-theme="dark"] .ae-btn.ghost, html[data-theme="dark"] .ae-close { color: #e6ebf5; }
+
+  /* ---------- Resident View window: glass / iOS style ---------- */
+  #userModal .admin-modal-backdrop {
+    background: rgba(15, 23, 42, 0.30);
+    -webkit-backdrop-filter: blur(14px) saturate(140%);
+    backdrop-filter: blur(14px) saturate(140%);
+  }
+  #userModal .admin-modal-card {
+    --ink: #0f172a; --muted: #64748b;
+    --tile: rgba(255, 255, 255, 0.72); --hair: rgba(80, 110, 190, 0.16);
+    max-width: 860px; max-height: 92vh; padding: 0;
+    overflow-y: auto; scrollbar-width: none;
+    border-radius: 30px;
+    background: rgba(248, 250, 255, 0.86);
+    -webkit-backdrop-filter: blur(40px) saturate(180%);
+    backdrop-filter: blur(40px) saturate(180%);
+    border: 1px solid rgba(255, 255, 255, 0.7);
+    box-shadow: 0 30px 80px rgba(15, 23, 42, 0.28), inset 0 1px 0 rgba(255, 255, 255, 0.85);
+    font-family: -apple-system, BlinkMacSystemFont, "SF Pro Display", "Inter", "Segoe UI", sans-serif;
+    color: var(--ink);
+    animation: vm-rise .3s cubic-bezier(.2, .8, .2, 1);
+  }
+  #userModal .admin-modal-card::-webkit-scrollbar { display: none; }
+  @keyframes vm-rise { from { opacity: 0; transform: translateY(14px) scale(.985); } to { opacity: 1; transform: none; } }
+
+  /* header: soft blue gradient with a wave in the corner */
+  #userModal .admin-modal-header {
+    position: relative; align-items: center; margin: 0; padding: 26px 32px;
+    border-bottom: 1px solid var(--hair);
+    background:
+      radial-gradient(90% 160% at 100% 0%, rgba(80, 136, 254, 0.34) 0%, rgba(80, 136, 254, 0) 60%),
+      linear-gradient(120deg, rgba(255, 255, 255, 0.95), rgba(224, 236, 255, 0.85));
+  }
+  #userModal .user-cell { gap: 0; align-items: center; }
+  #userModalAvatar {
+    position: relative; flex: none; width: 72px; height: 72px; font-size: 24px; font-weight: 700;
+    background: linear-gradient(145deg, #e0edff, #9ec2ff); color: #1e3a8a;
+    box-shadow: 0 0 0 4px rgba(255, 255, 255, 0.85), 0 10px 24px rgba(80, 136, 254, 0.3);
+  }
+  #userModalAvatar::after {                       /* status dot */
+    content: ""; position: absolute; right: 1px; bottom: 1px; width: 16px; height: 16px;
+    border-radius: 50%; background: #94a3b8; border: 3px solid #fff;
+  }
+  #userModal .admin-modal-card[data-state="online"] #userModalAvatar::after { background: #22c55e; }
+  #userModal .admin-modal-card[data-state="weak"] #userModalAvatar::after { background: #f59e0b; }
+  #userModal .user-cell > div { margin-left: 22px; padding-left: 22px; border-left: 1px solid var(--hair); }
+  #userModalTitle { display: block; font-size: 24px; font-weight: 700; letter-spacing: -0.02em; }
+  #userModal .admin-modal-header small { margin-top: 4px; font-size: 14px; font-weight: 400; color: var(--muted); }
+  .vm-pill {
+    display: inline-flex; align-items: center; gap: 6px; margin-top: 10px; padding: 3px 11px 3px 9px;
+    border-radius: 999px; font-size: 12px; font-weight: 600; background: rgba(255, 255, 255, 0.75);
+  }
+  .vm-pill::before { content: ""; width: 7px; height: 7px; border-radius: 50%; background: currentColor; }
+  .vm-pill.online  { color: #15803d; }
+  .vm-pill.weak    { color: #b45309; }
+  .vm-pill.offline { color: #475569; }
+  .vm-pill.none    { color: #64748b; }
+  #userModal .admin-modal-close {
+    flex: none; width: 42px; height: 42px; padding: 0; border-radius: 50%;
+    background: #fff; color: #334155; display: grid; place-items: center;
+    box-shadow: 0 4px 14px rgba(15, 23, 42, 0.12);
+  }
+  #userModal .admin-modal-close:hover { background: #f1f5f9; }
+
+  /* details: icon tiles in two columns */
+  #userModalDetails {
+    display: grid; grid-template-columns: 1fr 1fr; gap: 14px;
+    padding: 24px 32px 32px;
+    background: radial-gradient(60% 50% at 100% 100%, rgba(80, 136, 254, 0.14), rgba(80, 136, 254, 0) 70%);
+  }
+  #userModalDetails > div {
+    display: grid; grid-template-columns: 44px 1fr; column-gap: 14px; align-items: center;
+    min-width: 0; padding: 14px 16px; border: 1px solid var(--hair); border-radius: 18px;
+    background: var(--tile); box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04);
+  }
+  #userModalDetails .vm-wide { grid-column: 1 / -1; }
+  .vm-ico {
+    grid-row: 1 / 3; width: 44px; height: 44px; border-radius: 50%;
+    display: grid; place-items: center;
+    background: rgba(80, 136, 254, 0.12); color: #3b6ff0;
+  }
+  .vm-ico svg { width: 20px; height: 20px; }
+  #userModalDetails dt {
+    grid-column: 2; grid-row: 1; margin: 0;
+    font-size: 11.5px; font-weight: 600; letter-spacing: .06em; text-transform: uppercase; color: var(--muted);
+  }
+  #userModalDetails dd {
+    grid-column: 2; grid-row: 2; margin: 3px 0 0;
+    font-size: 15px; font-weight: 500; line-height: 1.45; color: var(--ink);
+  }
+
+  @media (max-width: 640px) {
+    #userModalDetails { grid-template-columns: 1fr; padding: 18px 20px 24px; }
+    #userModal .admin-modal-header { padding: 20px; }
+    #userModal .user-cell > div { margin-left: 14px; padding-left: 14px; }
+    #userModalTitle { font-size: 20px; }
+  }
+  html[data-theme="dark"] #userModal .admin-modal-card {
+    --ink: #e6ebf5; --muted: #9aa6bf; --tile: rgba(255, 255, 255, 0.06); --hair: rgba(255, 255, 255, 0.1);
+    background: rgba(22, 30, 54, 0.88); border-color: rgba(255, 255, 255, 0.1);
+  }
+  html[data-theme="dark"] #userModal .admin-modal-header {
+    background:
+      radial-gradient(90% 160% at 100% 0%, rgba(80, 136, 254, 0.28) 0%, rgba(80, 136, 254, 0) 60%),
+      linear-gradient(120deg, rgba(30, 41, 72, 0.9), rgba(22, 30, 54, 0.9));
+  }
+  html[data-theme="dark"] #userModalAvatar { color: #dbe7ff; background: linear-gradient(145deg, #2b4a8a, #1e3a6e); }
+  html[data-theme="dark"] #userModal .admin-modal-close { background: rgba(255, 255, 255, 0.1); color: #e6ebf5; box-shadow: none; }
+  html[data-theme="dark"] .vm-pill { background: rgba(255, 255, 255, 0.1); }
+  html[data-theme="dark"] .vm-ico { background: rgba(80, 136, 254, 0.2); color: #8fb2ff; }
 </style>
 {% endblock %}
 
@@ -14,9 +255,9 @@
     <h1>Elderly Users</h1>
     <p>Monitor and review the elderly residents registered under Barangay {{ bhw_barangay or '—' }}.</p>
   </div>
-  <a href="{{ url_for('bhw.add_elderly') }}" class="btn btn-primary btn-lg">
+  <button type="button" class="btn btn-primary btn-lg" id="openAddElderly">
     <i data-lucide="plus"></i> Add Elderly in Community
-  </a>
+  </button>
 </div>
 
 <section class="admin-card bhw-filter-card">
@@ -142,6 +383,126 @@
   </div>
 </section>
 
+<!-- ADD ELDERLY IN COMMUNITY (landscape glass window) -->
+<div class="ae-overlay" id="aeOverlay">
+  <form class="ae-modal" id="aeForm" role="dialog" aria-modal="true" aria-labelledby="aeTitle" novalidate>
+    <div class="ae-head">
+      <div>
+        <h3 id="aeTitle">Add elderly in community</h3>
+        <p>Register a resident under Barangay {{ bhw_barangay or '—' }}.</p>
+      </div>
+      <button type="button" class="ae-close" id="aeClose" aria-label="Close"><i data-lucide="x"></i></button>
+    </div>
+
+    <div class="ae-body">
+      <!-- LEFT: who they are + where they live -->
+      <div class="ae-col">
+        <div class="ae-section">Personal info</div>
+        <div class="ae-field">
+          <label class="ae-label" for="aeName">Full name</label>
+          <input class="ae-input" id="aeName" name="full_name" maxlength="100" placeholder="e.g. Maria Santos" autocomplete="off" />
+        </div>
+        <div class="ae-row">
+          <div class="ae-field">
+            <label class="ae-label" for="aeDob">Date of birth</label>
+            <input class="ae-input" type="date" id="aeDob" name="date_of_birth" min="1900-01-01" />
+          </div>
+          <div class="ae-field">
+            <label class="ae-label" for="aeOcc">Occupation <small>(optional)</small></label>
+            <input class="ae-input" id="aeOcc" name="occupation" maxlength="80" placeholder="e.g. Retired teacher" />
+          </div>
+        </div>
+
+        <div class="ae-section">Address</div>
+        <div class="ae-row">
+          <div class="ae-field">
+            <label class="ae-label" for="aeHouse">House no.</label>
+            <input class="ae-input" id="aeHouse" name="house_no" maxlength="40" placeholder="e.g. 12" />
+          </div>
+          <div class="ae-field">
+            <label class="ae-label" for="aeStreet">Street / Purok</label>
+            <input class="ae-input" id="aeStreet" name="street" maxlength="80" placeholder="e.g. Purok 1" />
+          </div>
+          <div class="ae-field">
+            <label class="ae-label" for="aeBrgy">Barangay</label>
+            <input class="ae-input" id="aeBrgy" value="{{ bhw_barangay or '' }}" readonly />
+          </div>
+          <div class="ae-field">
+            <label class="ae-label" for="aeCity">City</label>
+            <input class="ae-input" id="aeCity" name="city" maxlength="60" value="Cebu City" />
+          </div>
+          <div class="ae-field">
+            <label class="ae-label" for="aeProv">Province</label>
+            <input class="ae-input" id="aeProv" name="province" maxlength="60" value="Cebu" />
+          </div>
+          <div class="ae-field">
+            <label class="ae-label" for="aeZip">ZIP code</label>
+            <input class="ae-input" id="aeZip" name="zip_code" maxlength="10" value="6000" inputmode="numeric" />
+          </div>
+        </div>
+      </div>
+
+      <!-- RIGHT: device + emergency contact -->
+      <div class="ae-col ae-right">
+        <!-- Camera view (shown while scanning) -->
+        <div class="ae-scanner" id="aeScanner" hidden>
+          <video id="aeQrVideo" autoplay playsinline muted></video>
+          <canvas id="aeQrCanvas" hidden></canvas>
+          <span class="ae-scan-frame"></span>
+          <p class="ae-scan-hint" id="aeScanHint">Point the camera at the QR code on the device.</p>
+          <button type="button" class="ae-scan-stop" id="aeScanStop">Cancel scan</button>
+        </div>
+
+        <div class="ae-section">ALISTO device <small>(optional, you can link it later)</small></div>
+        <div class="ae-field">
+          <label class="ae-label" for="aeDevice">Device ID</label>
+          <div class="ae-input-wrap">
+            <input class="ae-input" id="aeDevice" name="device_id" maxlength="40" placeholder="e.g. 2026-0718ALISTO09X3" autocomplete="off" autocapitalize="characters" spellcheck="false" />
+            <button type="button" class="ae-scan-btn" id="aeScanBtn" aria-label="Scan the QR code on the device">
+              <i data-lucide="scan-line"></i>
+            </button>
+          </div>
+          <div class="ae-hint" id="aeDeviceHint"></div>
+        </div>
+
+        <div class="ae-section">Emergency contact <small>(optional)</small></div>
+        <div class="ae-row">
+          <div class="ae-field">
+            <label class="ae-label" for="aeCName">Contact name</label>
+            <input class="ae-input" id="aeCName" name="contact_name" maxlength="80" placeholder="e.g. Ana Santos" />
+          </div>
+          <div class="ae-field">
+            <label class="ae-label" for="aeCNum">Mobile number</label>
+            <input class="ae-input" id="aeCNum" name="contact_num" maxlength="20" placeholder="09XX XXX XXXX" inputmode="tel" />
+          </div>
+          <div class="ae-field ae-span">
+            <label class="ae-label" for="aeCRel">Relationship</label>
+            <select class="ae-select" id="aeCRel" name="contact_relationship">
+              <option value="">Select</option>
+              <option>Son/Daughter</option><option>Spouse</option><option>Sibling</option>
+              <option>Grandchild</option><option>Relative</option><option>Neighbor</option>
+              <option>Caregiver</option><option>Other</option>
+            </select>
+          </div>
+          <div class="ae-field ae-span" id="aeCRelOtherWrap" hidden>
+            <label class="ae-label" for="aeCRelOther">Please specify</label>
+            <input class="ae-input" id="aeCRelOther" name="contact_relationship_other" maxlength="60" placeholder="e.g. Niece" />
+          </div>
+        </div>
+        <p class="ae-note">The ALISTO device sends an SMS to this person during an emergency.</p>
+      </div>
+    </div>
+
+    <div class="ae-foot">
+      <div class="ae-msg" id="aeMsg" role="status"></div>
+      <div class="ae-actions">
+        <button type="button" class="ae-btn ghost" id="aeCancel">Cancel</button>
+        <button type="submit" class="ae-btn primary" id="aeSubmit">Register resident</button>
+      </div>
+    </div>
+  </form>
+</div>
+
 <!-- DETAILS WINDOW (opened by admin.js) -->
 <div class="admin-modal" id="userModal" hidden>
   <div class="admin-modal-backdrop" data-close-modal></div>
@@ -165,4 +526,196 @@
     </div>
   </div>
 </div>
+
+<!-- Scripts go AFTER the windows above, so the elements already exist when they run -->
+<script>
+  // ---------- Add Elderly window ----------
+  (function () {
+    const $ = (id) => document.getElementById(id);
+    const overlay = $('aeOverlay'), form = $('aeForm'), msg = $('aeMsg');
+    const device = $('aeDevice'), hint = $('aeDeviceHint');
+    let deviceOk = true, timer = null, saving = false;
+
+    $('aeDob').max = new Date().toISOString().slice(0, 10);
+
+    function setMsg(text, kind) { msg.textContent = text || ''; msg.className = 'ae-msg ' + (kind || ''); }
+    function open() { setMsg(''); overlay.classList.add('open'); setTimeout(() => $('aeName').focus(), 50); }
+    function close() { stopScan(); if (!saving) overlay.classList.remove('open'); }
+
+    $('openAddElderly').addEventListener('click', open);
+    $('aeClose').addEventListener('click', close);
+    $('aeCancel').addEventListener('click', close);
+    overlay.addEventListener('click', (e) => { if (e.target === overlay) close(); });
+    document.addEventListener('keydown', (e) => { if (e.key === 'Escape') close(); });
+    if (new URLSearchParams(location.search).get('add')) open();
+
+    $('aeCRel').addEventListener('change', (e) => { $('aeCRelOtherWrap').hidden = e.target.value !== 'Other'; });
+
+    // Live Device ID check (waits a moment after typing stops)
+    function checkDevice() {
+      const value = device.value.replace(/\s+/g, '').toUpperCase();
+      device.value = value;
+      device.classList.remove('ok', 'bad');
+      hint.className = 'ae-hint';
+      if (!value) { hint.textContent = ''; deviceOk = true; return; }
+      deviceOk = false;
+      hint.textContent = 'Checking...';
+      fetch("{{ url_for('bhw.check_elderly_device') }}", {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ device_id: value }),
+      }).then((r) => r.json()).then((d) => {
+        if (device.value !== value) return;          // typed again meanwhile
+        deviceOk = !!d.valid;
+        device.classList.add(d.valid ? 'ok' : 'bad');
+        hint.classList.add(d.valid ? 'good' : 'warn');
+        hint.textContent = d.message || '';
+      }).catch(() => { hint.className = 'ae-hint warn'; hint.textContent = 'Could not check the device. Try again.'; });
+    }
+    device.addEventListener('input', () => { clearTimeout(timer); timer = setTimeout(checkDevice, 600); });
+    device.addEventListener('blur', () => { clearTimeout(timer); checkDevice(); });
+
+    // ---------- QR scanner (jsQR), same as the family "Add a loved one" ----------
+    const scanner = $('aeScanner'), video = $('aeQrVideo'), canvas = $('aeQrCanvas'), scanHint = $('aeScanHint');
+    let stream = null, scanning = false;
+
+    async function startScan() {
+      if (!window.jsQR || !navigator.mediaDevices) {
+        hint.className = 'ae-hint warn';
+        hint.textContent = "Scanning isn't available in this browser. Type the Device ID instead.";
+        return;
+      }
+      scanner.hidden = false;
+      scanHint.textContent = 'Point the camera at the QR code on the device.';
+      try {
+        stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } });
+        video.srcObject = stream;
+        await video.play();
+        scanning = true;
+        requestAnimationFrame(scanLoop);
+      } catch (e) {
+        scanHint.textContent = "Can't open the camera. Allow camera access (needs HTTPS or localhost), or type the Device ID.";
+      }
+    }
+
+    function stopScan() {
+      scanning = false;
+      if (stream) stream.getTracks().forEach((t) => t.stop());
+      stream = null;
+      if (scanner) scanner.hidden = true;
+    }
+
+    function scanLoop() {
+      if (!scanning) return;
+      if (video.readyState === video.HAVE_ENOUGH_DATA) {
+        canvas.width = video.videoWidth;
+        canvas.height = video.videoHeight;
+        const ctx = canvas.getContext('2d', { willReadFrequently: true });
+        ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+        const img = ctx.getImageData(0, 0, canvas.width, canvas.height);
+        const code = window.jsQR(img.data, img.width, img.height, { inversionAttempts: 'dontInvert' });
+        if (code && code.data) {
+          device.value = code.data.trim();
+          stopScan();
+          checkDevice();          // shows "Device ID verified." or the error right away
+          return;
+        }
+      }
+      requestAnimationFrame(scanLoop);
+    }
+
+    $('aeScanBtn').addEventListener('click', startScan);
+    $('aeScanStop').addEventListener('click', stopScan);
+
+    form.addEventListener('submit', (e) => {
+      e.preventDefault();
+      if (saving) return;
+      if (!$('aeName').value.trim()) return setMsg("Enter the resident's full name.", 'error');
+      if (!$('aeDob').value) return setMsg('Enter the date of birth.', 'error');
+      if (device.value.trim() && !deviceOk) return setMsg('Fix the Device ID first, or leave it blank.', 'error');
+      const cName = $('aeCName').value.trim(), cNum = $('aeCNum').value.trim();
+      if ((cName || cNum) && !(cName && cNum)) return setMsg('Enter both the contact name and mobile number.', 'error');
+
+      saving = true;
+      $('aeSubmit').disabled = true;
+      $('aeSubmit').textContent = 'Saving...';
+      setMsg('');
+      fetch("{{ url_for('bhw.add_elderly_submit') }}", { method: 'POST', body: new FormData(form) })
+        .then((r) => r.json())
+        .then((d) => {
+          if (d.success) {
+            setMsg(d.message, 'success');
+            setTimeout(() => { window.location = "{{ url_for('bhw.elderly_users') }}"; }, 900);
+          } else {
+            throw new Error(d.message || 'Could not save. Try again.');
+          }
+        })
+        .catch((err) => {
+          setMsg(err.message, 'error');
+          saving = false;
+          $('aeSubmit').disabled = false;
+          $('aeSubmit').textContent = 'Register resident';
+        });
+    });
+  })();
+</script>
+
+<script>
+  // ---------- Resident View window: Lucide icons, status dot/pill, full-width Last Update ----------
+  // admin.js fills #userModalDetails when "View" is clicked; right after, we decorate it.
+  (function () {
+    // Lucide icon names (same icon set the rest of the system already loads)
+    const ICONS = {
+      'Full Name': 'user',
+      'Age': 'calendar-plus',
+      'Date of Birth': 'calendar-days',
+      'Address': 'map-pin',
+      'Device ID': 'app-window',
+      'Device Number': 'smartphone',
+      'Load': 'archive',
+      'Connected Accounts': 'users',
+      'Family Members': 'users',
+      'Emergency Contacts': 'phone-call',
+      'Last Update': 'history',
+    };
+    const PILL = { online: 'Online', weak: 'Weak signal', offline: 'Offline', none: 'No device' };
+
+    function decorate(row) {
+      const list = document.getElementById('userModalDetails');
+      const sub = document.getElementById('userModalSub');
+      const card = document.querySelector('#userModal .admin-modal-card');
+      if (!list || !sub || !card) return;
+
+      list.querySelectorAll(':scope > div').forEach((tile) => {
+        const label = (tile.querySelector('dt') || {}).textContent || '';
+        tile.classList.toggle('vm-wide', label === 'Last Update');
+        if (!tile.querySelector('.vm-ico')) {
+          const ico = document.createElement('span');
+          ico.className = 'vm-ico';
+          ico.innerHTML = '<i data-lucide="' + (ICONS[label] || 'info') + '"></i>';
+          tile.prepend(ico);
+        }
+      });
+      if (window.lucide) window.lucide.createIcons();
+
+      const old = document.getElementById('vmPill');
+      if (old) old.remove();
+      const state = row && row.dataset.status;
+      card.dataset.state = state || '';
+      if (state && PILL[state]) {
+        const pill = document.createElement('span');
+        pill.id = 'vmPill';
+        pill.className = 'vm-pill ' + state;
+        pill.textContent = PILL[state];
+        sub.insertAdjacentElement('afterend', pill);
+      }
+    }
+
+    document.addEventListener('click', (e) => {
+      const btn = e.target.closest('.js-view-details');
+      if (!btn) return;
+      const row = btn.closest('tr');
+      setTimeout(() => decorate(row), 0);   // after admin.js has built the window
+    });
+  })();
+</script>
 {% endblock %}

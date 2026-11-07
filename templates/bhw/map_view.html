@@ -90,6 +90,8 @@
       {% endif %}
     </div>
 
+    <div class="map-pager" id="mapPager" hidden></div>
+
     <a href="{{ url_for('bhw.elderly_users') }}" class="btn btn-outline btn-outline-primary btn-block">View All Elderly Users</a>
   </aside>
 </section>
@@ -159,16 +161,53 @@
       });
     });
 
-    // Search and status filter for the side list.
+    // Search + status filter + pagination for the side list (4 per page).
     const search = document.getElementById('mapSearch');
     const filter = document.getElementById('mapStatusFilter');
+    const listItems = Array.from(document.querySelectorAll('.map-list-item'));
+    const pagerEl = document.getElementById('mapPager');
+    const PAGE_SIZE = 4;
+    let page = 1;
+
+    function renderList() {
+      const matched = listItems.filter(function (item) { return item.dataset.match !== '0'; });
+      const pages = Math.max(1, Math.ceil(matched.length / PAGE_SIZE));
+      if (page > pages) page = pages;
+      const start = (page - 1) * PAGE_SIZE;
+      listItems.forEach(function (item) { item.hidden = true; });
+      matched.slice(start, start + PAGE_SIZE).forEach(function (item) { item.hidden = false; });
+
+      pagerEl.replaceChildren();
+      pagerEl.hidden = matched.length <= PAGE_SIZE;
+      if (pagerEl.hidden) return;
+
+      const info = document.createElement('span');
+      info.className = 'map-pager-info';
+      info.textContent = (start + 1) + '-' + Math.min(start + PAGE_SIZE, matched.length) + ' of ' + matched.length;
+      const controls = document.createElement('div');
+      controls.className = 'map-pager-controls';
+      function button(label, target, active, disabled) {
+        const b = document.createElement('button');
+        b.type = 'button';
+        b.className = 'map-pager-btn' + (active ? ' active' : '');
+        b.textContent = label;
+        b.disabled = !!disabled;
+        if (!disabled) b.addEventListener('click', function () { page = target; renderList(); });
+        return b;
+      }
+      controls.appendChild(button('\u2039', page - 1, false, page === 1));
+      for (let n = 1; n <= pages; n++) controls.appendChild(button(String(n), n, n === page, false));
+      controls.appendChild(button('\u203A', page + 1, false, page === pages));
+      pagerEl.append(info, controls);
+    }
+
     function applyFilters() {
       const q = search.value.trim().toLowerCase();
       const status = filter.value;
-      document.querySelectorAll('.map-list-item').forEach(function (item) {
+      listItems.forEach(function (item) {
         const match = (!q || item.dataset.name.toLowerCase().includes(q)) &&
                       (!status || item.dataset.status === status);
-        item.hidden = !match;
+        item.dataset.match = match ? '1' : '0';
       });
       points.forEach(function (p) {
         const shown = !status || p.status === status;
@@ -177,9 +216,12 @@
         if (shown) marker.addTo(map);
         else map.removeLayer(marker);
       });
+      page = 1;
+      renderList();
     }
     search.addEventListener('input', applyFilters);
     filter.addEventListener('change', applyFilters);
+    applyFilters(); // first render: page 1
 
     // Opened from an alert's "View on Map" button.
     const focus = new URLSearchParams(window.location.search).get('focus');

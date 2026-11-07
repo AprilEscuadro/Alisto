@@ -352,7 +352,11 @@
     },
     {
       table: '#devicesTable', search: '#deviceSearch', noun: 'serial numbers',
-      filters: { status: '#deviceStatusFilter' }, exportButton: '#exportDevices',
+      filters: {
+        status: '#deviceStatusFilter', barangay: '#deviceBarangayFilter',
+        assigned: '#deviceAssignedFilter', load: '#deviceLoadFilter', sim: '#deviceSimFilter',
+      },
+      clearButton: '#deviceClearFilters', exportButton: '#exportDevices',
       columns: ['serial', 'batch', 'assignedTo', 'status', 'added'],
     },
   ];
@@ -672,7 +676,10 @@
     });
   }
 
-  // ---------- Add User (BHW) window ----------
+  // ---------- Add User (Family or BHW) window ----------
+  // Same fields as the public registration page (templates/register.html).
+  // The server (admin.add_user) reuses the registration rules, so the checks
+  // are identical and a BHW added here is approved right away.
   function setupAddUser() {
     const modal = $('#addUserModal');
     const open = $('#openAddUser');
@@ -680,9 +687,208 @@
     const errorBox = $('#addUserError');
     if (!modal || !open || !form) return;
 
+    const roleSel = $('#au_role');
+    const pick = $('#auPick');
+    const famBox = $('#auFamily');
+    const bhwBox = $('#auBhw');
+    const bhwBrgyBox = $('#auBhwBarangay');
+    const addressBox = $('#auAddress');
+    const pw = $('#au_password');
+    const pw2 = $('#au_confirm');
+    const deviceIn = $('#au_device_id');
+    const deviceMsg = $('#auDeviceMsg');
+    const joinNotice = $('#auJoinNotice');
+    const joinMode = $('#au_join_mode');
+    const existingElder = $('#au_existing_elder_id');
+    const seniorName = $('#au_senior_name');
+    const seniorDob = $('#au_dob');
+    const relSelect = $('#au_rel_select');
+    const relOtherWrap = $('#auRelOtherWrap');
+    const relOther = $('#au_rel_other');
+    const relHidden = $('#au_relationship');
+    const bhwBarangay = $('#au_barangay_assigned');
+    const healthCenter = $('#au_health_center');
+    const validId = $('#au_valid_id');
+    const DEFAULT_HINT = 'The Device ID is on the ALISTO device or its package.';
+
+    let healthCentersByBarangay = {};
+    let barangaysLoaded = false;
+    let checkedDevice = '';      // the Device ID that passed /check_device
+    let joining = false;
+
+    function show(box, on) {
+      box.hidden = !on;
+      box.disabled = !on;        // a disabled fieldset is not validated or sent
+    }
+
+    function fillSelect(select, placeholder, values) {
+      select.replaceChildren();
+      const first = document.createElement('option');
+      first.value = '';
+      first.textContent = placeholder;
+      select.appendChild(first);
+      values.forEach((v) => {
+        const o = document.createElement('option');
+        o.value = v;
+        o.textContent = v;
+        select.appendChild(o);
+      });
+    }
+
+    // ----- barangays + health centers come from the same /barangays the registration page uses
+    async function loadBarangays() {
+      if (barangaysLoaded) return;
+      try {
+        const res = await fetch('/barangays');
+        const data = await res.json();
+        if (!data.success || !data.barangays.length) throw new Error('empty');
+        healthCentersByBarangay = data.health_centers || {};
+        fillSelect($('#au_family_barangay'), 'Select barangay', data.barangays);
+        fillSelect($('#au_barangay'), 'Select barangay', data.barangays);
+        fillSelect(bhwBarangay, 'Select assigned barangay', data.barangays);
+        barangaysLoaded = true;
+      } catch (err) {
+        errorBox.textContent = 'Could not load the barangay list. Close this window and try again.';
+        errorBox.hidden = false;
+      }
+    }
+
+    function updateHealthCenters() {
+      const centers = healthCentersByBarangay[bhwBarangay.value] || [];
+      fillSelect(healthCenter, bhwBarangay.value ? 'Select your health center' : 'Select your barangay first', centers);
+      if (centers.length === 1) healthCenter.value = centers[0];
+    }
+    bhwBarangay.addEventListener('change', updateHealthCenters);
+
+    // ----- role switches the right-hand side
+    function applyRole() {
+      const role = roleSel.value;
+      pick.hidden = !!role;
+      show(famBox, role === 'family');
+      show(bhwBox, role === 'bhw');
+      show(bhwBrgyBox, role === 'bhw');
+      $('#auLengthText').textContent = role === 'bhw' ? 'Be at least 8 characters' : 'Be at least 6 characters';
+      updateRules();
+    }
+    roleSel.addEventListener('change', applyRole);
+
+    // ----- live password checklist
+    function updateRules() {
+      const min = roleSel.value === 'bhw' ? 8 : 6;
+      const p = pw.value;
+      const tests = {
+        length: p.length >= min,
+        upper: /[A-Z]/.test(p),
+        lower: /[a-z]/.test(p),
+        number: /\d/.test(p),
+        special: /[^A-Za-z0-9]/.test(p),
+        match: !!p && p === pw2.value,
+      };
+      $$('#auRules [data-rule]').forEach((li) => li.classList.toggle('met', tests[li.dataset.rule]));
+    }
+    pw.addEventListener('input', updateRules);
+    pw2.addEventListener('input', updateRules);
+
+    // ----- relationship: same stored text as the registration page
+    function updateRelationship() {
+      const isOther = relSelect.value === 'other';
+      relOtherWrap.hidden = !isOther;
+      relOther.required = isOther;
+      if (isOther) {
+        const specify = relOther.value.trim();
+        relHidden.value = specify ? `Other (${specify})` : 'Other';
+      } else {
+        const opt = relSelect.options[relSelect.selectedIndex];
+        relHidden.value = opt && opt.value ? opt.text : '';
+      }
+    }
+    relSelect.addEventListener('change', updateRelationship);
+    relOther.addEventListener('input', updateRelationship);
+
+    // ----- device check (same /check_device as registration)
+    function lock(el, on) {
+      el.readOnly = on;
+      el.classList.toggle('is-locked', on);
+    }
+
+    function clearJoin() {
+      joining = false;
+      joinMode.value = 'claim';
+      existingElder.value = '';
+      lock(seniorName, false);
+      lock(seniorDob, false);
+      joinNotice.hidden = true;
+      show(addressBox, true);
+    }
+
+    function setDeviceMsg(text, bad) {
+      deviceMsg.textContent = text;
+      deviceMsg.classList.toggle('is-bad', !!bad);
+    }
+
+    async function checkDevice() {
+      const id = deviceIn.value.trim();
+      if (!id) { setDeviceMsg('Enter a Device ID.', true); return false; }
+      const button = $('#auCheckDevice');
+      button.disabled = true;
+      button.textContent = 'Checking...';
+      try {
+        const res = await fetch('/check_device', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ device_id: id, role: 'family' }),
+        });
+        const data = await res.json();
+        if (!data.valid) {
+          setDeviceMsg(data.message || 'Invalid Device ID.', true);
+          return false;
+        }
+        if (data.already_registered && !data.can_join) {
+          setDeviceMsg(data.message || 'This device has no free family slots left.', true);
+          return false;
+        }
+        if (data.already_registered) {
+          // Another family member already set it up: join that loved one.
+          joining = true;
+          joinMode.value = 'join';
+          existingElder.value = data.elder_id || '';
+          seniorName.value = data.elder_full_name || '';
+          seniorDob.value = data.elder_dob || '';
+          lock(seniorName, true);
+          lock(seniorDob, true);
+          joinNotice.textContent = `This device is already registered to ${data.elder_full_name || 'this loved one'}. ` +
+            `Their details are filled in. Just pick how this person is related. ` +
+            `(${data.family_count} of ${data.family_limit} family slots used.)`;
+          joinNotice.hidden = false;
+          show(addressBox, false);   // the address is already on file
+        } else {
+          clearJoin();
+        }
+        checkedDevice = id;
+        setDeviceMsg('Device ID verified.', false);
+        return true;
+      } catch (err) {
+        setDeviceMsg('Could not check the Device ID. Try again.', true);
+        return false;
+      } finally {
+        button.disabled = false;
+        button.textContent = 'Check';
+      }
+    }
+    $('#auCheckDevice').addEventListener('click', checkDevice);
+    deviceIn.addEventListener('input', () => {
+      if (deviceIn.value.trim() !== checkedDevice) {
+        checkedDevice = '';
+        clearJoin();
+        setDeviceMsg(DEFAULT_HINT, false);
+      }
+    });
+
+    // ----- open / close
     open.addEventListener('click', () => {
       modal.hidden = false;
-      $('input[name="full_name"]', modal).focus();
+      loadBarangays();
+      $('#au_full_name').focus();
     });
     modal.addEventListener('click', (e) => {
       if (e.target.closest('[data-close-modal]')) modal.hidden = true;
@@ -691,26 +897,48 @@
       if (e.key === 'Escape') modal.hidden = true;
     });
 
-    // Submitted via fetch() instead of a plain POST so a validation error
-    // (e.g. duplicate email) shows up right inside the still-open modal --
-    // a plain form submit would redirect to a fresh page with the error
-    // only as a flash banner at the very top, easy to miss while scrolled
-    // down filling a long form (real testing: looked like the button just
-    // did nothing).
+    // ----- submit
     form.addEventListener('submit', async (e) => {
       e.preventDefault();
       errorBox.hidden = true;
+      const role = roleSel.value;
+
+      if (validId && validId.files[0] && validId.files[0].size > 700 * 1024) {
+        errorBox.textContent = 'Valid ID must be 700 KB or smaller.';
+        errorBox.hidden = false;
+        return;
+      }
+
       const button = $('button[type="submit"]', form);
       const originalText = button.textContent;
       button.disabled = true;
       button.textContent = 'Adding...';
+
+      // A family account needs a verified Device ID (this also fills join mode).
+      if (role === 'family' && deviceIn.value.trim() !== checkedDevice) {
+        const ok = await checkDevice();
+        if (!ok) {
+          errorBox.textContent = deviceMsg.textContent;
+          errorBox.hidden = false;
+          button.disabled = false;
+          button.textContent = originalText;
+          return;
+        }
+        // join mode just locked the loved one's name/date, re-check what is required
+        if (!form.reportValidity()) {
+          button.disabled = false;
+          button.textContent = originalText;
+          return;
+        }
+      }
+      updateRelationship();
 
       try {
         const res = await fetch(form.action, { method: 'POST', body: new FormData(form) });
         const data = await res.json().catch(() => ({ success: false, message: 'Something went wrong on the server. Please try again.' }));
         if (data.success) {
           window.location.reload();
-          return; // leave the button disabled -- the page is about to reload anyway
+          return; // leave the button disabled, the page is about to reload
         }
         errorBox.textContent = data.message || 'Could not add this user. Please check the form.';
         errorBox.hidden = false;
@@ -722,6 +950,8 @@
       button.disabled = false;
       button.textContent = originalText;
     });
+
+    applyRole();
   }
 
   // ---------- Edit profile (swap the details list for a form) ----------
@@ -790,4 +1020,253 @@
     setupPasswordChecklist();
     icons();
   });
+})();
+
+/* ===== ALISTO admin: user profile modal (click a row on Users page) ===== */
+(function () {
+  const $ = (sel, root = document) => root.querySelector(sel);
+  const $$ = (sel, root = document) => Array.from(root.querySelectorAll(sel));
+  const modal = $('#upModal');
+  if (!modal) return;
+
+  const card = $('.up-card', modal);
+  const body = $('#upBody');
+  const foot = $('#upFoot');
+  let row = null;
+
+  const esc = (v) => String(v == null ? '' : v).replace(/[&<>"']/g, (c) => (
+    { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+  const icons = () => { if (window.lucide) window.lucide.createIcons(); };
+  const cap = (s) => (s ? s.charAt(0).toUpperCase() + s.slice(1) : '');
+  const has = (v) => v && v !== '—' && v !== 'No device';
+  const lines = (v) => (has(v) ? String(v).split('\n').filter(Boolean) : []);
+  const options = JSON.parse(($('#upOptions') || { textContent: '{}' }).textContent);
+
+  const TYPE_LABEL = { elderly: 'Elderly', family: 'Family member', bhw: 'Barangay Health Worker' };
+  const TYPE_ICON = { elderly: 'heart-pulse', family: 'users', bhw: 'shield-check' };
+  const STATUS_ICON = { active: 'circle-check', pending: 'clock', rejected: 'circle-x', archived: 'archive' };
+
+  // ---------- small builders ----------
+  function infoRow(icon, label, value, opts = {}) {
+    const val = has(value)
+      ? `<span class="up-row-value${opts.mono ? ' up-mono' : ''}">${esc(value)}</span>`
+      : '<span class="up-row-value up-empty">Not provided</span>';
+    return `<div class="up-row${opts.stack ? ' stack' : ''}"><span class="up-row-label"><i data-lucide="${icon}"></i>${esc(label)}</span>${val}</div>`;
+  }
+
+  function section(icon, title, inner, extra = '') {
+    return `<section class="up-section ${extra}">
+      <h3 class="up-section-title"><i data-lucide="${icon}"></i>${esc(title)}</h3>${inner}</section>`;
+  }
+
+  function person(name, sub, tone) {
+    const initials = name.split(/\s+/).slice(0, 2).map((w) => w[0] || '').join('').toUpperCase();
+    return `<div class="up-person">
+      <span class="up-person-avatar tone-${tone}">${esc(initials)}</span>
+      <div><strong>${esc(name)}</strong>${sub ? `<small>${esc(sub)}</small>` : ''}</div></div>`;
+  }
+
+  function planBadge(ds) {
+    if (!ds.plan || ds.plan === 'na') return '';
+    const until = ds.planUntil ? `<small class="up-plan-until">${esc(ds.planUntil)}</small>` : '';
+    return `<div class="up-plan"><span class="badge badge-${esc(ds.planBadge || 'archived')}">${esc(ds.planLabel)}</span>${until}</div>`;
+  }
+
+  // ---------- VIEW MODE ----------
+  function renderHero() {
+    const ds = row.dataset;
+    const av = $('#upAvatar');
+    av.textContent = $('.admin-avatar-lg', row).textContent.trim();
+    av.className = `up-avatar avatar-${ds.type}`;
+    $('#upName').textContent = ds.name;
+    card.dataset.type = ds.type;
+    $('#upBadges').innerHTML =
+      `<span class="up-pill up-pill-type"><i data-lucide="${TYPE_ICON[ds.type]}"></i>${esc(TYPE_LABEL[ds.type] || ds.typeLabel)}</span>
+       <span class="up-pill up-pill-${esc(ds.status)}"><i data-lucide="${STATUS_ICON[ds.status] || 'circle'}"></i>${esc(cap(ds.status))}</span>
+       <span class="up-pill up-pill-id">ID · ${esc(ds.displayId)}</span>`;
+  }
+
+  function renderView() {
+    const ds = row.dataset;
+    const d = Object.fromEntries(JSON.parse(ds.details || '[]'));
+    renderHero();
+    card.classList.remove('is-editing');
+
+    let personal = '';
+    if ('Date of Birth' in d) personal += infoRow('calendar', 'Date of birth', d['Date of Birth']);
+    if ('Email Address' in d) personal += infoRow('mail', 'Email', d['Email Address']);
+    if ('Phone Number' in d) personal += infoRow('phone', 'Phone', d['Phone Number']);
+    if ('Address' in d) personal += infoRow('map-pin', 'Address', d['Address'], { stack: true });
+    personal += infoRow('calendar-plus', 'Member since', ds.joined);
+    const personalSec = section('user-round', 'Personal information', `<div class="up-rows">${personal}</div>`);
+
+    const plan = planBadge(ds);
+    const planSec = plan ? section('credit-card', 'Care plan', plan) : '';
+    const empty = (icon, text) => `<div class="up-note"><i data-lucide="${icon}"></i>${esc(text)}</div>`;
+
+    let left = personalSec;
+    let right = '';
+
+    if (ds.type === 'elderly') {
+      const serials = has(d['Device Serial']) ? d['Device Serial'].split(',').map((s) => s.trim()) : [];
+      left += section('cpu', 'ALISTO device', serials.length
+        ? `<div class="up-rows">${serials.map((s) => infoRow('radio', 'Device ID', s, { mono: true })).join('')}</div>`
+        : empty('plug-zap', 'No device registered yet.'));
+      const fam = lines(d['Linked Family']);
+      right += section('users', 'Linked family', fam.length
+        ? `<div class="up-stack">${fam.map((n) => person(n, 'Family member', 'blue')).join('')}</div>`
+        : empty('user-x', 'No family linked.'));
+      right += planSec;
+    } else if (ds.type === 'family') {
+      left += planSec;
+      const elders = lines(d['Linked Elder']);
+      const serials = (d['Device Serial'] || '').split('\n');
+      right += section('heart-pulse', 'Loved ones', elders.length
+        ? `<div class="up-stack">${elders.map((n, i) => person(n, has(serials[i]) ? `Device · ${serials[i]}` : 'No device', 'blue')).join('')}</div>`
+        : empty('user-x', 'No loved ones linked.'));
+    } else {
+      right += section('map-pinned', 'Assignment', `<div class="up-rows">
+        ${infoRow('map-pin', 'Barangay', d['Barangay'])}
+        ${infoRow('hospital', 'Health center', d['Health Center'])}
+        ${infoRow('award', 'Years of service', d['Years of Service'])}
+        ${infoRow('id-card', 'BHW ID number', d['BHW ID Number'], { mono: true })}
+      </div>`);
+      left += section('badge-check', 'Verification', ds.validIdUrl
+        ? `<a class="up-file" href="${esc(ds.validIdUrl)}" target="_blank" rel="noopener"><i data-lucide="file-check-2"></i><span>${esc(ds.validIdName)}</span><i data-lucide="external-link"></i></a>`
+        : empty('file-x-2', 'No valid ID uploaded.'));
+    }
+
+    body.innerHTML = `<div class="up-col">${left}</div><div class="up-col">${right}</div>`;
+    renderFooterView();
+    icons();
+  }
+
+  function renderFooterView() {
+    const ds = row.dataset;
+    const del = `<form method="POST" action="${esc(ds.deleteUrl)}" class="js-confirm-delete-user" data-name="${esc(ds.name)}" data-type="${esc(ds.type)}">
+        <input type="hidden" name="type" value="${esc(ds.type)}" />
+        <button type="submit" class="up-btn up-btn-danger"><i data-lucide="trash-2"></i>Delete</button></form>`;
+    const restore = ds.status === 'archived'
+      ? `<form method="POST" action="${esc(ds.archiveUrl)}"><input type="hidden" name="type" value="${esc(ds.type)}" />
+         <button type="submit" class="up-btn up-btn-ghost"><i data-lucide="rotate-ccw"></i>Restore</button></form>` : '';
+    const pending = ds.status === 'pending' && ds.approvalUrl
+      ? `<form method="POST" action="${esc(ds.approvalUrl)}" class="js-confirm-reject"><input type="hidden" name="action" value="reject" />
+           <button type="submit" class="up-btn up-btn-outline-danger"><i data-lucide="x"></i>Reject</button></form>
+         <form method="POST" action="${esc(ds.approvalUrl)}"><input type="hidden" name="action" value="approve" />
+           <button type="submit" class="up-btn up-btn-approve"><i data-lucide="check"></i>Approve</button></form>` : '';
+    foot.innerHTML = `<div class="up-foot-left">${del}${restore}</div>
+      <div class="up-foot-right">${pending}
+        <button type="button" class="up-btn up-btn-dark" id="upEditBtn"><i data-lucide="pencil"></i>Edit</button></div>`;
+  }
+
+  // ---------- EDIT MODE ----------
+  function field(name, label, value, opts = {}) {
+    const type = opts.type || 'text';
+    const cls = `up-field${opts.full ? ' full' : ''}`;
+    if (opts.options) {
+      const list = opts.options.map((o) =>
+        `<option value="${esc(o)}"${o === value ? ' selected' : ''}>${esc(o)}</option>`).join('');
+      return `<label class="${cls}"><span>${esc(label)}</span>
+        <select name="${name}" required><option value="" disabled${value ? '' : ' selected'}>Select…</option>${list}</select></label>`;
+    }
+    return `<label class="${cls}"><span>${esc(label)}</span>
+      <input type="${type}" name="${name}" value="${esc(value)}"${opts.required ? ' required' : ''}${opts.disabled ? ' disabled' : ''}${opts.placeholder ? ` placeholder="${esc(opts.placeholder)}"` : ''} />
+      ${opts.hint ? `<em>${esc(opts.hint)}</em>` : ''}</label>`;
+  }
+
+  function renderEdit() {
+    const ds = row.dataset;
+    const e = JSON.parse(ds.edit || '{}');
+    card.classList.add('is-editing');
+    let personal = field('full_name', 'Full name', e.full_name, { required: true, full: true });
+    if (ds.type === 'elderly') {
+      personal += field('date_of_birth', 'Date of birth', e.date_of_birth, { type: 'date' });
+      if (e.address !== null && e.address !== undefined) personal += field('address', 'Address', e.address, { full: true });
+    } else {
+      personal += field('email_ro', 'Email', ds.email, { disabled: true, hint: 'Email is the login, so it can’t be changed here.' });
+      personal += field('contact_number', 'Phone number', e.contact_number, { type: 'tel', placeholder: '09XX XXX XXXX' });
+      if (ds.type === 'bhw') personal += field('date_of_birth', 'Date of birth', e.date_of_birth, { type: 'date' });
+    }
+    let html = `<form id="upForm" class="up-form" autocomplete="off">
+      <input type="hidden" name="type" value="${esc(ds.type)}" />
+      <div class="up-alert" id="upError" hidden></div>
+      ${section('user-round', 'Personal information', `<div class="up-grid">${personal}</div>`)}`;
+    if (ds.type === 'bhw') {
+      html += section('map-pinned', 'Assignment', `<div class="up-grid">
+        ${field('barangay_assigned', 'Barangay assigned', e.barangay_assigned, { options: options.barangays || [] })}
+        ${field('years_of_service', 'Years of service', e.years_of_service, { options: options.years || [] })}
+        ${field('bhw_id_number', 'BHW ID number', e.bhw_id_number, { required: true, full: true })}
+      </div>`);
+    }
+    html += '</form>';
+    body.innerHTML = html;
+    foot.innerHTML = `<div class="up-foot-left"></div><div class="up-foot-right">
+      <button type="button" class="up-btn up-btn-ghost" id="upCancelBtn">Cancel</button>
+      <button type="submit" form="upForm" class="up-btn up-btn-dark" id="upSaveBtn"><i data-lucide="check"></i>Save changes</button></div>`;
+    icons();
+    const first = $('input[name="full_name"]', body);
+    if (first) first.focus();
+  }
+
+  async function save(e) {
+    e.preventDefault();
+    const form = e.target;
+    const err = $('#upError');
+    const btn = $('#upSaveBtn');
+    err.hidden = true;
+    btn.disabled = true;
+    btn.lastChild.textContent = 'Saving…';
+    try {
+      const res = await fetch(row.dataset.editUrl, { method: 'POST', body: new FormData(form) });
+      const data = await res.json().catch(() => ({ success: false, message: 'Something went wrong on the server. Please try again.' }));
+      if (data.success) { window.location.reload(); return; }
+      err.textContent = data.message || 'Could not save the changes.';
+    } catch (x) {
+      err.textContent = 'Could not reach the server. Check your connection and try again.';
+    }
+    err.hidden = false;
+    btn.disabled = false;
+    btn.lastChild.textContent = 'Save changes';
+  }
+
+  // ---------- open / close ----------
+  function open(tr) {
+    row = tr;
+    renderView();
+    modal.hidden = false;
+    document.body.classList.add('up-lock');
+    $('.up-close', modal).focus();
+  }
+  function close() {
+    modal.hidden = true;
+    document.body.classList.remove('up-lock');
+    row = null;
+  }
+
+  document.addEventListener('click', (e) => {
+    // Menu item "View details" and a click anywhere on the row both open it.
+    const viewBtn = e.target.closest('.js-open-profile');
+    if (viewBtn) {
+      const menu = viewBtn.closest('.row-menu');
+      if (menu) menu.classList.remove('open');
+      open(viewBtn.closest('tr'));
+      return;
+    }
+    const tr = e.target.closest('#usersTable tbody tr[data-details]');
+    if (tr && !e.target.closest('.col-actions, a, button, form, input, select, label')) { open(tr); return; }
+
+    if (modal.hidden) return;
+    if (e.target.closest('[data-up-close]')) close();
+    else if (e.target.closest('#upEditBtn')) renderEdit();
+    else if (e.target.closest('#upCancelBtn')) renderView();
+  });
+  document.addEventListener('submit', (e) => { if (e.target.id === 'upForm') save(e); });
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape' && !modal.hidden) close();
+    if ((e.key === 'Enter' || e.key === ' ') && e.target.matches && e.target.matches('#usersTable tbody tr[data-details]')) {
+      e.preventDefault(); open(e.target);
+    }
+  });
+  // make rows keyboard-reachable
+  $$('#usersTable tbody tr[data-details]').forEach((tr) => { tr.tabIndex = 0; });
 })();
