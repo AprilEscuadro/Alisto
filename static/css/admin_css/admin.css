@@ -4445,3 +4445,48 @@ body.up-lock {
   color: var(--admin-muted);
   text-align: center;
 }
+
+.map-note[hidden] {
+  display: none;
+}
+
+/* Map View: map card and Recent Map Alerts card same height */
+.map-layout {
+  align-items: stretch;
+}
+
+.map-side {
+  max-height: none;
+  contain: size;
+  /* ang sulod dili mo-pugos sa gitas-on; mo-scroll lang */
+  overflow-y: auto;
+}
+
+@media (max-width: 1100px) {
+  .map-side {
+    contain: none;
+    /* mobile: usa ra ka column, natural nga gitas-on */
+  }
+}
+
+.row-menu-list a {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 8px 10px;
+  border-radius: 6px;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--admin-text);
+  text-decoration: none;
+}
+
+.row-menu-list a:hover {
+  background: var(--admin-bg);
+}
+
+.row-menu-list a svg {
+  width: 15px;
+  height: 15px;
+}

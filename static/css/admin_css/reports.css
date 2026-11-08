@@ -1,0 +1,787 @@
+/* =========================================================
+   ALISTO Admin · Reports
+   iOS-inspired: soft grouped cards, one clear number per card,
+   a segmented control for the period, quiet gray secondary text,
+   system colours, plenty of white space. Light + dark theme.
+   Only used by templates/admin/reports.html (classes start with rp-).
+   ========================================================= */
+
+.rp {
+    --rp-red: #ff3b30;
+    --rp-orange: #ff9500;
+    --rp-green: #34c759;
+    --rp-blue: #007aff;
+    --rp-gray: #8e8e93;
+    --rp-fill: rgba(118, 118, 128, 0.12);
+    /* iOS tertiary fill */
+    --rp-sep: rgba(60, 60, 67, 0.12);
+    /* hairline separator */
+    --rp-label: var(--admin-text);
+    --rp-label-2: rgba(60, 60, 67, 0.6);
+    /* secondary label */
+    --rp-label-3: rgba(60, 60, 67, 0.45);
+    --rp-radius: 18px;
+    --rp-shadow: 0 1px 2px rgba(16, 24, 40, 0.04), 0 8px 24px rgba(16, 24, 40, 0.05);
+
+    display: flex;
+    flex-direction: column;
+    gap: 20px;
+    max-width: 1360px;
+    margin: 0 auto;
+    font-feature-settings: "tnum" 1, "cv11" 1;
+    /* numbers line up */
+    -webkit-font-smoothing: antialiased;
+}
+
+html[data-theme="dark"] .rp {
+    --rp-red: #ff453a;
+    --rp-orange: #ff9f0a;
+    --rp-green: #30d158;
+    --rp-blue: #0a84ff;
+    --rp-gray: #98989d;
+    --rp-fill: rgba(118, 118, 128, 0.24);
+    --rp-sep: rgba(255, 255, 255, 0.08);
+    --rp-label-2: rgba(235, 235, 245, 0.6);
+    --rp-label-3: rgba(235, 235, 245, 0.38);
+    --rp-shadow: none;
+}
+
+/* ---------- header ---------- */
+.rp-header {
+    display: flex;
+    align-items: flex-end;
+    justify-content: space-between;
+    gap: 16px;
+    flex-wrap: wrap;
+}
+
+.rp-header h1 {
+    font-size: 30px;
+    font-weight: 800;
+    letter-spacing: -0.02em;
+    color: var(--rp-label);
+}
+
+.rp-header p {
+    margin: 4px 0 0;
+    font-size: 14px;
+    color: var(--rp-label-2);
+}
+
+/* iOS segmented control */
+.rp-segmented {
+    display: inline-flex;
+    padding: 3px;
+    border-radius: 11px;
+    background: var(--rp-fill);
+}
+
+.rp-segmented a {
+    padding: 7px 16px;
+    border-radius: 8px;
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--rp-label);
+    text-decoration: none;
+    white-space: nowrap;
+    transition: background 0.2s, box-shadow 0.2s;
+}
+
+.rp-segmented a:hover:not(.is-active) {
+    background: rgba(118, 118, 128, 0.08);
+}
+
+.rp-segmented a.is-active {
+    background: var(--admin-card);
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.12), 0 3px 8px rgba(0, 0, 0, 0.06);
+}
+
+html[data-theme="dark"] .rp-segmented a.is-active {
+    background: #636366;
+    box-shadow: none;
+}
+
+.rp-segmented a:focus-visible,
+.rp-btn:focus-visible,
+.rp-select:focus-visible,
+.rp-link:focus-visible {
+    outline: 3px solid color-mix(in srgb, var(--rp-blue) 45%, transparent);
+    outline-offset: 2px;
+}
+
+/* ---------- cards ---------- */
+.rp-card {
+    background: var(--admin-card);
+    border: 1px solid var(--rp-sep);
+    border-radius: var(--rp-radius);
+    box-shadow: var(--rp-shadow);
+    padding: 20px 22px;
+    min-width: 0;
+}
+
+.rp-card-head {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 12px;
+    margin-bottom: 16px;
+}
+
+.rp-card h2 {
+    font-family: 'Inter', sans-serif;
+    font-size: 17px;
+    font-weight: 700;
+    letter-spacing: -0.01em;
+    color: var(--rp-label);
+}
+
+.rp-sub {
+    font-size: 13px;
+    color: var(--rp-label-2);
+}
+
+.rp-link {
+    display: inline-flex;
+    align-items: center;
+    gap: 2px;
+    font-size: 14px;
+    font-weight: 600;
+    color: var(--rp-blue);
+    text-decoration: none;
+    border-radius: 6px;
+}
+
+.rp-link svg {
+    width: 16px;
+    height: 16px;
+}
+
+/* ---------- key numbers ---------- */
+.rp-kpis {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 16px;
+}
+
+.rp-kpi {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.rp-kpi-label {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--rp-label-2);
+}
+
+.rp-kpi-label svg {
+    width: 15px;
+    height: 15px;
+}
+
+.rp-kpi-value {
+    font-size: 36px;
+    font-weight: 700;
+    line-height: 1.05;
+    letter-spacing: -0.03em;
+    color: var(--rp-label);
+}
+
+.rp-kpi-value small {
+    margin-left: 2px;
+    font-size: 22px;
+    font-weight: 600;
+    color: var(--rp-label-2);
+}
+
+.rp-kpi-foot {
+    font-size: 13px;
+    line-height: 1.45;
+    color: var(--rp-label-2);
+}
+
+.rp-kpi-foot b {
+    color: var(--rp-label);
+    font-weight: 600;
+}
+
+/* thin progress bar */
+.rp-meter {
+    display: block;
+    height: 6px;
+    border-radius: 999px;
+    background: var(--rp-fill);
+    overflow: hidden;
+}
+
+.rp-meter-fill {
+    display: block;
+    height: 100%;
+    border-radius: inherit;
+    background: var(--rp-blue);
+}
+
+/* ---------- colour helpers ---------- */
+.rp .is-red {
+    --c: var(--rp-red);
+}
+
+.rp .is-orange {
+    --c: var(--rp-orange);
+}
+
+.rp .is-green {
+    --c: var(--rp-green);
+}
+
+.rp .is-blue {
+    --c: var(--rp-blue);
+}
+
+.rp .is-gray {
+    --c: var(--rp-gray);
+}
+
+.rp-meter-fill[class*="is-"],
+.rp-stack>span,
+.rp-bar-fill {
+    background: var(--c);
+}
+
+.rp-dot {
+    display: inline-block;
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: var(--c, var(--rp-gray));
+    flex-shrink: 0;
+}
+
+.rp-red {
+    color: var(--rp-red) !important;
+}
+
+.rp-muted {
+    color: var(--rp-label-3) !important;
+}
+
+.rp-chip {
+    display: inline-flex;
+    align-items: center;
+    align-self: flex-start;
+    gap: 5px;
+    padding: 3px 10px;
+    border-radius: 999px;
+    font-size: 12px;
+    font-weight: 600;
+    white-space: nowrap;
+    color: var(--c);
+    background: color-mix(in srgb, var(--c) 13%, transparent);
+}
+
+.rp-chip svg {
+    width: 13px;
+    height: 13px;
+}
+
+/* ---------- one quiet row of secondary numbers ---------- */
+.rp-strip {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    padding: 0;
+}
+
+.rp-strip>div {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    padding: 16px 22px;
+}
+
+.rp-strip>div+div {
+    border-left: 1px solid var(--rp-sep);
+}
+
+.rp-strip span {
+    font-size: 13px;
+    color: var(--rp-label-2);
+}
+
+.rp-strip strong {
+    font-size: 20px;
+    font-weight: 700;
+    letter-spacing: -0.02em;
+    color: var(--rp-label);
+}
+
+.rp-strip strong small {
+    font-size: 14px;
+    font-weight: 500;
+    color: var(--rp-label-3);
+}
+
+/* ---------- grids ---------- */
+.rp-grid {
+    display: grid;
+    gap: 16px;
+}
+
+.rp-grid-2 {
+    grid-template-columns: minmax(0, 2fr) minmax(0, 1fr);
+}
+
+.rp-grid-3 {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+/* ---------- line chart ---------- */
+.rp-legend {
+    display: inline-flex;
+    gap: 14px;
+    font-size: 13px;
+    color: var(--rp-label-2);
+}
+
+.rp-legend>span {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.rp-line {
+    display: grid;
+    grid-template-columns: 28px minmax(0, 1fr);
+    grid-template-rows: 210px;
+    /* fixed: the svg must not grow with its width */
+    gap: 8px;
+}
+
+.rp-line-axis {
+    display: flex;
+    flex-direction: column;
+    justify-content: space-between;
+    font-size: 11px;
+    text-align: right;
+    color: var(--rp-label-3);
+}
+
+.rp-line svg {
+    display: block;
+    width: 100%;
+    height: 210px;
+    overflow: visible;
+}
+
+.rp-grid-line {
+    stroke: var(--rp-sep);
+    stroke-width: 1;
+    vector-effect: non-scaling-stroke;
+}
+
+.rp-area {
+    fill: color-mix(in srgb, var(--rp-red) 10%, transparent);
+}
+
+.rp-stroke {
+    fill: none;
+    stroke: var(--c);
+    stroke-width: 2.25;
+    stroke-linejoin: round;
+    stroke-linecap: round;
+    vector-effect: non-scaling-stroke;
+}
+
+.rp-line-labels {
+    display: flex;
+    justify-content: space-between;
+    margin: 10px 0 0 36px;
+    font-size: 11px;
+    color: var(--rp-label-3);
+}
+
+/* ---------- stacked bar + list ---------- */
+.rp-stack {
+    display: flex;
+    gap: 2px;
+    height: 10px;
+    margin-bottom: 14px;
+    border-radius: 999px;
+    overflow: hidden;
+    background: var(--rp-fill);
+}
+
+.rp-stack>span {
+    height: 100%;
+}
+
+.rp-list {
+    margin: 0;
+    padding: 0;
+    list-style: none;
+}
+
+.rp-list li {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 11px 0;
+    font-size: 14px;
+    color: var(--rp-label);
+}
+
+.rp-list li+li {
+    border-top: 1px solid var(--rp-sep);
+}
+
+.rp-list li>span:first-child {
+    display: inline-flex;
+    align-items: center;
+    gap: 10px;
+    min-width: 0;
+}
+
+.rp-list-compact li {
+    padding: 9px 0;
+    font-size: 13px;
+}
+
+.rp-num {
+    font-weight: 600;
+    white-space: nowrap;
+}
+
+.rp-num small,
+.rp-table td small {
+    margin-left: 4px;
+    font-size: 12px;
+    font-weight: 500;
+    color: var(--rp-label-3);
+}
+
+.rp-mini-title {
+    margin: 18px 0 2px;
+    font-size: 12px;
+    font-weight: 600;
+    letter-spacing: 0.02em;
+    text-transform: uppercase;
+    color: var(--rp-label-3);
+}
+
+/* ---------- response time bars ---------- */
+.rp-bars {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 12px;
+    height: 220px;
+}
+
+.rp-bar {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 8px;
+    min-width: 0;
+}
+
+.rp-bar-count {
+    font-size: 15px;
+    font-weight: 700;
+    color: var(--rp-label);
+}
+
+.rp-bar-track {
+    display: flex;
+    align-items: flex-end;
+    flex: 1;
+    width: 100%;
+    max-width: 48px;
+    border-radius: 10px;
+    background: var(--rp-fill);
+    overflow: hidden;
+}
+
+.rp-bar-fill {
+    display: block;
+    width: 100%;
+    border-radius: 10px;
+}
+
+.rp-bar-label {
+    font-size: 12px;
+    text-align: center;
+    color: var(--rp-label-2);
+}
+
+/* ---------- places ---------- */
+.rp-places {
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+    margin: 0;
+    padding: 0;
+    list-style: none;
+}
+
+.rp-place-row {
+    display: flex;
+    justify-content: space-between;
+    gap: 12px;
+    margin-bottom: 8px;
+    font-size: 14px;
+    color: var(--rp-label);
+}
+
+/* ---------- empty state ---------- */
+.rp-empty {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 4px;
+    padding: 36px 16px;
+    text-align: center;
+}
+
+.rp-empty svg {
+    width: 28px;
+    height: 28px;
+    margin-bottom: 6px;
+    color: var(--rp-label-3);
+}
+
+.rp-empty strong {
+    font-size: 15px;
+    color: var(--rp-label);
+}
+
+.rp-empty span {
+    font-size: 13px;
+    color: var(--rp-label-2);
+}
+
+/* ---------- barangay summary table ---------- */
+.rp-table-card {
+    padding: 0;
+    overflow: hidden;
+}
+
+.rp-table-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 16px;
+    flex-wrap: wrap;
+    padding: 20px 22px 16px;
+}
+
+.rp-table-head h2 {
+    margin-bottom: 2px;
+}
+
+.rp-toolbar {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    flex-wrap: wrap;
+}
+
+.rp-search {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    height: 38px;
+    padding: 0 12px;
+    border-radius: 10px;
+    background: var(--rp-fill);
+    color: var(--rp-label-2);
+}
+
+.rp-search svg {
+    width: 16px;
+    height: 16px;
+}
+
+.rp-search input {
+    width: 200px;
+    height: auto;
+    padding: 0;
+    border: none !important;
+    outline: none;
+    box-shadow: none !important;
+    background: transparent !important;
+    font: inherit;
+    font-size: 14px;
+    color: var(--rp-label);
+}
+
+.rp-search input::placeholder {
+    color: var(--rp-label-3);
+}
+
+.rp-search:focus-within {
+    box-shadow: 0 0 0 3px color-mix(in srgb, var(--rp-blue) 35%, transparent);
+}
+
+.rp-select {
+    height: 38px;
+    padding: 0 34px 0 12px;
+    border: none;
+    border-radius: 10px;
+    background-color: var(--rp-fill) !important;
+    color: var(--rp-label);
+    font: inherit;
+    font-size: 14px;
+    cursor: pointer;
+    appearance: none;
+    -webkit-appearance: none;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%238e8e93' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");
+    background-repeat: no-repeat;
+    background-position: right 12px center;
+}
+
+.rp-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    height: 38px;
+    padding: 0 16px;
+    border: none;
+    border-radius: 10px;
+    background: var(--rp-blue);
+    color: #fff;
+    font: inherit;
+    font-size: 14px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: filter 0.15s;
+}
+
+.rp-btn:hover {
+    filter: brightness(1.08);
+}
+
+.rp-btn svg {
+    width: 16px;
+    height: 16px;
+}
+
+.rp-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 14px;
+}
+
+.rp-table th {
+    padding: 10px 22px;
+    border-top: 1px solid var(--rp-sep);
+    border-bottom: 1px solid var(--rp-sep);
+    background: transparent;
+    text-align: left;
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--rp-label-2);
+    white-space: nowrap;
+}
+
+.rp-table td {
+    padding: 14px 22px;
+    color: var(--rp-label);
+    vertical-align: middle;
+}
+
+.rp-table tbody tr+tr td {
+    border-top: 1px solid var(--rp-sep);
+}
+
+.rp-table tbody tr:hover td {
+    background: color-mix(in srgb, var(--rp-fill) 50%, transparent);
+}
+
+.rp-table td strong {
+    display: block;
+    font-weight: 600;
+}
+
+.rp-table td:first-child small {
+    display: block;
+    margin: 2px 0 0;
+}
+
+.rp-r {
+    text-align: right !important;
+}
+
+.rp-table-empty td:hover,
+.rp-table tbody tr.rp-table-empty:hover td {
+    background: transparent;
+}
+
+/* ---------- responsive ---------- */
+@media (max-width: 1200px) {
+
+    .rp-kpis,
+    .rp-strip {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+
+    .rp-strip>div:nth-child(3) {
+        border-left: none;
+    }
+
+    .rp-strip>div:nth-child(n + 3) {
+        border-top: 1px solid var(--rp-sep);
+    }
+
+    .rp-grid-2,
+    .rp-grid-3 {
+        grid-template-columns: minmax(0, 1fr);
+    }
+}
+
+@media (max-width: 640px) {
+
+    .rp-kpis,
+    .rp-strip {
+        grid-template-columns: minmax(0, 1fr);
+    }
+
+    .rp-strip>div+div {
+        border-left: none;
+        border-top: 1px solid var(--rp-sep);
+    }
+
+    .rp-segmented {
+        width: 100%;
+    }
+
+    .rp-segmented a {
+        flex: 1;
+        padding: 7px 8px;
+        text-align: center;
+    }
+
+    .rp-search,
+    .rp-search input {
+        width: 100%;
+    }
+}
+
+/* Dropdown list colours (the opened list ignores the select's own colours) */
+.rp-select option {
+    background-color: #ffffff;
+    color: #0f1b3d;
+}
+
+html[data-theme="dark"] .rp-select {
+    color-scheme: dark;
+}
+
+html[data-theme="dark"] .rp-select option {
+    background-color: #1c2742;
+    color: #e8ecf6;
+}

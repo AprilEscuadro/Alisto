@@ -1,239 +1,320 @@
 {% extends 'admin/base.html' %}
 {% block title %}Reports{% endblock %}
 
+{% block head %}
+<link rel="stylesheet" href="{{ url_for('static', filename='css/admin_css/reports.css') }}" />
+{% endblock %}
+
 {% block content %}
-<div class="admin-page-header">
-  <div>
-    <h1>Reports</h1>
-    <p>Analyze devices, alerts, and community activity.</p>
-  </div>
-  <div class="map-header-actions">
-    <label class="labeled-select">
-      <select onchange="window.location = this.value" aria-label="Date range">
-        {% for key, label in ranges.items() %}
-        <option value="{{ url_for('admin.reports', range=key) }}" {% if key == range_key %}selected{% endif %}>{{ label }}</option>
-        {% endfor %}
-      </select>
-    </label>
-    <div class="export-menu">
-      <button type="button" class="btn btn-primary export-menu-btn" aria-haspopup="true" aria-expanded="false">
-        <i data-lucide="download"></i> Export Report <i data-lucide="chevron-down"></i>
-      </button>
-      <div class="export-menu-list" role="menu">
-        <button type="button" role="menuitem"
-                onclick="this.closest('.export-menu').classList.remove('open'); window.location='{{ url_for('admin.reports', fmt='pdf', range=range_key) }}'">
-          <i data-lucide="file-text"></i> PDF (.pdf)
-        </button>
-        <button type="button" role="menuitem"
-                onclick="this.closest('.export-menu').classList.remove('open'); window.location='{{ url_for('admin.reports', fmt='excel', range=range_key) }}'">
-          <i data-lucide="file-spreadsheet"></i> Excel (.xlsx)
-        </button>
-        <button type="button" role="menuitem"
-                onclick="this.closest('.export-menu').classList.remove('open'); window.location='{{ url_for('admin.reports', fmt='word', range=range_key) }}'">
-          <i data-lucide="file-type"></i> Word (.docx)
-        </button>
-        <button type="button" role="menuitem"
-                onclick="this.closest('.export-menu').classList.remove('open'); window.location='{{ url_for('admin.download_report', range=range_key) }}'">
-          <i data-lucide="sheet"></i> CSV (raw data)
-        </button>
-      </div>
-    </div>
-  </div>
-</div>
+{% set s = stats %}
+{% set short = {'last_7': '7 Days', 'last_30': '30 Days', 'this_month': 'This Month', 'all': 'All Time'} %}
 
-<!-- STAT CARDS -->
-<section class="admin-stats admin-stats-6">
-  <div class="stat-card stat-card-compact">
-    <span class="stat-icon tint-blue"><i data-lucide="smartphone"></i></span>
-    <div class="stat-body">
-      <span class="stat-label">Total Devices</span>
-      <strong class="stat-value">{{ stats.total_devices }}</strong>
-    </div>
-  </div>
-  <div class="stat-card stat-card-compact">
-    <span class="stat-icon tint-green"><i data-lucide="wifi"></i></span>
-    <div class="stat-body">
-      <span class="stat-label">Online Devices</span>
-      <strong class="stat-value">{{ stats.online_devices }}</strong>
-      <span class="stat-sub text-muted">{{ stats.online_pct }}% of total</span>
-    </div>
-  </div>
-  <div class="stat-card stat-card-compact">
-    <span class="stat-icon tint-red"><i data-lucide="bell"></i></span>
-    <div class="stat-body">
-      <span class="stat-label">Total Alerts</span>
-      <strong class="stat-value">{{ stats.total_alerts }}</strong>
-    </div>
-  </div>
-  <div class="stat-card stat-card-compact">
-    <span class="stat-icon tint-orange"><i data-lucide="circle-check"></i></span>
-    <div class="stat-body">
-      <span class="stat-label">Resolved Alerts</span>
-      <strong class="stat-value">{{ stats.resolved }}</strong>
-      <span class="stat-sub text-muted">{{ stats.resolved_pct }}% resolution rate</span>
-    </div>
-  </div>
-  <div class="stat-card stat-card-compact">
-    <span class="stat-icon tint-purple"><i data-lucide="timer"></i></span>
-    <div class="stat-body">
-      <span class="stat-label">Avg. Response Time</span>
-      <strong class="stat-value">{{ stats.avg_response }}</strong>
-    </div>
-  </div>
-  <div class="stat-card stat-card-compact">
-    <span class="stat-icon tint-blue"><i data-lucide="users-round"></i></span>
-    <div class="stat-body">
-      <span class="stat-label">Active Users</span>
-      <strong class="stat-value">{{ stats.active_users }}</strong>
-    </div>
-  </div>
-</section>
+<div class="rp">
 
-<section class="report-grid">
-  <!-- ALERTS OVER TIME -->
-  <div class="admin-card">
-    <div class="admin-card-header">
-      <h2>Alerts Over Time</h2>
-      <span class="chart-key">
-        <span><i class="dot dot-red"></i> Alerts</span>
-        <span><i class="dot dot-green"></i> Resolved</span>
-      </span>
+  <!-- ============ HEADER: title + period (the period applies to the whole page) ============ -->
+  <header class="rp-header">
+    <div>
+      <h1>Reports</h1>
+      <p>Emergency response and medication analytics · {{ ranges[range_key] }}</p>
     </div>
-
-    {% if stats.total_alerts %}
-    <div class="line-chart">
-      <div class="line-axis">
-        <span>{{ chart.peak }}</span>
-        <span>{{ (chart.peak / 2) | round | int }}</span>
-        <span>0</span>
-      </div>
-      <svg viewBox="0 0 100 100" preserveAspectRatio="none" role="img"
-           aria-label="Alerts and resolved alerts over the selected period">
-        <line x1="0" y1="0" x2="100" y2="0" class="grid-line" />
-        <line x1="0" y1="50" x2="100" y2="50" class="grid-line" />
-        <line x1="0" y1="100" x2="100" y2="100" class="grid-line" />
-        <polyline points="{{ chart.points }}" class="line line-alerts" />
-        <polyline points="{{ chart.resolved_points }}" class="line line-resolved" />
-      </svg>
-    </div>
-    <div class="line-labels">
-      {% for label in chart.labels %}
-      {% if loop.index0 % 2 == 0 or chart.labels|length < 7 %}<span>{{ label }}</span>{% endif %}
+    <nav class="rp-segmented" aria-label="Time period">
+      {% for key in ['last_7', 'last_30', 'this_month', 'all'] %}
+      <a href="{{ url_for('admin.reports', range=key) }}"
+         class="{% if key == range_key %}is-active{% endif %}"
+         {% if key == range_key %}aria-current="page"{% endif %}>{{ short[key] }}</a>
       {% endfor %}
-    </div>
-    {% else %}
-    <div class="empty-state">
-      <span class="empty-icon"><i data-lucide="chart-column"></i></span>
-      <strong>No alerts in this period</strong>
-      <p>Pick a wider date range to see activity.</p>
-    </div>
-    {% endif %}
-  </div>
+    </nav>
+  </header>
 
-  <!-- ALERTS BY TYPE -->
-  <div class="admin-card">
-    <div class="admin-card-header"><h2>Alerts by Type</h2></div>
-
-    {% if type_breakdown %}
-    <div class="alert-summary">
-      {% set ns = namespace(stop=0) %}
-      <div
-        class="type-donut"
-        style="background: conic-gradient({% for item in type_breakdown %}{% set start = ns.stop %}{% set ns.stop = ns.stop + item.pct %}var(--chart-{{ item.colour }}) {{ start }}% {{ ns.stop }}%{{ ', ' if not loop.last }}{% endfor %});"
-        role="img"
-        aria-label="Breakdown of alerts by type"
-      >
-        <span class="donut-hole">
-          <strong>{{ stats.total_alerts }}</strong>
-          <small>Total</small>
-        </span>
+  <!-- ============ KEY NUMBERS ============ -->
+  <section class="rp-kpis" aria-label="Key numbers">
+    <article class="rp-card rp-kpi">
+      <span class="rp-kpi-label"><i data-lucide="timer"></i> Median response</span>
+      <strong class="rp-kpi-value">{{ s.median_response }}</strong>
+      {% if s.answered %}
+      <div class="rp-meter" role="img" aria-label="{{ s.within_target_pct }}% answered within {{ s.target_min }} minutes">
+        <span class="rp-meter-fill {% if s.within_target_pct >= 80 %}is-green{% elif s.within_target_pct >= 50 %}is-orange{% else %}is-red{% endif %}"
+              style="width: {{ s.within_target_pct }}%"></span>
       </div>
-      <ul class="summary-list">
-        {% for item in type_breakdown %}
+      <span class="rp-kpi-foot"><b>{{ s.within_target_pct }}%</b> answered within {{ s.target_min }} min</span>
+      {% else %}
+      <span class="rp-kpi-foot">No responses in this period yet</span>
+      {% endif %}
+    </article>
+
+    <article class="rp-card rp-kpi">
+      <span class="rp-kpi-label"><i data-lucide="siren"></i> Emergency alerts</span>
+      <strong class="rp-kpi-value">{{ s.total_alerts }}</strong>
+      <span class="rp-kpi-foot"><b>{{ s.resolved_pct }}%</b> closed · <b>{{ s.escalated }}</b> escalated to a BHW</span>
+    </article>
+
+    <article class="rp-card rp-kpi">
+      <span class="rp-kpi-label"><i data-lucide="flag"></i> False alarm rate</span>
+      <strong class="rp-kpi-value">{{ s.false_alarm_pct }}<small>%</small></strong>
+      <span class="rp-kpi-foot">
+        {{ s.false_alarms }} of {{ s.total_alerts }} alerts ·
+        <b>{{ s.cancelled_on_device }}</b> cancelled on the device
+      </span>
+    </article>
+
+    <article class="rp-card rp-kpi">
+      <span class="rp-kpi-label"><i data-lucide="pill"></i> Medication adherence</span>
+      {% if s.adherence_pct is not none %}
+      <strong class="rp-kpi-value">{{ s.adherence_pct }}<small>%</small></strong>
+      <span class="rp-kpi-foot"><b>{{ s.med_taken }}</b> taken · <b>{{ s.med_missed }}</b> missed</span>
+      {% else %}
+      <strong class="rp-kpi-value rp-muted">—</strong>
+      <span class="rp-kpi-foot">No medicine updates in this period</span>
+      {% endif %}
+    </article>
+  </section>
+
+  <!-- ============ SECONDARY NUMBERS (one quiet row) ============ -->
+  <section class="rp-card rp-strip" aria-label="System at a glance">
+    <div><span>Residents monitored</span><strong>{{ s.residents }}</strong></div>
+    <div><span>Devices online</span><strong>{{ s.online_devices }}<small> / {{ s.total_devices }}</small></strong></div>
+    <div><span>Answered alerts</span><strong>{{ s.answered }}</strong></div>
+    <div><span>Waiting for a response</span><strong class="{% if s.unanswered_now %}rp-red{% endif %}">{{ s.unanswered_now }}</strong></div>
+  </section>
+
+  <!-- ============ ROW 1: trend + outcome ============ -->
+  <section class="rp-grid rp-grid-2">
+    <article class="rp-card">
+      <header class="rp-card-head">
+        <h2>Alerts over time</h2>
+        <span class="rp-legend">
+          <span><i class="rp-dot is-red"></i> Alerts</span>
+          <span><i class="rp-dot is-green"></i> Closed</span>
+        </span>
+      </header>
+      {% if s.total_alerts %}
+      <div class="rp-line">
+        <div class="rp-line-axis" aria-hidden="true">
+          <span>{{ chart.peak }}</span>
+          <span>{{ (chart.peak / 2) | round | int }}</span>
+          <span>0</span>
+        </div>
+        <svg viewBox="0 0 100 100" preserveAspectRatio="none" role="img"
+             aria-label="Alerts and closed alerts, {{ ranges[range_key] | lower }}">
+          <line x1="0" y1="0" x2="100" y2="0" class="rp-grid-line" />
+          <line x1="0" y1="50" x2="100" y2="50" class="rp-grid-line" />
+          <line x1="0" y1="100" x2="100" y2="100" class="rp-grid-line" />
+          <polygon points="0,100 {{ chart.points }} 100,100" class="rp-area" />
+          <polyline points="{{ chart.points }}" class="rp-stroke is-red" />
+          <polyline points="{{ chart.resolved_points }}" class="rp-stroke is-green" />
+        </svg>
+      </div>
+      <div class="rp-line-labels" aria-hidden="true">
+        {% set every = ((chart.labels | length) / 6) | round(0, 'ceil') | int %}
+        {% for label in chart.labels %}
+        {% if loop.index0 % (every or 1) == 0 %}<span>{{ label }}</span>{% endif %}
+        {% endfor %}
+      </div>
+      {% else %}
+      <div class="rp-empty"><i data-lucide="chart-line"></i><strong>No alerts in this period</strong><span>Choose a longer period to see activity.</span></div>
+      {% endif %}
+    </article>
+
+    <article class="rp-card">
+      <header class="rp-card-head"><h2>How alerts ended</h2></header>
+      {% if s.total_alerts %}
+      <div class="rp-stack" role="img" aria-label="Alert outcomes">
+        {% for o in outcomes if o.count %}
+        <span class="is-{{ o.colour }}" style="width: {{ o.pct }}%" title="{{ o.label }}: {{ o.count }}"></span>
+        {% endfor %}
+      </div>
+      <ul class="rp-list">
+        {% for o in outcomes %}
         <li>
-          <i class="dot dot-chart-{{ item.colour }}"></i> {{ item.label }}
-          <strong>{{ item.count }} <small class="text-muted">({{ item.pct }}%)</small></strong>
+          <span><i class="rp-dot is-{{ o.colour }}"></i> {{ o.label }}</span>
+          <span class="rp-num">{{ o.count }} <small>{{ o.pct }}%</small></span>
         </li>
         {% endfor %}
       </ul>
-    </div>
-    {% else %}
-    <div class="empty-state">
-      <span class="empty-icon"><i data-lucide="chart-pie"></i></span>
-      <strong>Nothing to break down yet</strong>
-      <p>Alert types will appear here once alerts come in.</p>
-    </div>
-    {% endif %}
-  </div>
+      {% else %}
+      <div class="rp-empty"><i data-lucide="chart-pie"></i><strong>Nothing to show yet</strong><span>Outcomes appear once alerts come in.</span></div>
+      {% endif %}
+    </article>
+  </section>
 
-  <!-- ALERTS BY LOCATION -->
-  <div class="admin-card">
-    <div class="admin-card-header">
-      <h2>Alerts by Location</h2>
-      <a href="{{ url_for('admin.map_view') }}" class="card-link">View Map <i data-lucide="arrow-right"></i></a>
-    </div>
-
-    {% if top_places %}
-    <ul class="place-list">
-      {% for place in top_places %}
-      <li>
-        <span class="place-name">{{ place.name }}</span>
-        <span class="place-bar"><span style="width: {{ place.pct }}%"></span></span>
-        <span class="place-count">{{ place.count }} <small class="text-muted">({{ place.pct }}%)</small></span>
-      </li>
-      {% endfor %}
-    </ul>
-    {% else %}
-    <div class="empty-state">
-      <span class="empty-icon"><i data-lucide="map-pin"></i></span>
-      <strong>No locations yet</strong>
-      <p>Alerts grouped by barangay will show here.</p>
-    </div>
-    {% endif %}
-  </div>
-</section>
-
-<!-- BARANGAY SUMMARY -->
-<section class="admin-card admin-table-card">
-  <div class="admin-card-header report-head"><h2>Barangay Summary</h2></div>
-  <div class="table-scroll">
-    <table class="admin-table">
-      <thead>
-        <tr>
-          <th>Barangay</th>
-          <th>Residents</th>
-          <th>Total Devices</th>
-          <th>Online Devices</th>
-          <th>Total Alerts</th>
-          <th>Resolved Alerts</th>
-          <th>Avg. Response Time</th>
-        </tr>
-      </thead>
-      <tbody>
-        {% for row in barangay_rows %}
-        <tr>
-          <td><strong class="cell-strong">{{ row.name }}</strong></td>
-          <td>{{ row.residents }}</td>
-          <td>{{ row.devices }}</td>
-          <td class="text-green">{{ row.online }} <small class="text-muted">({{ row.online_pct }}%)</small></td>
-          <td>{{ row.alerts }}</td>
-          <td class="text-green">{{ row.resolved }} <small class="text-muted">({{ row.resolved_pct }}%)</small></td>
-          <td class="nowrap">{{ row.avg_response }}</td>
-        </tr>
+  <!-- ============ ROW 2: response, medication, location ============ -->
+  <section class="rp-grid rp-grid-3">
+    <article class="rp-card">
+      <header class="rp-card-head">
+        <h2>Response time</h2>
+        <span class="rp-sub">{{ s.answered }} answered</span>
+      </header>
+      {% if s.answered %}
+      <div class="rp-bars" role="img" aria-label="How quickly alerts were answered">
+        {% for b in buckets %}
+        <div class="rp-bar">
+          <span class="rp-bar-count">{{ b.count }}</span>
+          <span class="rp-bar-track">
+            <span class="rp-bar-fill {{ 'is-green' if loop.index <= 2 else ('is-orange' if loop.index == 3 else 'is-red') }}"
+                  style="height: {{ ([b.height, 4] | max) if b.count else 0 }}%"></span>
+          </span>
+          <span class="rp-bar-label">{{ b.label }}</span>
+        </div>
         {% endfor %}
-        {% if not barangay_rows %}
-        <tr>
-          <td colspan="7">
-            <div class="empty-state">
-              <span class="empty-icon"><i data-lucide="map"></i></span>
-              <strong>No barangay data yet</strong>
-              <p>This fills in once residents are registered with an address.</p>
-            </div>
-          </td>
-        </tr>
-        {% endif %}
-      </tbody>
-    </table>
-  </div>
-</section>
+      </div>
+      {% else %}
+      <div class="rp-empty"><i data-lucide="timer-off"></i><strong>No responses yet</strong><span>Response times appear once someone answers an alert.</span></div>
+      {% endif %}
+    </article>
+
+    <article class="rp-card">
+      <header class="rp-card-head">
+        <h2>Medication</h2>
+        <span class="rp-sub">{{ s.med_taken + s.med_missed }} doses</span>
+      </header>
+      {% if s.med_taken + s.med_missed %}
+      {% set taken_pct = (s.med_taken / (s.med_taken + s.med_missed) * 100) | round(1) %}
+      <div class="rp-stack" role="img" aria-label="{{ taken_pct }}% of doses taken">
+        <span class="is-green" style="width: {{ taken_pct }}%"></span>
+        <span class="is-red" style="width: {{ 100 - taken_pct }}%"></span>
+      </div>
+      <ul class="rp-list">
+        <li><span><i class="rp-dot is-green"></i> Taken</span><span class="rp-num">{{ s.med_taken }}</span></li>
+        <li><span><i class="rp-dot is-red"></i> Missed</span><span class="rp-num">{{ s.med_missed }}</span></li>
+      </ul>
+      {% if most_missed %}
+      <h3 class="rp-mini-title">Most missed doses</h3>
+      <ul class="rp-list rp-list-compact">
+        {% for m in most_missed %}
+        <li><span>{{ m.name }}</span><span class="rp-chip is-red">{{ m.count }} missed</span></li>
+        {% endfor %}
+      </ul>
+      {% endif %}
+      {% else %}
+      <div class="rp-empty"><i data-lucide="pill"></i><strong>No medicine updates</strong><span>Taken and missed doses from the device appear here.</span></div>
+      {% endif %}
+    </article>
+
+    <article class="rp-card">
+      <header class="rp-card-head">
+        <h2>Alerts by barangay</h2>
+        <a href="{{ url_for('admin.map_view') }}" class="rp-link">Map <i data-lucide="chevron-right"></i></a>
+      </header>
+      {% if top_places %}
+      <ul class="rp-places">
+        {% for place in top_places %}
+        <li>
+          <div class="rp-place-row"><span>{{ place.name }}</span><span class="rp-num">{{ place.count }} <small>{{ place.pct }}%</small></span></div>
+          <span class="rp-meter"><span class="rp-meter-fill is-blue" style="width: {{ place.pct }}%"></span></span>
+        </li>
+        {% endfor %}
+      </ul>
+      {% else %}
+      <div class="rp-empty"><i data-lucide="map-pin"></i><strong>No locations yet</strong><span>Alerts grouped by barangay appear here.</span></div>
+      {% endif %}
+    </article>
+  </section>
+
+  <!-- ============ BARANGAY SUMMARY: its filters and Export live with the table ============ -->
+  <section class="rp-card rp-table-card">
+    <header class="rp-table-head">
+      <div>
+        <h2>Barangay summary</h2>
+        <span class="rp-sub">Export downloads exactly what this table is filtered to.</span>
+      </div>
+      <div class="rp-toolbar">
+        <label class="rp-search">
+          <i data-lucide="search"></i>
+          <input type="search" id="rpSearch" placeholder="Search barangay or BHW" aria-label="Search barangay or BHW" />
+        </label>
+        <select id="rpPlace" class="rp-select" aria-label="Barangay">
+          <option value="">All barangays</option>
+          {% for row in barangay_rows %}<option value="{{ row.name }}">{{ row.name }}</option>{% endfor %}
+        </select>
+        <div class="export-menu">
+          <button type="button" class="rp-btn export-menu-btn" aria-haspopup="true" aria-expanded="false">
+            <i data-lucide="download"></i> Export <i data-lucide="chevron-down"></i>
+          </button>
+          <div class="export-menu-list" role="menu">
+            <button type="button" role="menuitem" data-export="{{ url_for('admin.reports', fmt='pdf') }}"><i data-lucide="file-text"></i> PDF (.pdf)</button>
+            <button type="button" role="menuitem" data-export="{{ url_for('admin.reports', fmt='excel') }}"><i data-lucide="file-spreadsheet"></i> Excel (.xlsx)</button>
+            <button type="button" role="menuitem" data-export="{{ url_for('admin.reports', fmt='word') }}"><i data-lucide="file-type"></i> Word (.docx)</button>
+            <button type="button" role="menuitem" data-export="{{ url_for('admin.download_report') }}"><i data-lucide="sheet"></i> CSV (raw alerts)</button>
+          </div>
+        </div>
+      </div>
+    </header>
+
+    <div class="table-scroll">
+      <table class="rp-table" id="rpTable">
+        <thead>
+          <tr>
+            <th>Barangay</th>
+            <th class="rp-r">Residents</th>
+            <th class="rp-r">Devices online</th>
+            <th class="rp-r">Alerts</th>
+            <th class="rp-r">Closed</th>
+            <th class="rp-r">False alarms</th>
+            <th class="rp-r">Median response</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for row in barangay_rows %}
+          <tr data-name="{{ row.name }}" data-search="{{ (row.name ~ ' ' ~ row.bhw) | lower }}">
+            <td>
+              <strong>{{ row.name }}</strong>
+              <small>{% if row.bhw %}BHW · {{ row.bhw }}{% else %}No BHW assigned{% endif %}</small>
+            </td>
+            <td class="rp-r rp-num">{{ row.residents }}</td>
+            <td class="rp-r rp-num">{{ row.online }} <small>/ {{ row.devices }}</small></td>
+            <td class="rp-r rp-num">{{ row.alerts }}</td>
+            <td class="rp-r rp-num">{% if row.alerts %}{{ row.resolved_pct }}%{% else %}<span class="rp-muted">—</span>{% endif %}</td>
+            <td class="rp-r rp-num">{{ row.false_alarms }}</td>
+            <td class="rp-r rp-num">{{ row.avg_response }}</td>
+          </tr>
+          {% endfor %}
+          <tr class="rp-table-empty" {% if barangay_rows %}hidden{% endif %}>
+            <td colspan="7">
+              <div class="rp-empty">
+                <i data-lucide="search-x"></i>
+                {% if barangay_rows %}<strong>No barangay matches</strong><span>Try another search or barangay.</span>
+                {% else %}<strong>No barangay data yet</strong><span>This fills in once residents are registered with an address.</span>{% endif %}
+              </div>
+            </td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+</div>
+
+<script>
+  // Barangay summary: search + barangay filter, and Export follows them.
+  (function () {
+    const search = document.getElementById('rpSearch');
+    const place = document.getElementById('rpPlace');
+    const rows = Array.from(document.querySelectorAll('#rpTable tbody tr[data-name]'));
+    const empty = document.querySelector('#rpTable .rp-table-empty');
+    const RANGE = "{{ range_key }}";
+
+    function filter() {
+      const q = search.value.trim().toLowerCase();
+      let shown = 0;
+      rows.forEach((tr) => {
+        const ok = (!place.value || tr.dataset.name === place.value) &&
+                   (!q || tr.dataset.search.includes(q));
+        tr.hidden = !ok;
+        if (ok) shown++;
+      });
+      if (rows.length) empty.hidden = shown > 0;
+    }
+    search.addEventListener('input', filter);
+    place.addEventListener('change', filter);
+
+    document.querySelectorAll('[data-export]').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        const params = new URLSearchParams({ range: RANGE });
+        if (place.value) params.set('barangay', place.value);
+        if (search.value.trim()) params.set('q', search.value.trim());
+        btn.closest('.export-menu').classList.remove('open');
+        window.location = `${btn.dataset.export}?${params}`;
+      });
+    });
+  })();
+</script>
 {% endblock %}

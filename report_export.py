@@ -19,7 +19,8 @@ from flask import Response
 
 import alerts_common as ac
 
-DAYS = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday']
+DAYS = ['Monday', 'Tuesday', 'Wednesday',
+        'Thursday', 'Friday', 'Saturday', 'Sunday']
 TIME_BLOCKS = [  # (start hour, label)
     (0, 'Late night (12 AM - 4 AM)'),
     (4, 'Early morning (4 AM - 8 AM)'),
@@ -62,7 +63,8 @@ def analyze(rows, barangay_rows):
 
     by_day = Counter(DAYS[m.weekday()] for _, m in moments)
     by_block = Counter(TIME_BLOCKS[m.hour // 4][1] for _, m in moments)
-    by_week = Counter((m.date() - timedelta(days=m.weekday())) for _, m in moments)
+    by_week = Counter((m.date() - timedelta(days=m.weekday()))
+                      for _, m in moments)
     by_month = Counter(m.strftime('%Y-%m') for _, m in moments)
     by_date = Counter(m.date() for _, m in moments)
     by_status = Counter(r['status_label'] for r in rows)
@@ -85,7 +87,8 @@ def analyze(rows, barangay_rows):
         'by_status': _ranked(by_status, total),
         'top_residents': _ranked(by_resident, total)[:10],
     }
-    a['findings'] = _findings(a, rows, moments, by_day, by_block, barangay_rows)
+    a['findings'] = _findings(
+        a, rows, moments, by_day, by_block, barangay_rows)
     return a
 
 
@@ -119,7 +122,8 @@ def _findings(a, rows, moments, by_day, by_block, barangay_rows):
         m = a['months'][0]
         out.append(f"Busiest month was {m[0]} with {m[1]} alert(s).")
     elif a['months']:
-        out.append(f"All alerts in this period happened in {a['months'][0][0]}.")
+        out.append(
+            f"All alerts in this period happened in {a['months'][0][0]}.")
     if a['dates']:
         d = a['dates'][0]
         out.append(f"Single busiest day was {d[0]} with {d[1]} alert(s).")
@@ -159,14 +163,29 @@ def _findings(a, rows, moments, by_day, by_block, barangay_rows):
 # ============================================================
 
 def _summary_rows(stats):
-    return [
-        ('Total Devices', str(stats['total_devices'])),
-        ('Online Devices', f"{stats['online_devices']} ({stats['online_pct']}% of total)"),
+    rows = [
         ('Total Alerts', str(stats['total_alerts'])),
-        ('Resolved Alerts', f"{stats['resolved']} ({stats['resolved_pct']}% resolution rate)"),
-        ('Avg. Response Time', stats['avg_response']),
-        ('Active Users', str(stats['active_users'])),
+        ('Closed Alerts', f"{stats['resolved']} ({stats['resolved_pct']}%)"),
+        ('Median Response Time', stats['avg_response']),
     ]
+    if 'within_target_pct' in stats:
+        adherence = stats.get('adherence_pct')
+        rows += [
+            (f"Answered within {stats['target_min']} min",
+             f"{stats['within_target']} of {stats['answered']} ({stats['within_target_pct']}%)"),
+            ('False Alarms', f"{stats['false_alarms']} ({stats['false_alarm_pct']}%), "
+             f"{stats['cancelled_on_device']} cancelled on the device"),
+            ('Escalated to BHW', str(stats['escalated'])),
+            ('Waiting for a Response', str(stats['unanswered_now'])),
+            ('Medication Adherence', '—' if adherence is None else
+             f"{adherence}% ({stats['med_taken']} taken, {stats['med_missed']} missed)"),
+        ]
+    rows += [
+        ('Residents Monitored', str(stats['active_users'])),
+        ('Devices Online',
+         f"{stats['online_devices']} of {stats['total_devices']} ({stats['online_pct']}%)"),
+    ]
+    return rows
 
 
 def _count_table(rows):
@@ -176,27 +195,36 @@ def _count_table(rows):
 def _sections(a, stats, barangay_rows, type_breakdown):
     """[(title, header, rows)] used by PDF and Word."""
     return [
-        ('Summary', ['Metric', 'Value'], [list(r) for r in _summary_rows(stats)]),
-        ('Alerts by Day of the Week', ['Day', 'Alerts', 'Share'], _count_table(a['by_day'])),
-        ('Alerts by Time of Day', ['Time', 'Alerts', 'Share'], _count_table(a['by_block'])),
-        ('Alerts by Week (busiest first)', ['Week', 'Alerts', 'Share'], _count_table(a['weeks'])),
-        ('Alerts by Month (busiest first)', ['Month', 'Alerts', 'Share'], _count_table(a['months'])),
-        ('Top 10 Busiest Days', ['Date', 'Alerts', 'Share'], _count_table(a['dates'])),
+        ('Summary', ['Metric', 'Value'], [list(r)
+         for r in _summary_rows(stats)]),
+        ('Alerts by Day of the Week', [
+         'Day', 'Alerts', 'Share'], _count_table(a['by_day'])),
+        ('Alerts by Time of Day', ['Time', 'Alerts',
+         'Share'], _count_table(a['by_block'])),
+        ('Alerts by Week (busiest first)', [
+         'Week', 'Alerts', 'Share'], _count_table(a['weeks'])),
+        ('Alerts by Month (busiest first)', [
+         'Month', 'Alerts', 'Share'], _count_table(a['months'])),
+        ('Top 10 Busiest Days', ['Date', 'Alerts',
+         'Share'], _count_table(a['dates'])),
         ('Barangay Summary',
-         ['Barangay', 'Residents', 'Devices', 'Online', 'Alerts', 'Resolved', 'Avg. Response'],
+         ['Barangay', 'Residents', 'Devices', 'Online',
+             'Alerts', 'Resolved', 'Avg. Response'],
          [[b['name'], str(b['residents']), str(b['devices']),
            f"{b['online']} ({b['online_pct']}%)", str(b['alerts']),
            f"{b['resolved']} ({b['resolved_pct']}%)", b['avg_response']] for b in barangay_rows]),
         ('Alerts by Type', ['Type', 'Alerts', 'Share'],
          [[t['label'], str(t['count']), f"{t['pct']}%"] for t in type_breakdown]),
-        ('Alerts by Status', ['Status', 'Alerts', 'Share'], _count_table(a['by_status'])),
+        ('Alerts by Status', ['Status', 'Alerts',
+         'Share'], _count_table(a['by_status'])),
         ('Residents with the Most Alerts', ['Resident', 'Alerts', 'Share'],
          _count_table(a['top_residents'])),
     ]
 
 
 def _alert_list(rows):
-    header = ['Alert ID', 'Resident', 'Barangay', 'Type', 'Status', 'Date & Time', 'Response (min)']
+    header = ['Alert ID', 'Resident', 'Barangay', 'Type',
+              'Status', 'Date & Time', 'Response (min)']
     body = [[r['code'], r['name'], r['barangay'] or '', r['type_label'], r['status_label'],
              r['full_time'], '' if r['response_minutes'] is None else str(round(r['response_minutes']))]
             for r in rows]
@@ -221,9 +249,12 @@ def _pdf(a, rows, stats, barangay_rows, type_breakdown, range_label, generated):
                             topMargin=1.5 * cm, bottomMargin=1.5 * cm,
                             title='ALISTO Report')
     ss = getSampleStyleSheet()
-    h1 = ParagraphStyle('h1', parent=ss['Title'], textColor=colors.HexColor('#0f1b3d'))
-    h2 = ParagraphStyle('h2', parent=ss['Heading2'], textColor=blue, spaceBefore=12)
-    small = ParagraphStyle('small', parent=ss['Normal'], fontSize=8, leading=10)
+    h1 = ParagraphStyle(
+        'h1', parent=ss['Title'], textColor=colors.HexColor('#0f1b3d'))
+    h2 = ParagraphStyle(
+        'h2', parent=ss['Heading2'], textColor=blue, spaceBefore=12)
+    small = ParagraphStyle(
+        'small', parent=ss['Normal'], fontSize=8, leading=10)
     body = ss['Normal']
 
     def table(header, data, widths=None):
@@ -234,14 +265,16 @@ def _pdf(a, rows, stats, barangay_rows, type_breakdown, range_label, generated):
         t.setStyle(TableStyle([
             ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#eaf1ff')),
             ('GRID', (0, 0), (-1, -1), 0.4, colors.HexColor('#d5dbe8')),
-            ('ROWBACKGROUNDS', (0, 1), (-1, -1), [colors.white, colors.HexColor('#f7f9fc')]),
+            ('ROWBACKGROUNDS', (0, 1), (-1, -1),
+             [colors.white, colors.HexColor('#f7f9fc')]),
             ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
         ]))
         return t
 
     story = [
         Paragraph('ALISTO Activity Report', h1),
-        Paragraph(f'Period: <b>{range_label}</b> &nbsp;&nbsp; Generated: {generated}', body),
+        Paragraph(
+            f'Period: <b>{range_label}</b> &nbsp;&nbsp; Generated: {generated}', body),
         Spacer(1, 10),
         Paragraph('Key Findings', h2),
         ListFlowable([ListItem(Paragraph(f, body)) for f in a['findings']],
@@ -347,8 +380,10 @@ def _excel(a, rows, stats, barangay_rows, type_breakdown, range_label, generated
 
     def autosize(ws):
         for col in ws.columns:
-            width = max((len(str(c.value)) for c in col if c.value is not None), default=8)
-            ws.column_dimensions[col[0].column_letter].width = min(max(width + 2, 10), 60)
+            width = max((len(str(c.value))
+                        for c in col if c.value is not None), default=8)
+            ws.column_dimensions[col[0].column_letter].width = min(
+                max(width + 2, 10), 60)
 
     def count_block(ws, start, title, label, data, chart_anchor=None):
         """Title + table (label, alerts, share); optional bar chart. Returns next free row."""
@@ -367,7 +402,8 @@ def _excel(a, rows, stats, barangay_rows, type_breakdown, range_label, generated
             chart.height, chart.width = 7, 14
             chart.add_data(Reference(ws, min_col=2, min_row=start + 1, max_row=r - 1),
                            titles_from_data=True)
-            chart.set_categories(Reference(ws, min_col=1, min_row=start + 2, max_row=r - 1))
+            chart.set_categories(
+                Reference(ws, min_col=1, min_row=start + 2, max_row=r - 1))
             ws.add_chart(chart, chart_anchor)
         return r + 1
 
@@ -382,7 +418,8 @@ def _excel(a, rows, stats, barangay_rows, type_breakdown, range_label, generated
     ws['A5'].font = section_font
     r = 6
     for f in a['findings']:
-        ws.cell(row=r, column=1, value=f'- {f}').alignment = Alignment(wrap_text=False)
+        ws.cell(row=r, column=1,
+                value=f'- {f}').alignment = Alignment(wrap_text=False)
         r += 1
     r += 1
     ws.cell(row=r, column=1, value='Summary').font = section_font
@@ -397,9 +434,12 @@ def _excel(a, rows, stats, barangay_rows, type_breakdown, range_label, generated
 
     # --- Peak Times (tables + charts) ---
     ws = wb.create_sheet('Peak Times')
-    r = count_block(ws, 1, 'Alerts by Day of the Week', 'Day', a['by_day'], 'E1')
-    r = count_block(ws, max(r, 17), 'Alerts by Time of Day', 'Time', a['by_block'], f'E{max(r, 17)}')
-    r = count_block(ws, max(r, 33), 'Alerts by Month', 'Month', a['months'], f'E{max(r, 33)}')
+    r = count_block(ws, 1, 'Alerts by Day of the Week',
+                    'Day', a['by_day'], 'E1')
+    r = count_block(ws, max(r, 17), 'Alerts by Time of Day',
+                    'Time', a['by_block'], f'E{max(r, 17)}')
+    r = count_block(ws, max(r, 33), 'Alerts by Month',
+                    'Month', a['months'], f'E{max(r, 33)}')
     r = count_block(ws, max(r, 49), 'Alerts by Week', 'Week', a['weeks'])
     count_block(ws, r, 'Top 10 Busiest Days', 'Date', a['dates'])
     ws.column_dimensions['A'].width = 30
@@ -420,7 +460,8 @@ def _excel(a, rows, stats, barangay_rows, type_breakdown, range_label, generated
     r = count_block(ws, 1, 'Alerts by Type', 'Type',
                     [(t['label'], t['count'], t['pct']) for t in type_breakdown])
     r = count_block(ws, r, 'Alerts by Status', 'Status', a['by_status'])
-    count_block(ws, r, 'Residents with the Most Alerts', 'Resident', a['top_residents'])
+    count_block(ws, r, 'Residents with the Most Alerts',
+                'Resident', a['top_residents'])
     ws.column_dimensions['A'].width = 30
 
     # --- Alerts (every row) ---
@@ -454,7 +495,8 @@ def build(fmt, rows, stats, barangay_rows, type_breakdown, range_label):
     generated = now.strftime('%b %d, %Y %I:%M %p')
     a = analyze(rows, barangay_rows)
     maker = {'pdf': _pdf, 'excel': _excel, 'word': _word}[fmt]
-    data = maker(a, rows, stats, barangay_rows, type_breakdown, range_label, generated)
+    data = maker(a, rows, stats, barangay_rows,
+                 type_breakdown, range_label, generated)
 
     mimetype, ext = FORMATS[fmt]
     slug = range_label.lower().replace(' ', '-')

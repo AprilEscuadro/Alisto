@@ -166,6 +166,7 @@
     const labels = { alert: 'Active alert', online: 'Online', weak: 'Weak signal', offline: 'Offline', none: 'No device' };
 
     const map = L.map('dashboardMap', { scrollWheelZoom: false }).setView([10.32, 123.9], 12);
+    map.zoomControl.setPosition('topright'); // +/- buttons sa tuo
     L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
       maxZoom: 19,
       attribution: '&copy; OpenStreetMap contributors',

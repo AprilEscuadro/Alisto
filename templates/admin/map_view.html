@@ -87,6 +87,10 @@
         {{ missing_location }} resident{{ '' if missing_location == 1 else 's' }} not shown — their device has not reported a location yet.
       </p>
       {% endif %}
+      <p class="map-note" id="mapNoLoc" hidden>
+        <i data-lucide="map-pin-off"></i>
+        No reported location yet for the matching resident.
+      </p>
       <div class="map-legend-inline">
         <strong>Legend</strong>
         <span><i class="dot dot-red"></i> Active Alert</span>
@@ -180,11 +184,29 @@
     const POLL_MS = 15000; // how often to check for a new/resolved emergency
 
     const initialPoints = JSON.parse(document.getElementById('mapPoints').textContent);
+
+    // Every resident with a known location. They only appear on the map while
+    // the admin is searching/filtering; with no filter the map shows just the
+    // active emergencies. The live poll below only knows about active alerts,
+    // so it is merged on top of this list.
+    const baseResidents = initialPoints.map((p) =>
+      Object.assign({}, p, { active: false, status: p.device_status || 'offline' }));
+    function mergePoints(live) {
+      const liveIds = new Set(live.map((p) => p.id));
+      const liveActive = live.map((p) => Object.assign({}, p, { active: true }));
+      return baseResidents.filter((p) => !liveIds.has(p.id)).concat(liveActive);
+    }
     const colours = { alert: '#e53935', online: '#16a34a', weak: '#f59e0b', offline: '#94a3b8', none: '#94a3b8' };
     const labels = { alert: 'Active alert', online: 'Online', weak: 'Weak signal', offline: 'Offline', none: 'No device' };
 
     // Starts on Cebu City, then zooms to fit the devices that have a location.
-    const map = L.map('adminMap').setView([10.32, 123.9], 12);
+    // Scroll-zoom is off by default so scrolling the page doesn't get
+    // "trapped" by the map. It turns on after the admin clicks the map and
+    // off again when the cursor leaves. The +/- buttons always work.
+    const map = L.map('adminMap', { scrollWheelZoom: false }).setView([10.32, 123.9], 12);
+    map.zoomControl.setPosition('topright'); // +/- buttons sa tuo
+    map.on('click', () => map.scrollWheelZoom.enable());
+    map.on('mouseout', () => map.scrollWheelZoom.disable());
     L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
       maxZoom: 19,
       attribution: '&copy; OpenStreetMap contributors',
@@ -249,8 +271,9 @@
       // arriving while an admin is reading one doesn't yank it shut.
       if (openId && markers[openId]) markers[openId].openPopup();
 
-      if (fitBounds && points.length) {
-        map.fitBounds(points.map((p) => [p.latitude, p.longitude]), { padding: [50, 50], maxZoom: 15 });
+      const focus = points.filter((p) => p.active);
+      if (fitBounds && focus.length) {
+        map.fitBounds(focus.map((p) => [p.latitude, p.longitude]), { padding: [50, 50], maxZoom: 15 });
       }
     }
 
@@ -261,7 +284,7 @@
         const res = await fetch('/admin/map/points');
         const data = await res.json();
         if (data.success) {
-          renderMarkers(data.points, false);
+          renderMarkers(mergePoints(data.points), false);
           // Re-apply whatever search/barangay/status filter the admin had
           // active -- renderMarkers() itself always adds every pin fresh,
           // so without this a poll would silently undo an active filter.
@@ -359,7 +382,8 @@
         const text = `${p.name} ${p.barangay || ''}`.toLowerCase();
         const shown = (!q || text.includes(q)) &&
                       (!place || p.barangay === place) &&
-                      (!state || p.status === state);
+                      (!state || p.status === state) &&
+                      (filtering || p.active);
         if (shown) {
           marker.addTo(map);
           visible.push(p);
@@ -367,6 +391,13 @@
           map.removeLayer(marker);
         }
       });
+
+      // Residents match but none has a reported location: say so.
+      const noLoc = document.getElementById('mapNoLoc');
+      if (noLoc) {
+        const matched = document.querySelectorAll('#mapResidents .map-list-item:not([hidden])').length;
+        noLoc.hidden = !(filtering && matched > 0 && visible.length === 0);
+      }
 
       if (fit === true) moveMapTo(visible);
     }
@@ -391,6 +422,32 @@
     });
     barangay.addEventListener('change', () => applyFilters(true));
     status.addEventListener('change', () => applyFilters(true));
+
+    
+    // "View on map" from Emergency Logs opens /admin/map?elder=<id>.
+    // Same as typing the resident's name in the search box: the list, the
+    // pins and Recent Map Alerts filter to them, then the map zooms to
+    // their pin and opens its popup. Clear the search box to see everyone.
+    const focusId = new URLSearchParams(window.location.search).get('elder');
+    if (focusId) {
+      const item = document.querySelector(
+        `#mapResidents .map-list-item[data-elder-id="${CSS.escape(focusId)}"]`);
+      if (item) {
+        search.value = item.dataset.name;
+        applyFilters();
+        const marker = markers[focusId];
+        if (marker) {
+          map.setView(marker.getLatLng(), 17);
+          marker.openPopup();
+        } else {
+          // No location reported yet: the resident is listed, but has no pin.
+          item.classList.add('shake');
+          setTimeout(() => item.classList.remove('shake'), 500);
+        }
+      }
+    }
+
+    applyFilters(); // first load: only active emergencies are on the map
   });
 </script>
 {% endblock %}

@@ -49,7 +49,7 @@
   <div class="stat-card stat-card-compact">
     <span class="stat-icon tint-purple"><i data-lucide="timer"></i></span>
     <div class="stat-body">
-      <span class="stat-label">Avg. Response Time</span>
+      <span class="stat-label">Median Response Time</span>
       <strong class="stat-value">{{ stats.avg_response }}</strong>
       <span class="stat-sub text-muted">All time</span>
     </div>
@@ -103,10 +103,11 @@
           <th>Device</th>
           <th>Resident</th>
           <th>Location</th>
-          <th>Type</th>
-          <th>Severity</th>
+          <th>Trigger</th>
           <th>Status</th>
           <th>Time</th>
+          <th>Response Time</th>
+          <th>Handled By</th>
           <th class="col-actions">Actions</th>
         </tr>
       </thead>
@@ -114,27 +115,17 @@
         {% for row in rows %}
         <tr
           data-status="{{ row.status }}"
-          data-severity="{{ row.severity }}"
           data-name="{{ row.name }}"
-          data-display-id="{{ row.code }}"
-          data-type="elderly"
-          data-type-label="Alert"
-          data-subtitle="{{ row.code }} · {{ row.type_label }}"
-          data-skip-meta="1"
-          data-details='{{ [
-            ["Resident", row.name],
-            ["Age", row.age if row.age else "—"],
-            ["Alert Type", row.type_label],
-            ["Severity", row.severity|capitalize],
-            ["Status", row.status_label],
-            ["Date & Time", row.full_time],
-            ["Location", row.location],
-            ["Barangay", row.barangay or "—"],
-            ["Device", row.device],
-            ["Voice Trigger", row.trigger_phrase or "—"],
-            ["Response Time", (row.response_minutes|round|int|string + " min") if row.response_minutes is not none else "Not yet answered"],
-            ["Notes", row.notes or "—"]
-          ]|tojson }}'
+          data-alert='{{ {
+            "name": row.name, "initials": row.initials, "age": row.age, "code": row.code,
+            "status": row.status, "status_label": row.status_label,
+            "full_time": row.full_time, "device": row.device,
+            "trigger": row.trigger_phrase, "barangay": row.barangay, "location": row.location,
+            "response": row.response_text if row.response_minutes is not none else "",
+            "handled_by": row.handled_by, "bhw": row.bhw_name, "resolved": row.resolved_time,
+            "notes": row.notes,
+            "map_url": url_for('admin.map_view', elder=row.elder_id) if row.elder_id else ""
+          }|tojson }}'
         >
           <td>
             <span class="log-id">
@@ -156,14 +147,16 @@
             </div>
           </td>
           <td>
-            <div class="stacked-cell">
-              <strong class="type-{{ row.type_colour }}">{{ row.type_label }}</strong>
-              {% if row.trigger_phrase %}<small class="trigger-quote">&ldquo;{{ row.trigger_phrase }}&rdquo;</small>{% endif %}
-            </div>
+            {% if row.trigger_phrase %}<span class="trigger-quote">&ldquo;{{ row.trigger_phrase }}&rdquo;</span>{% else %}<span class="text-muted">—</span>{% endif %}
           </td>
-          <td><span class="badge badge-sev-{{ row.severity }}">{{ row.severity|capitalize }}</span></td>
           <td><span class="badge badge-{{ row.status_class }}">{{ row.status_label }}</span></td>
           <td class="nowrap">{{ row.time }}</td>
+          <td class="nowrap">
+            {% if row.response_minutes is not none %}<strong class="cell-strong">{{ row.response_text }}</strong>
+            {% elif row.is_open %}<span class="text-muted">Waiting</span>
+            {% else %}<span class="text-muted">—</span>{% endif %}
+          </td>
+          <td>{% if row.handled_by %}{{ row.handled_by }}{% else %}<span class="text-muted">—</span>{% endif %}</td>
           <td class="col-actions">
             <div class="row-menu">
               <button type="button" class="row-menu-btn" aria-label="Actions for {{ row.code }}" aria-haspopup="true" aria-expanded="false">
@@ -173,6 +166,14 @@
                 <button type="button" class="js-view-details" role="menuitem">
                   <i data-lucide="eye"></i> View details
                 </button>
+                {% if row.elder_id %}
+                {# Opens OUR Map View focused on this resident (map_view.html
+                   reads ?elder=). Shown for every alert: Map View says so
+                   itself when the resident has no reported location yet. #}
+                <a role="menuitem" href="{{ url_for('admin.map_view', elder=row.elder_id) }}">
+                  <i data-lucide="map-pin"></i> View on map
+                </a>
+                {% endif %}
                 {% if row.status == 'active' %}
                 <form method="POST" action="{{ url_for('admin.update_alert_status', alert_id=row.id, action='acknowledge') }}">
                   <button type="submit" class="text-blue" role="menuitem"><i data-lucide="hand"></i> Acknowledge</button>
@@ -194,7 +195,7 @@
         </tr>
         {% endfor %}
         <tr class="table-empty" {% if rows %}hidden{% endif %}>
-          <td colspan="9">
+          <td colspan="10">
             <div class="empty-state">
               <span class="empty-icon"><i data-lucide="bell-off"></i></span>
               {% if rows %}
@@ -217,31 +218,138 @@
   </div>
 </section>
 
-<!-- DETAILS WINDOW (opened by admin.js) -->
-<div class="admin-modal" id="userModal" hidden>
-  <div class="admin-modal-backdrop" data-close-modal></div>
-  <div class="admin-modal-card" role="dialog" aria-modal="true" aria-labelledby="userModalTitle">
-    <div class="admin-modal-header">
-      <div class="user-cell">
-        <span class="admin-avatar-lg" id="userModalAvatar"></span>
-        <div>
-          <strong id="userModalTitle"></strong>
-          <small id="userModalSub"></small>
-        </div>
+<!-- ALERT DETAILS WINDOW (same look as the user profile window) -->
+<div class="up-modal" id="alertModal" hidden>
+  <div class="up-backdrop" data-al-close></div>
+  <div class="up-card al-card" role="dialog" aria-modal="true" aria-labelledby="alertName">
+    <button type="button" class="up-close" data-al-close aria-label="Close"><i data-lucide="x"></i></button>
+    <header class="up-hero">
+      <span class="up-avatar" id="alertAvatar"></span>
+      <div class="up-hero-text">
+        <h2 id="alertName"></h2>
+        <div class="up-badges" id="alertBadges"></div>
       </div>
-      <button type="button" class="admin-modal-close" data-close-modal aria-label="Close">
-        <i data-lucide="x"></i>
-      </button>
-    </div>
-    <dl class="details-list" id="userModalDetails"></dl>
-    <div class="admin-modal-footer" id="userModalApproval" hidden>
-      <form method="POST" id="userModalReject"></form>
-      <form method="POST" id="userModalApprove"></form>
-    </div>
+    </header>
+    <div class="up-body" id="alertBody"></div>
+    <footer class="up-foot">
+      <div class="up-foot-left">
+        <a class="up-btn up-btn-ghost" id="alertMapLink" hidden>
+          <i data-lucide="map-pin"></i>View on map
+        </a>
+      </div>
+      <div class="up-foot-right">
+        <button type="button" class="up-btn up-btn-dark" data-al-close>Close</button>
+      </div>
+    </footer>
   </div>
 </div>
 
 <script>
+  // ---------- Alert details window ----------
+  (function () {
+    const modal = document.getElementById('alertModal');
+    if (!modal) return;
+    const body = document.getElementById('alertBody');
+    const esc = (v) => String(v == null ? '' : v).replace(/[&<>"']/g, (c) => (
+      { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+    const icons = () => { if (window.lucide) window.lucide.createIcons(); };
+    const has = (v) => v !== null && v !== undefined && v !== '' && v !== '—';
+
+    const TONE = { active: 'rejected', acknowledged: 'pending', resolved: 'active',
+                   false_alarm: 'archived', closed: 'archived', delivered: 'type' };
+    const ICON = { active: 'siren', acknowledged: 'hand', resolved: 'circle-check',
+                   false_alarm: 'flag', closed: 'archive', delivered: 'send' };
+
+    function infoRow(icon, label, value, opts) {
+      opts = opts || {};
+      const val = has(value)
+        ? `<span class="up-row-value${opts.mono ? ' up-mono' : ''}">${esc(value)}</span>`
+        : '<span class="up-row-value up-empty">Not available</span>';
+      return `<div class="up-row${opts.stack ? ' stack' : ''}"><span class="up-row-label"><i data-lucide="${icon}"></i>${esc(label)}</span>${val}</div>`;
+    }
+    function section(icon, title, inner) {
+      return `<section class="up-section"><h3 class="up-section-title"><i data-lucide="${icon}"></i>${esc(title)}</h3>${inner}</section>`;
+    }
+    const quote = (icon, text) =>
+      `<div class="up-note al-quote"><i data-lucide="${icon}"></i><span>${esc(text)}</span></div>`;
+
+    function closeMenus() {
+      document.querySelectorAll('.row-menu.open').forEach((m) => {
+        m.classList.remove('open');
+        const b = m.querySelector('.row-menu-btn');
+        if (b) b.setAttribute('aria-expanded', 'false');
+      });
+    }
+
+    function open(tr) {
+      const d = JSON.parse(tr.dataset.alert || '{}');
+
+      document.getElementById('alertAvatar').textContent = d.initials || '?';
+      document.getElementById('alertName').textContent = d.name || 'Unknown resident';
+      document.getElementById('alertBadges').innerHTML =
+        `<span class="up-pill up-pill-${TONE[d.status] || 'archived'}"><i data-lucide="${ICON[d.status] || 'circle'}"></i>${esc(d.status_label)}</span>
+         ${d.age ? `<span class="up-pill">Age ${esc(d.age)}</span>` : ''}
+         <span class="up-pill up-pill-id">${esc(d.code)}</span>`;
+
+      let html = section('siren', 'Incident',
+        `<div class="up-rows">
+           ${infoRow('calendar', 'Date & time', d.full_time)}
+           ${infoRow('radio', 'Device', d.device, { mono: true })}
+         </div>${has(d.trigger) ? quote('mic', d.trigger) : ''}`);
+
+      html += section('map-pin', 'Location',
+        `<div class="up-rows">
+           ${infoRow('map-pinned', 'Barangay', d.barangay)}
+           ${infoRow('map-pin', 'Address', d.location, { stack: true })}
+         </div>`);
+
+      html += section('timer', 'Response',
+        `<div class="up-rows">
+           ${infoRow('timer', 'Response time', has(d.response) ? d.response
+             : d.status === 'active' ? 'Waiting for a response'
+             : d.status === 'false_alarm' ? 'Cancelled before a response'
+             : 'Not recorded')}
+           ${infoRow('user-check', 'Handled by', d.handled_by)}
+           ${infoRow('shield-check', 'Barangay BHW', d.bhw)}
+           ${has(d.resolved) ? infoRow('circle-check', 'Resolved', d.resolved) : ''}
+         </div>`);
+
+      if (has(d.notes)) html += section('file-text', 'Notes', quote('quote', d.notes));
+
+      body.innerHTML = html;
+
+      // "View on map" opens OUR Map View focused on this resident, for every
+      // alert. Map View shows a note when they have no reported location yet.
+      const link = document.getElementById('alertMapLink');
+      if (d.map_url) {
+        link.href = d.map_url;
+        link.hidden = false;
+      } else {
+        link.removeAttribute('href');
+        link.hidden = true;
+      }
+
+      modal.hidden = false;
+      document.body.classList.add('up-lock');
+      icons();
+      modal.querySelector('.up-close').focus();
+    }
+
+    function close() {
+      modal.hidden = true;
+      document.body.classList.remove('up-lock');
+    }
+
+    document.addEventListener('click', (e) => {
+      const view = e.target.closest('#logsTable .js-view-details');
+      if (view) { closeMenus(); open(view.closest('tr')); return; }
+      if (!modal.hidden && e.target.closest('[data-al-close]')) close();
+    });
+    document.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape' && !modal.hidden) close();
+    });
+  })();
+
   // Resolve / False alarm close the alert for everyone: ask first.
   document.querySelectorAll(".js-confirm-alert").forEach((form) => {
     form.addEventListener("submit", (e) => {

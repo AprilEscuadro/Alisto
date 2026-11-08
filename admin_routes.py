@@ -522,6 +522,10 @@ def _rows_from_alerts(alerts, lookups=True):
             'notes': alert.get('resolution_note') or '',
             'trigger_phrase': phrases.get(alert.get('phrase_id'), ''),
             'response_minutes': ac.response_minutes(alert),
+            'response_text': _fmt_minutes(ac.response_minutes(alert)),
+            'acknowledged_by': alert.get('acknowledged_by') or '',
+            'resolved_by': alert.get('resolved_by') or '',
+            'resolved_time': ac.fmt_time(alert.get('resolved_at')),
             'is_open': status in ac.OPEN_STATUSES,
             'latitude': lat,
             'longitude': lng,
@@ -589,6 +593,17 @@ def _avg_response(rows):
     answered = [r['response_minutes']
                 for r in rows if r['response_minutes'] is not None]
     return round(sum(answered) / len(answered)) if answered else None
+
+
+def _median_response(rows):
+    answered = sorted(r['response_minutes'] for r in rows
+                      if r['response_minutes'] is not None)
+    if not answered:
+        return None
+    mid = len(answered) // 2
+    if len(answered) % 2:
+        return answered[mid]
+    return (answered[mid - 1] + answered[mid]) / 2
 
 
 def _fmt_minutes(minutes):
@@ -1522,6 +1537,31 @@ def _map_points(residents):
     return points
 
 
+def _map_points_all(residents):
+    """Map page only: every resident with a known location. The page shows
+    just the active emergencies until the admin searches or filters."""
+    bhw_by_barangay = _bhw_by_barangay()
+    points = []
+    for r in residents:
+        if not (r['latitude'] and r['longitude']):
+            continue
+        live = r['open_alert'] if (
+            r['open_alert'] and _is_fresh_alert(r['open_alert'])) else None
+        points.append({
+            'id': r['id'], 'name': r['name'], 'initials': r['initials'], 'age': r['age'],
+            'address': r['short_address'], 'barangay': r['barangay'],
+            'latitude': r['latitude'], 'longitude': r['longitude'],
+            'active': bool(live),
+            'status': 'alert' if live else r['device_status'],
+            'device_status': r['device_status'],
+            'time': r['last_seen'],
+            'alert_label': live['type_label'] if live else None,
+            'alert_id': live['id'] if live else None,
+            'bhw_name': (bhw_by_barangay.get(r['barangay']) or {}).get('name'),
+        })
+    return points
+
+
 @admin_bp.route('/map')
 @admin_required
 def map_view():
@@ -1540,7 +1580,7 @@ def map_view():
 
     return render_template(
         'admin/map_view.html', active_page='map_view',
-        residents=residents, points=_map_points(residents), barangays=barangays, stats=stats,
+        residents=residents, points=_map_points_all(residents), barangays=barangays, stats=stats,
         recent=alerts[:20], missing_location=len(residents) - len(located),
         status_by_elder={r['id']: r['map_status'] for r in residents},
     )
@@ -1679,11 +1719,29 @@ def emergency_logs():
     month_start = datetime.now(ac.PH_TIME).replace(
         day=1, hour=0, minute=0, second=0, microsecond=0)
 
+    # Who handled each alert: only the people who actually did are read.
+    handler_ids = {i for r in everything
+                   for i in (r['acknowledged_by'], r['resolved_by']) if i}
+    names = {}
+    if handler_ids:
+        refs = [db.collection('user_account').document(i) for i in handler_ids]
+        for snap in db.get_all(refs):
+            if snap.exists:
+                names[snap.id] = (snap.to_dict() or {}).get('full_name') or ''
+    bhw_by_barangay = _per_request('bhw_by_barangay', _bhw_by_barangay)
+    for r in everything:
+        r['handled_by'] = (names.get(r['acknowledged_by'])
+                           or names.get(r['resolved_by']) or '')
+        r['bhw_name'] = (bhw_by_barangay.get(
+            r['barangay']) or {}).get('name') or ''
+
     stats = {
         'total': len(everything),
-        'active': sum(1 for a in everything if a['is_open']),
+        # Same source as the Map View card, so the two always agree.
+        'active': _open_alert_count(),
         'resolved': sum(1 for a in everything if a['status'] in ac.RESOLVED_STATUSES),
-        'avg_response': _fmt_minutes(_avg_response(everything)),
+        # Median, not mean: one alert answered days late no longer drags it up.
+        'avg_response': _fmt_minutes(_median_response(everything)),
         'this_month': sum(1 for a in everything
                           if (ac.local(a['created_at']) or month_start) >= month_start),
         'month_label': month_start.strftime('%B %Y'),
@@ -1761,125 +1819,264 @@ def _csv_response(buffer, name):
 
 
 # ---------- REPORTS ----------
+#
+# Everything on this page comes from the alerts the page already reads for
+# the chosen range (0 extra reads), except Medication adherence, which reads
+# the medicine Taken/Missed log for the same range once.
 
-@admin_bp.route('/reports')
-@admin_bp.route('/reports/export/<fmt>')
-@admin_required
-def reports(fmt=None):
-    range_key = request.args.get('range', 'last_30')
-    if range_key not in LOG_RANGES:
-        range_key = 'last_30'
+RESPONSE_TARGET_MIN = 5              # "answered within 5 min" target
+RESPONSE_BUCKETS = (                 # (upper bound in minutes, label)
+    (2, 'Under 2 min'),
+    (5, '2–5 min'),
+    (15, '5–15 min'),
+    (None, 'Over 15 min'),
+)
+OUTCOMES = (                         # (status, label, colour key)
+    ('resolved', 'Resolved', 'green'),
+    ('false_alarm', 'False alarm', 'gray'),
+    ('acknowledged', 'Responding', 'orange'),
+    ('active', 'Unanswered', 'red'),
+)
 
+
+def _report_median(values):
+    values = sorted(v for v in values if v is not None)
+    if not values:
+        return None
+    mid = len(values) // 2
+    return values[mid] if len(values) % 2 else (values[mid - 1] + values[mid]) / 2
+
+
+def _report_pct(part, whole):
+    return round(part / whole * 100, 1) if whole else 0
+
+
+def _report_med_logs(start):
+    """Medicine Taken/Missed rows (activity_log) since `start`, once per page.
+    Uses an index on activity_log (type + created_at); without it, falls
+    back to reading every medicine row and prints the link to create it."""
+    def read():
+        q = db.collection('activity_log').where('type', '==', 'med_reminder')
+        try:
+            if start:
+                q = q.where('created_at', '>=', start)
+            return [d.to_dict() or {} for d in q.stream()]
+        except Exception as e:
+            print(
+                f'[reports] CREATE THIS INDEX (activity_log: type + created_at): {e}')
+            rows = [d.to_dict() or {} for d in
+                    db.collection('activity_log').where('type', '==', 'med_reminder').stream()]
+            if start:
+                rows = [r for r in rows
+                        if ac.local(r.get('created_at')) and ac.local(r['created_at']) >= start]
+            return rows
+    return _per_request(('med_logs', start), read)
+
+
+def _report_data(range_key, place='', query=''):
+    """Every number on the Reports page (and in its exports).
+    place/query narrow it the same way the table's filters do, so an export
+    contains exactly what the admin filtered to."""
     start = _range_start(range_key)
+    raw = dict(_alert_docs(since=start))          # same read as `rows` below
     rows = _all_alert_rows(since=start, lookups=False)
     residents = _resident_rows()
-    devices = _device_docs()
-    users = _active_docs('user_account')
+    elders = _all_elders()
+    bhws = _bhw_by_barangay()
+    query = (query or '').strip().lower()
+
+    # Same rule as the table's search box: barangay name or its BHW's name.
+    def keep(barangay):
+        name = barangay or 'Unknown'
+        if place and name != place:
+            return False
+        bhw = (bhws.get(name) or {}).get('name') or ''
+        return not query or query in f'{name} {bhw}'.lower()
+
+    if place or query:
+        rows = [r for r in rows if keep(r['barangay'])]
+        residents = [r for r in residents if keep(r['barangay'])]
+    resident_ids = {r['id'] for r in residents}
+
+    # ---- response time (median, not average: one alert answered days
+    # later no longer makes the whole system look slow)
+    answered = [r['response_minutes']
+                for r in rows if r['response_minutes'] is not None]
+    median = _report_median(answered)
+    within = sum(1 for m in answered if m <= RESPONSE_TARGET_MIN)
+    buckets, low = [], 0
+    for high, label in RESPONSE_BUCKETS:
+        count = sum(1 for m in answered if m >=
+                    low and (high is None or m < high))
+        buckets.append({'label': label, 'count': count,
+                       'pct': _report_pct(count, len(answered))})
+        low = high or low
+    bucket_peak = max([b['count'] for b in buckets] + [1])
+    for b in buckets:
+        b['height'] = round(b['count'] / bucket_peak * 100)
+
+    # ---- outcomes, false alarms, escalation
+    by_status = Counter(r['status'] for r in rows)
+    outcomes = [{'key': key, 'label': label, 'colour': colour,
+                 'count': by_status.get(key, 0), 'pct': _report_pct(by_status.get(key, 0), len(rows))}
+                for key, label, colour in OUTCOMES]
+    false_alarms = by_status.get('false_alarm', 0)
+    cancelled_on_device = sum(
+        1 for r in rows if r['status'] == 'false_alarm'
+        and not (raw.get(r['id']) or {}).get('resolved_by'))
+    escalated = sum(1 for r in rows if (raw.get(r['id']) or {}).get('auto_escalated')
+                    or (raw.get(r['id']) or {}).get('admin_flagged'))
+    resolved = sum(1 for r in rows if r['status'] in ac.RESOLVED_STATUSES)
+
+    # ---- medication adherence
+    taken = missed = 0
+    missed_by_elder = Counter()
+    for log in _report_med_logs(start):
+        if log.get('elder_id') not in resident_ids:
+            continue
+        title = str(log.get('title') or '')
+        if title.startswith('Medicine taken'):
+            taken += 1
+        elif title.startswith('Missed medicine'):
+            missed += 1
+            missed_by_elder[log['elder_id']] += 1
+    most_missed = [{'name': (elders.get(eid) or {}).get('full_name') or 'Unknown resident',
+                    'count': count}
+                   for eid, count in missed_by_elder.most_common(3)]
+
+    # ---- devices
+    device_count = sum(len(r['device_ids']) for r in residents)
+    online = sum(len(r['device_ids']) for r in residents
+                 if r['device_status'] in ('online', 'weak'))
 
     stats = {
-        'total_devices': len(devices),
-        'online_devices': sum(1 for r in residents if r['device_status'] in ('online', 'weak')),
+        # kept for the PDF / Excel / Word export (report_export.py)
+        'total_devices': device_count,
+        'online_devices': online,
+        'online_pct': _report_pct(online, device_count),
         'total_alerts': len(rows),
-        'resolved': sum(1 for r in rows if r['status'] in ac.RESOLVED_STATUSES),
-        'avg_response': _fmt_minutes(_avg_response(rows)),
-        'active_users': len(users),
+        'resolved': resolved,
+        'resolved_pct': _report_pct(resolved, len(rows)),
+        'avg_response': _fmt_minutes(median),
+        'active_users': len(residents),
+        # new
+        'median_response': _fmt_minutes(median),
+        'answered': len(answered),
+        'within_target': within,
+        'within_target_pct': _report_pct(within, len(answered)),
+        'target_min': RESPONSE_TARGET_MIN,
+        'false_alarms': false_alarms,
+        'false_alarm_pct': _report_pct(false_alarms, len(rows)),
+        'cancelled_on_device': cancelled_on_device,
+        'escalated': escalated,
+        'unanswered_now': by_status.get('active', 0),
+        'residents': len(residents),
+        'med_taken': taken,
+        'med_missed': missed,
+        'adherence_pct': _report_pct(taken, taken + missed) if taken + missed else None,
     }
-    stats['online_pct'] = round(
-        stats['online_devices'] / (stats['total_devices'] or 1) * 100, 1)
-    stats['resolved_pct'] = round(
-        stats['resolved'] / (len(rows) or 1) * 100, 1)
 
-    # Alerts per day across the range, for the line chart.
+    # ---- alerts over time (line chart)
     now = datetime.now(ac.PH_TIME)
-    window_start = start or (now - timedelta(days=30))
+    window_start = start or min(
+        [ac.local(r['created_at']) for r in rows if ac.local(r['created_at'])] or [now - timedelta(days=30)])
     days = max((now - window_start).days, 1)
     step = max(days // 12, 1)
-    buckets, labels = [], []
+    labels, per_bucket, resolved_bucket = [], [], []
     for i in range(0, days + 1, step):
-        day = (window_start + timedelta(days=i)).date()
-        buckets.append(day)
-        labels.append(day.strftime('%b %d'))
-
-    per_bucket = [0] * len(buckets)
-    resolved_bucket = [0] * len(buckets)
+        labels.append((window_start + timedelta(days=i)).strftime('%b %d'))
+        per_bucket.append(0)
+        resolved_bucket.append(0)
     for row in rows:
         moment = ac.local(row['created_at'])
         if not moment:
             continue
         index = min(max((moment.date() - window_start.date()
-                         ).days // step, 0), len(buckets) - 1)
+                         ).days // step, 0), len(labels) - 1)
         per_bucket[index] += 1
         if row['status'] in ac.RESOLVED_STATUSES:
             resolved_bucket[index] += 1
+    peak = max(per_bucket + [1])
+    chart = {
+        'labels': labels, 'peak': peak,
+        'points': _spark_points(per_bucket, peak),
+        'resolved_points': _spark_points(resolved_bucket, peak),
+    }
 
-    by_type = Counter(r['type'] for r in rows)
-    type_breakdown = [{
-        'label': ac.type_label(key),
-        'count': count,
-        'pct': round(count / (len(rows) or 1) * 100, 1),
-        'colour': ac.type_colour(key),
-    } for key, count in by_type.most_common()]
-
+    # ---- by barangay
     by_place = Counter(r['barangay'] or 'Unknown' for r in rows)
-    top_places = [{
-        'name': place,
-        'count': count,
-        'pct': round(count / (len(rows) or 1) * 100, 1),
-    } for place, count in by_place.most_common(5)]
+    top_places = [{'name': name, 'count': count, 'pct': _report_pct(count, len(rows))}
+                  for name, count in by_place.most_common(5)]
 
-    # One summary row per barangay.
-    summary = defaultdict(lambda: {'devices': 0, 'online': 0, 'alerts': 0,
-                                   'resolved': 0, 'residents': 0, 'minutes': []})
+    summary = defaultdict(lambda: {'residents': 0, 'devices': 0, 'online': 0, 'alerts': 0,
+                                   'resolved': 0, 'false_alarms': 0, 'minutes': []})
     for r in residents:
-        place = summary[r['barangay'] or 'Unknown']
-        place['residents'] += 1
-        place['devices'] += len(r['device_ids'])
+        s = summary[r['barangay'] or 'Unknown']
+        s['residents'] += 1
+        s['devices'] += len(r['device_ids'])
         if r['device_status'] in ('online', 'weak'):
-            place['online'] += len(r['device_ids'])
+            s['online'] += len(r['device_ids'])
     for r in rows:
-        place = summary[r['barangay'] or 'Unknown']
-        place['alerts'] += 1
+        s = summary[r['barangay'] or 'Unknown']
+        s['alerts'] += 1
         if r['status'] in ac.RESOLVED_STATUSES:
-            place['resolved'] += 1
+            s['resolved'] += 1
+        if r['status'] == 'false_alarm':
+            s['false_alarms'] += 1
         if r['response_minutes'] is not None:
-            place['minutes'].append(r['response_minutes'])
+            s['minutes'].append(r['response_minutes'])
+    barangay_rows = [{
+        'name': name,
+        'bhw': (bhws.get(name) or {}).get('name') or '',
+        'residents': s['residents'],
+        'devices': s['devices'],
+        'online': s['online'],
+        'online_pct': _report_pct(s['online'], s['devices']),
+        'alerts': s['alerts'],
+        'resolved': s['resolved'],
+        'resolved_pct': _report_pct(s['resolved'], s['alerts']),
+        'false_alarms': s['false_alarms'],
+        'avg_response': _fmt_minutes(_report_median(s['minutes'])),
+    } for name, s in sorted(summary.items(), key=lambda kv: (-kv[1]['alerts'], kv[0]))]
 
-    barangay_rows = []
-    for name, data in sorted(summary.items(), key=lambda kv: -kv[1]['alerts']):
-        minutes = data['minutes']
-        barangay_rows.append({
-            'name': name,
-            'devices': data['devices'],
-            'online': data['online'],
-            'online_pct': round(data['online'] / (data['devices'] or 1) * 100, 1),
-            'alerts': data['alerts'],
-            'resolved': data['resolved'],
-            'resolved_pct': round(data['resolved'] / (data['alerts'] or 1) * 100, 1),
-            'residents': data['residents'],
-            'avg_response': _fmt_minutes(round(sum(minutes) / len(minutes)) if minutes else None),
-        })
+    type_breakdown = [{'label': o['label'], 'count': o['count'], 'pct': o['pct'],
+                       'colour': o['colour']} for o in outcomes if o['count']]
 
-    # Export > PDF / Excel / Word: same numbers as this page, plus analysis.
+    return {
+        'rows': rows, 'stats': stats, 'chart': chart, 'outcomes': outcomes,
+        'buckets': buckets, 'most_missed': most_missed, 'top_places': top_places,
+        'barangay_rows': barangay_rows, 'type_breakdown': type_breakdown,
+    }
+
+
+def _report_filters():
+    range_key = request.args.get('range', 'last_30')
+    if range_key not in LOG_RANGES:
+        range_key = 'last_30'
+    return range_key, request.args.get('barangay', '').strip(), request.args.get('q', '').strip()
+
+
+@admin_bp.route('/reports')
+@admin_bp.route('/reports/export/<fmt>')
+@admin_required
+def reports(fmt=None):
+    range_key, place, query = _report_filters()
+
+    # Export > PDF / Excel / Word: exactly what the table is filtered to.
     if fmt:
-        response = report_export.build(fmt, rows, stats, barangay_rows,
-                                       type_breakdown, LOG_RANGES[range_key])
+        data = _report_data(range_key, place, query)
+        label = LOG_RANGES[range_key] + (f' · {place}' if place else '') + \
+            (f' · "{query}"' if query else '')
+        response = report_export.build(fmt, data['rows'], data['stats'], data['barangay_rows'],
+                                       data['type_breakdown'], label)
         if response is None:
             abort(404)
         return response
 
-    peak = max(per_bucket + [1])
+    data = _report_data(range_key)
     return render_template(
         'admin/reports.html', active_page='reports',
-        stats=stats, ranges=LOG_RANGES, range_key=range_key,
-        chart={
-            'labels': labels,
-            'alerts': per_bucket,
-            'resolved': resolved_bucket,
-            'peak': peak,
-            'points': _spark_points(per_bucket, peak),
-            'resolved_points': _spark_points(resolved_bucket, peak),
-        },
-        type_breakdown=type_breakdown, top_places=top_places, barangay_rows=barangay_rows,
+        ranges=LOG_RANGES, range_key=range_key, **data,
     )
 
 
@@ -1894,16 +2091,17 @@ def _spark_points(values, peak):
 @admin_bp.route('/reports.csv')
 @admin_required
 def download_report():
-    rows = _all_alert_rows(since=_range_start(
-        request.args.get('range', 'last_30')), lookups=False)
+    range_key, place, query = _report_filters()
+    rows = _report_data(range_key, place, query)['rows']
     buffer = io.StringIO()
     writer = csv.writer(buffer)
-    writer.writerow(['Alert ID', 'Resident', 'Barangay', 'Type', 'Severity', 'Status',
-                     'Date & Time', 'Response (minutes)'])
+    writer.writerow(['Alert ID', 'Resident', 'Barangay', 'Status',
+                     'Date & Time', 'Response (minutes)', 'Notes'])
     for r in rows:
-        writer.writerow([r['code'], r['name'], r['barangay'], r['type_label'],
-                         r['severity'].title(), r['status_label'], r['full_time'],
-                         '' if r['response_minutes'] is None else round(r['response_minutes'])])
+        writer.writerow([r['code'], r['name'], r['barangay'], r['status_label'], r['full_time'],
+                         '' if r['response_minutes'] is None else round(
+                             r['response_minutes']),
+                         r.get('notes') or ''])
     return _csv_response(buffer, 'report')
 
 
