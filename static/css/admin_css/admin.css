@@ -4490,3 +4490,9 @@ body.up-lock {
   width: 15px;
   height: 15px;
 }
+
+
+/* Subscriptions: status pill keeps its own width above the small note */
+#subsTable .stacked-cell .badge {
+  align-self: flex-start;
+}

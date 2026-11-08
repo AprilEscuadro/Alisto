@@ -78,26 +78,34 @@
         </select>
       </div>
 
+      {% if not hosted %}
+      {# Auto backup saves to the backups/ folder on the computer running
+         ALISTO, so it only exists where the app runs nonstop (not Vercel). #}
       <div class="pref-row">
         <span class="setting-icon tint-blue"><i data-lucide="cloud-upload"></i></span>
         <span class="setting-text">
           <strong>Auto backup</strong>
-          <small>Once a day. Last backup: {{ system.last_backup }}</small>
+          <small>Once a day, saved in the backups folder on this computer</small>
         </span>
         <label class="switch-wrap" aria-label="Auto backup">
+          <input type="hidden" name="auto_backup_shown" value="1" />
           <input type="checkbox" name="auto_backup" class="switch-input js-autosave" {% if system.auto_backup %}checked{% endif %} />
           <span class="switch" aria-hidden="true"></span>
         </label>
       </div>
+      {% endif %}
 
       <div class="pref-row">
         <span class="setting-icon tint-blue"><i data-lucide="download"></i></span>
         <span class="setting-text">
-          <strong>Backup now</strong>
-          <small>Run a backup right away instead of waiting for the daily one</small>
+          <strong>Download backup</strong>
+          <small>
+            Saves a copy of users, residents, devices, alerts and plans to your computer.
+            Last backup: {{ system.last_backup }}{% if system.last_backup_by %} by {{ system.last_backup_by }}{% endif %}
+          </small>
         </span>
-        <button type="submit" class="btn btn-outline" formaction="{{ url_for('admin.backup_now') }}" formnovalidate>
-          Backup now
+        <button type="submit" class="btn btn-outline js-backup-btn" formaction="{{ url_for('admin.backup_now') }}" formnovalidate>
+          <i data-lucide="download"></i> Download
         </button>
       </div>
     </section>
@@ -217,6 +225,38 @@
   // Date format and Auto backup save as soon as they change (no Save button).
   document.querySelectorAll("#adminSettingsForm .js-autosave").forEach((el) => {
     el.addEventListener("change", () => document.getElementById("adminSettingsForm").requestSubmit());
+  });
+
+  // Download backup: wait for the file (reading everything can take a few
+  // seconds), save it, THEN refresh to show the new "Last backup" time.
+  document.querySelectorAll(".js-backup-btn").forEach((btn) => {
+    btn.addEventListener("click", async (e) => {
+      e.preventDefault();
+      const label = btn.innerHTML;
+      btn.disabled = true;
+      btn.textContent = "Preparing backup…";
+      try {
+        const res = await fetch(btn.getAttribute("formaction"), { method: "POST" });
+        const type = res.headers.get("Content-Type") || "";
+        if (!res.ok || !type.includes("application/json")) throw new Error("not a backup file");
+        const match = (res.headers.get("Content-Disposition") || "").match(/filename="([^"]+)"/);
+        const url = URL.createObjectURL(await res.blob());
+        const link = document.createElement("a");
+        link.href = url;
+        link.download = match ? match[1] : "alisto_backup.json";
+        document.body.append(link);
+        link.click();
+        link.remove();
+        setTimeout(() => {
+          URL.revokeObjectURL(url);
+          window.location.reload();
+        }, 800);
+      } catch (err) {
+        btn.disabled = false;
+        btn.innerHTML = label;
+        alert("The backup could not be downloaded. Please try again.");
+      }
+    });
   });
 </script>
 {% endblock %}

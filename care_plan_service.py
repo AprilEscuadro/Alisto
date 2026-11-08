@@ -38,6 +38,11 @@ import inbox_service
 
 PH_TZ = timezone(timedelta(hours=8))
 EXPIRING_SOON_DAYS = 5
+# Grace period ("palugit"): after the paid-until date the plan shows
+# "Grace period" for this many days. Renewing within it CONTINUES the same
+# plan from the old end date (no gap in the record); renewing after it
+# starts a new plan from the approval date. Emergency alerts never stop.
+GRACE_DAYS = 7
 PLAN_MONTH_OPTIONS = (1, 3, 6, 12)
 
 PAYMENT_METHODS = {
@@ -191,6 +196,20 @@ def subscription_state(sub, has_pending=False, now=None):
                          f"Renews in {days_left} day{'s' if days_left != 1 else ''}"),
             'paid_until': fmt_date(end),
         }
+    elif end and not cancelled and (now.date() - end.date()).days <= GRACE_DAYS:
+        days_ago = max(0, (now.date() - end.date()).days)
+        grace_left = GRACE_DAYS - days_ago
+        state = {
+            'status': 'grace',
+            'label': 'Grace period',
+            'badge': 'warning',
+            'icon': 'hourglass',
+            'days_left': grace_left,
+            'headline': ('Last day to renew' if grace_left == 0 else
+                         f"Renew within {grace_left} day{'s' if grace_left != 1 else ''}"),
+            'paid_until': fmt_date(end),
+            'grace_until': fmt_date(end + timedelta(days=GRACE_DAYS)),
+        }
     elif end:
         days_ago = max(0, (now.date() - end.date()).days)
         state = {
@@ -215,7 +234,7 @@ def subscription_state(sub, has_pending=False, now=None):
         }
 
     state['has_pending'] = bool(has_pending)
-    if has_pending and state['status'] in ('none', 'expired'):
+    if has_pending and state['status'] in ('none', 'expired', 'grace'):
         state.update(label='Pending', badge='info', icon='hourglass',
                      headline='Payment under review')
     return state
@@ -263,9 +282,12 @@ def apply_approved_payment(payment_ref, payment, reviewer_id, reviewer_name, adm
     sub = (sub_doc.to_dict() or {}) if sub_doc.exists else {}
 
     current_end = to_ph(sub.get('current_period_end'))
-    still_running = current_end and current_end > now and sub.get(
-        'status') != 'cancelled'
-    start = current_end if still_running else now
+    cancelled = sub.get('status') == 'cancelled'
+    still_running = bool(current_end and current_end > now and not cancelled)
+    in_grace = bool(current_end and not cancelled and not still_running
+                    and (now.date() - current_end.date()).days <= GRACE_DAYS)
+    continues = still_running or in_grace
+    start = current_end if continues else now
     end = add_months(start, months)
 
     sub_update = {
@@ -280,7 +302,7 @@ def apply_approved_payment(payment_ref, payment, reviewer_id, reviewer_name, adm
         'cancelled_at': None,
         'cancelled_by': None,
     }
-    if not still_running:
+    if not continues:
         sub_update['current_period_start'] = start
     if not sub.get('started_at'):
         sub_update['started_at'] = start

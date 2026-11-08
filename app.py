@@ -122,6 +122,8 @@ def _get_care_plan(elder_id=None):
         subline = 'Waiting for admin approval'
     elif state['status'] in ('active', 'expiring'):
         subline = f"Until {state['paid_until']}"
+    elif state['status'] == 'grace':
+        subline = f"Ended {state['paid_until']} · renew by {state['grace_until']}"
     elif state['status'] == 'expired':
         subline = f"Ended {state['paid_until']}"
     else:

@@ -271,16 +271,18 @@ def _notif_items():
 
     # always on
     expiring = _cached('expiring_subs', lambda: [
-                       s for s in _subscription_rows() if s['status'] == 'expiring'])
+                       s for s in _subscription_rows() if s['status'] in ('expiring', 'grace')])
     for s in expiring:
         days = s['days_left']
         items.append({
             'kind': 'subscription', 'title': s['name'],
-            'subtitle': f"{s['plan']} plan expires in {days} day{'' if days == 1 else 's'}",
+            'subtitle': (f"Care plan in grace period · {days} day{'' if days == 1 else 's'} left to renew"
+                         if s['status'] == 'grace' else
+                         f"Care plan expires in {days} day{'' if days == 1 else 's'}"),
             # Soonest-expiring first within this kind -- see the
             # final sort below for why this can use a different
             # scale than the timestamp-based `sort` values above.
-            'when': s['expiry'], 'sort': -days if days is not None else 0,
+            'when': s['paid_until'], 'sort': -days if days is not None else 0,
             'href': url_for('admin.subscriptions'),
         })
 
@@ -2106,92 +2108,108 @@ def download_report():
 
 
 # ---------- SUBSCRIPTIONS ----------
+#
+# One ALISTO Care Plan per resident (= per device). The real data lives in
+# subscription/{elder_id}, written by care_plan_service.apply_approved_payment():
+#     started_at            first day of their very first plan
+#     current_period_start  start of the plan that is running now
+#     current_period_end    paid until
+#     price                 per month, from the payment
+#     status                'active' | 'cancelled'
+#     last_payment_id       the payment that last extended it
+# Status (Active / Expiring / Grace period / Expired / Pending / No plan) comes
+# from cps.subscription_state(), the same function the family pages use, so
+# both sides always agree.
 
-# Plans are defined here rather than in the database so the prices stay in one
-# place. A subscription document keeps the plan key, and the price is read back
-# from this table.
-PLANS = {
-    'basic': {'name': 'Basic Plan', 'price': 299, 'devices': 1, 'blurb': '1 Device'},
-    'premium': {'name': 'Premium Plan', 'price': 599, 'devices': 5, 'blurb': 'Up to 5 Devices'},
-}
-EXPIRING_SOON_DAYS = 30
+SUB_STATUS_ORDER = ('grace', 'expiring', 'expired',
+                    'pending', 'none', 'active')
 
 
-def _plan(key):
-    return PLANS.get(key or 'basic', PLANS['basic'])
+def _months_between(start, end):
+    """Whole months from start to end (1 Jan -> 1 Apr = 3)."""
+    start, end = cps.to_ph(start), cps.to_ph(end)
+    if not start or not end:
+        return None
+    months = (end.year - start.year) * 12 + (end.month - start.month)
+    if end.day < start.day:
+        months -= 1
+    return max(months, 0) or None
 
 
 def _subscription_rows():
-    """Subscriptions joined to whoever they belong to.
-
-    A document in the `subscription` collection looks like:
-        elder_id | user_id   who it is for (one of the two)
-        plan                 'basic' or 'premium'
-        start_date           timestamp
-        expiry_date          timestamp
-        auto_renew           boolean
-        device_serials       list of strings, optional
-    """
     elders = _all_elders()
-    accounts = dict(_active_docs('user_account'))
     devices_by_elder = _devices_by_elder()
-    today = datetime.now(ac.PH_TIME).date()
+    unit_price = cps.get_plan()['price']
 
-    rows = []
+    subs = {}
     for doc in db.collection('subscription').stream():
         sub = doc.to_dict() or {}
-        elder_id, user_id = sub.get('elder_id'), sub.get('user_id')
+        # Only real care plans (written by an approved payment). Old sample
+        # rows from seed_subscriptions.py have no current_period_end.
+        if sub.get('current_period_end') and sub.get('elder_id'):
+            subs[sub['elder_id']] = sub
 
-        if elder_id and elder_id in elders:
-            owner, kind, prefix = elders[elder_id], 'elderly', 'ELD'
-            owner_id = elder_id
-            serials = sub.get('device_serials') or [
-                d for d, _ in devices_by_elder.get(elder_id, [])]
-        elif user_id and user_id in accounts:
-            owner = accounts[user_id]
-            kind = owner.get('role') or 'family'
-            prefix = 'BHW' if kind == 'bhw' else 'FAM'
-            owner_id = user_id
-            serials = sub.get('device_serials') or []
-        else:
-            continue  # points at someone who no longer exists
+    pending = set()
+    try:
+        for doc in db.collection('payment').where('status', '==', 'pending').stream():
+            pending.add((doc.to_dict() or {}).get('elder_id'))
+    except Exception as e:
+        print(f'[subscriptions] could not read pending payments: {e}')
 
-        expiry = ac.local(sub.get('expiry_date'))
-        days_left = (expiry.date() - today).days if expiry else None
+    # The payment that last extended each plan (one batched read).
+    last_ids = [s['last_payment_id']
+                for s in subs.values() if s.get('last_payment_id')]
+    last_payments = {}
+    if last_ids:
+        try:
+            refs = [db.collection('payment').document(i) for i in last_ids]
+            last_payments = {d.id: (d.to_dict() or {})
+                             for d in db.get_all(refs) if d.exists}
+        except Exception as e:
+            print(f'[subscriptions] could not read last payments: {e}')
 
-        if days_left is None:
-            status = 'active'
-        elif days_left < 0:
-            status = 'expired'
-        elif days_left <= EXPIRING_SOON_DAYS:
-            status = 'expiring'
-        else:
-            status = 'active'
+    rows = []
+    for elder_id, elder in elders.items():
+        sub = subs.get(elder_id, {})
+        state = cps.subscription_state(sub, has_pending=elder_id in pending)
+        status = 'pending' if state['label'] == 'Pending' else state['status']
+        name = elder.get('full_name') or 'Unnamed'
+        pay = last_payments.get(sub.get('last_payment_id'), {})
+        months = pay.get('months')
+        try:
+            price = float(sub.get('price') or unit_price)
+        except (TypeError, ValueError):
+            price = unit_price
 
-        plan = _plan(sub.get('plan'))
-        name = owner.get('full_name') or 'Unnamed'
         rows.append({
-            'id': doc.id,
+            'id': elder_id,
             'name': name,
             'initials': _initials(name),
-            'display_id': _short_id(prefix, owner_id),
-            'type': kind,
-            'type_label': 'BHW' if kind == 'bhw' else kind.title(),
-            'plan_key': sub.get('plan') or 'basic',
-            'plan': plan['name'],
-            'plan_blurb': plan['blurb'],
-            'price': plan['price'],
-            'devices': serials,
-            'start': _fmt_date(sub.get('start_date')),
-            'expiry': _fmt_date(sub.get('expiry_date')),
-            'days_left': days_left,
+            'display_id': _short_id('ELD', elder_id),
+            'barangay': _barangay_of(elder.get('address')),
+            'devices': [d for d, _ in devices_by_elder.get(elder_id, [])],
             'status': status,
-            'auto_renew': bool(sub.get('auto_renew')),
-            'sort': _sort_key(sub.get('expiry_date')),
+            'status_label': state['label'],
+            'headline': state['headline'],
+            'days_left': state['days_left'],
+            'price': int(price) if price == int(price) else price,
+            'started': cps.fmt_date(sub.get('started_at')) if sub else '—',
+            'period_start': cps.fmt_date(sub.get('current_period_start')) if sub else '—',
+            'paid_until': state['paid_until'],
+            'grace_until': state.get('grace_until', ''),
+            'coverage_months': _months_between(sub.get('current_period_start'),
+                                               sub.get('current_period_end')) if sub else None,
+            'last_months': int(months) if months else None,
+            'last_paid_by': pay.get('paid_by_name') or pay.get('payer_name') or '',
+            'last_amount': pay.get('amount') or pay.get('amount_paid'),
+            'last_paid_on': cps.fmt_date(pay.get('reviewed_at') or pay.get('created_at')) if pay else '',
+            'sort_end': cps.to_ph(sub.get('current_period_end')) if sub else None,
         })
 
-    rows.sort(key=lambda r: (('expired', 'expiring', 'active').index(
-        r['status']), r['name'].casefold()))
+    far = datetime.max.replace(tzinfo=ac.PH_TIME)
+    rows.sort(key=lambda r: (SUB_STATUS_ORDER.index(r['status'])
+                             if r['status'] in SUB_STATUS_ORDER else 9,
+                             r['sort_end'] or far, r['name'].casefold()))
     return rows
 
 
@@ -2240,20 +2258,25 @@ def inbox():
 @admin_required
 def subscriptions():
     rows = _subscription_rows()
-    active = [r for r in rows if r['status'] in ('active', 'expiring')]
+    paying = [r for r in rows if r['status']
+              in ('active', 'expiring', 'grace')]
 
     stats = {
-        'total': len(rows),
-        'active': len(active),
-        'active_pct': round(len(active) / (len(rows) or 1) * 100, 1),
+        'residents': len(rows),
+        'active': sum(1 for r in rows if r['status'] in ('active', 'expiring')),
         'expiring': sum(1 for r in rows if r['status'] == 'expiring'),
+        'grace': sum(1 for r in rows if r['status'] == 'grace'),
         'expired': sum(1 for r in rows if r['status'] == 'expired'),
-        'revenue': sum(r['price'] for r in active),
+        'no_plan': sum(1 for r in rows if r['status'] in ('none', 'pending')),
+        'monthly_value': sum(r['price'] for r in paying),
     }
+    stats['active_pct'] = round(stats['active'] / (len(rows) or 1) * 100, 1)
 
     return render_template(
         'admin/subscriptions.html', active_page='subscriptions',
-        rows=rows, stats=stats, plans=PLANS, expiring_days=EXPIRING_SOON_DAYS,
+        rows=rows, stats=stats,
+        expiring_days=cps.EXPIRING_SOON_DAYS, grace_days=cps.GRACE_DAYS,
+        plan=cps.get_plan(),
         pending_payments=_pending_payments(), reject_reasons=cps.REJECT_REASONS,
         plan_qrs=cps.get_plan_qr_codes(),
         plan_months=cps.PLAN_MONTH_OPTIONS,
@@ -2342,13 +2365,15 @@ def save_plan_qr():
 def download_subscriptions():
     buffer = io.StringIO()
     writer = csv.writer(buffer)
-    writer.writerow(['Subscriber', 'ID', 'User Type', 'Plan', 'Price (PHP/month)',
-                     'Devices', 'Status', 'Start Date', 'Expiry Date', 'Auto Renew'])
+    writer.writerow(['Resident', 'ID', 'Barangay', 'Device(s)', 'Status', 'Price (PHP/month)',
+                     'First Plan Started', 'Current Plan Started', 'Paid Until',
+                     'Grace Period Until', 'Last Payment (months)', 'Last Paid By'])
     for r in _subscription_rows():
-        writer.writerow([r['name'], r['display_id'], r['type_label'], r['plan'], r['price'],
+        writer.writerow([r['name'], r['display_id'], r['barangay'],
                          ', '.join(
-                             r['devices']) or 'None', r['status'].title(),
-                         r['start'], r['expiry'], 'Yes' if r['auto_renew'] else 'No'])
+                             r['devices']) or 'None', r['status_label'], r['price'],
+                         r['started'], r['period_start'], r['paid_until'],
+                         r['grace_until'], r['last_months'] or '', r['last_paid_by']])
     return _csv_response(buffer, 'subscriptions')
 
 
@@ -2374,7 +2399,10 @@ def _system_settings():
         # field stays a plain fixed format, and also needs to work when
         # called from the auto-backup loop in app.py, which runs on a
         # background thread with no Flask request/g to cache onto at all.
-        'last_backup': last_backup_at.strftime('%b %d, %Y %I:%M %p') if hasattr(last_backup_at, 'strftime') else '—',
+        # ac.local(): Firestore returns UTC; show Philippine time.
+        'last_backup': ac.local(last_backup_at).strftime('%b %d, %Y %I:%M %p')
+        if ac.local(last_backup_at) else '—',
+        'last_backup_by': saved.get('last_backup_by_name') or '',
     }
 
 
@@ -2396,6 +2424,16 @@ def _json_default(value):
     return value.isoformat() if hasattr(value, 'isoformat') else str(value)
 
 
+def _backup_snapshot():
+    """({collection: {doc_id: data}}, total) for BACKUP_COLLECTIONS."""
+    snapshot, total = {}, 0
+    for name in BACKUP_COLLECTIONS:
+        docs = {doc.id: doc.to_dict() for doc in db.collection(name).stream()}
+        snapshot[name] = docs
+        total += len(docs)
+    return snapshot, total
+
+
 def _run_backup():
     """The actual job behind the 'Auto Backup' toggle -- previously that
     toggle just saved a preference with nothing reading it, so 'Last
@@ -2405,12 +2443,7 @@ def _run_backup():
     "Backup Now" button, or the periodic auto-backup loop in app.py) needs
     to know, so it's allowed to raise. Returns (filename, total_doc_count)."""
     os.makedirs(BACKUP_DIR, exist_ok=True)
-    snapshot = {}
-    total = 0
-    for name in BACKUP_COLLECTIONS:
-        docs = {doc.id: doc.to_dict() for doc in db.collection(name).stream()}
-        snapshot[name] = docs
-        total += len(docs)
+    snapshot, total = _backup_snapshot()
 
     filename = f"backup_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json"
     with open(os.path.join(BACKUP_DIR, filename), 'w', encoding='utf-8') as f:
@@ -2426,12 +2459,35 @@ def _run_backup():
 @admin_bp.route('/settings/backup-now', methods=['POST'])
 @admin_required
 def backup_now():
+    """Backup now = download the backup file straight to the admin's
+    computer. Works the same on a laptop and on Vercel, where the server's
+    disk is read-only and wiped on every deploy (saving it there would be
+    lost anyway)."""
     try:
-        filename, total = _run_backup()
-        flash(f'Backup created: {filename} ({total} records).', 'success')
+        snapshot, total = _backup_snapshot()
     except Exception as e:
         flash(f'Backup failed: {e}', 'error')
-    return redirect(url_for('admin.settings'))
+        return redirect(url_for('admin.settings'))
+
+    now = datetime.now(ac.PH_TIME)
+    filename = f"alisto_backup_{now.strftime('%Y%m%d_%H%M%S')}.json"
+    snapshot['_meta'] = {
+        'created_at': now.isoformat(),
+        'created_by': session.get('full_name') or session['user_id'],
+        'collections': BACKUP_COLLECTIONS,
+        'records': total,
+    }
+    body = json.dumps(snapshot, default=_json_default,
+                      indent=2, ensure_ascii=False)
+
+    db.collection('app_settings').document(SYSTEM_DOC).set({
+        'last_backup_at': firestore.SERVER_TIMESTAMP,
+        'last_backup_file': filename,
+        'last_backup_by_name': session.get('full_name') or '',
+    }, merge=True)
+
+    return Response(body, mimetype='application/json', headers={
+        'Content-Disposition': f'attachment; filename="{filename}"'})
 
 
 @admin_bp.route('/settings')
@@ -2440,6 +2496,9 @@ def settings():
     return render_template(
         'admin/settings.html', active_page='settings',
         system=_system_settings(), date_formats=DATE_FORMATS,
+        # Vercel has no disk to save to and no always-on process to run a
+        # daily job, so Auto backup only works where the app runs nonstop.
+        hosted=os.environ.get('VERCEL') == '1',
         phone=(db.collection('user_account').document(session['user_id']).get()
                .to_dict() or {}).get('contact_number') or '',
     )
@@ -2450,12 +2509,18 @@ def settings():
 def save_settings():
     date_choice = request.form.get('date_format')
 
-    db.collection('app_settings').document(SYSTEM_DOC).set({
+    update = {
         'date_format': date_choice if date_choice in DATE_FORMATS else DATE_FORMATS[0],
-        'auto_backup': request.form.get('auto_backup') == 'on',
         'updated_at': firestore.SERVER_TIMESTAMP,
         'updated_by': session['user_id'],
-    }, merge=True)  # merge, not overwrite -- this doc also carries
+    }
+    # Only when the Auto backup switch was on the page (it is hidden on
+    # Vercel) -- otherwise changing the date format there would switch
+    # Auto backup off for the computer that does run it.
+    if request.form.get('auto_backup_shown'):
+        update['auto_backup'] = request.form.get('auto_backup') == 'on'
+    db.collection('app_settings').document(SYSTEM_DOC).set(
+        update, merge=True)  # merge, not overwrite -- this doc also carries
     # last_backup_at/last_backup_file (see _run_backup()), which a plain
     # .set() here would silently wipe out on every ordinary Save Changes.
 

@@ -5,7 +5,7 @@
 <div class="admin-page-header">
   <div>
     <h1>Subscriptions</h1>
-    <p>Manage all subscription plans and user subscriptions.</p>
+    <p>{{ plan.name }} · one plan per resident · {{ grace_days }}-day grace period after the paid-until date.</p>
   </div>
   <div class="page-actions">
     <button type="button" class="btn btn-purple" id="qrOpen">
@@ -20,19 +20,11 @@
 <!-- STAT CARDS -->
 <section class="admin-stats admin-stats-5">
   <div class="stat-card stat-card-compact">
-    <span class="stat-icon tint-blue"><i data-lucide="credit-card"></i></span>
-    <div class="stat-body">
-      <span class="stat-label">Total Subscriptions</span>
-      <strong class="stat-value">{{ stats.total }}</strong>
-      <span class="stat-sub text-muted">All subscriptions</span>
-    </div>
-  </div>
-  <div class="stat-card stat-card-compact">
     <span class="stat-icon tint-green"><i data-lucide="circle-check"></i></span>
     <div class="stat-body">
-      <span class="stat-label">Active Subscriptions</span>
+      <span class="stat-label">Active Plans</span>
       <strong class="stat-value">{{ stats.active }}</strong>
-      <span class="stat-sub text-muted">{{ stats.active_pct }}% of total</span>
+      <span class="stat-sub text-muted">{{ stats.active_pct }}% of {{ stats.residents }} residents</span>
     </div>
   </div>
   <div class="stat-card stat-card-compact">
@@ -44,19 +36,27 @@
     </div>
   </div>
   <div class="stat-card stat-card-compact">
-    <span class="stat-icon tint-red"><i data-lucide="triangle-alert"></i></span>
+    <span class="stat-icon tint-purple"><i data-lucide="hourglass"></i></span>
     <div class="stat-body">
-      <span class="stat-label">Expired</span>
-      <strong class="stat-value">{{ stats.expired }}</strong>
-      <span class="stat-sub text-muted">Requires attention</span>
+      <span class="stat-label">Grace Period</span>
+      <strong class="stat-value">{{ stats.grace }}</strong>
+      <span class="stat-sub text-muted">Ended, {{ grace_days }} days to renew</span>
     </div>
   </div>
   <div class="stat-card stat-card-compact">
-    <span class="stat-icon tint-purple"><i data-lucide="philippine-peso"></i></span>
+    <span class="stat-icon tint-red"><i data-lucide="circle-x"></i></span>
     <div class="stat-body">
-      <span class="stat-label">Monthly Revenue</span>
-      <strong class="stat-value">&#8369;{{ '{:,}'.format(stats.revenue) }}</strong>
-      <span class="stat-sub text-muted">From active plans</span>
+      <span class="stat-label">Expired / No Plan</span>
+      <strong class="stat-value">{{ stats.expired + stats.no_plan }}</strong>
+      <span class="stat-sub text-muted">{{ stats.expired }} expired · {{ stats.no_plan }} never paid</span>
+    </div>
+  </div>
+  <div class="stat-card stat-card-compact">
+    <span class="stat-icon tint-blue"><i data-lucide="wallet"></i></span>
+    <div class="stat-body">
+      <span class="stat-label">Monthly Value</span>
+      <strong class="stat-value">&#8369;{{ '{:,.0f}'.format(stats.monthly_value) }}</strong>
+      <span class="stat-sub text-muted">Plans still running</span>
     </div>
   </div>
 </section>
@@ -122,14 +122,7 @@
 <section class="admin-card filter-bar">
   <label class="search-box">
     <i data-lucide="search"></i>
-    <input type="search" id="subSearch" placeholder="Search subscriptions..." aria-label="Search subscriptions" />
-  </label>
-  <label class="labeled-select">
-    <span>Plan</span>
-    <select id="subPlanFilter">
-      <option value="">All</option>
-      {% for key, plan in plans.items() %}<option value="{{ key }}">{{ plan.name }}</option>{% endfor %}
-    </select>
+    <input type="search" id="subSearch" placeholder="Search resident, device, or barangay..." aria-label="Search subscriptions" />
   </label>
   <label class="labeled-select">
     <span>Status</span>
@@ -137,7 +130,10 @@
       <option value="">All</option>
       <option value="active">Active</option>
       <option value="expiring">Expiring Soon</option>
+      <option value="grace">Grace Period</option>
       <option value="expired">Expired</option>
+      <option value="pending">Payment Pending</option>
+      <option value="none">No Plan</option>
     </select>
   </label>
   <button type="button" class="btn btn-outline" id="subClearFilters">
@@ -145,95 +141,90 @@
   </button>
 </section>
 
-<!-- TABLE -->
+<!-- TABLE: one row per resident -->
 <section class="admin-card admin-table-card">
   <div class="table-scroll">
     <table class="admin-table" id="subsTable">
       <thead>
         <tr>
-          <th>Subscriber</th>
-          <th>User Type</th>
-          <th>Device(s)</th>
-          <th>Plan</th>
-          <th>Price</th>
+          <th>Resident</th>
+          <th>Device</th>
           <th>Status</th>
-          <th>Start Date</th>
-          <th>Expiry Date</th>
-          <th>Auto Renew</th>
+          <th>Current Plan</th>
+          <th>Paid Until</th>
+          <th>Last Payment</th>
+          <th>Price</th>
         </tr>
       </thead>
       <tbody>
         {% for row in rows %}
-        <tr data-status="{{ row.status }}" data-plan="{{ row.plan_key }}">
+        <tr data-status="{{ row.status }}">
           <td>
             <div class="user-cell">
-              <span class="admin-avatar-lg avatar-{{ row.type }}">{{ row.initials }}</span>
+              <span class="admin-avatar-lg avatar-elderly">{{ row.initials }}</span>
               <div>
                 <strong>{{ row.name }}</strong>
-                <small>ID: {{ row.display_id }}</small>
+                <small>{{ row.display_id }}{% if row.barangay %} · {{ row.barangay }}{% endif %}</small>
               </div>
             </div>
           </td>
-          <td><span class="badge badge-{{ row.type }}">{{ row.type_label }}</span></td>
           <td>
             {% if row.devices %}
-            <div class="stacked-cell">
-              <strong>{{ row.devices|length }} Device{{ '' if row.devices|length == 1 else 's' }}</strong>
-              <small class="device-chips">
-                {% for serial in row.devices[:2] %}<span class="chip">{{ serial }}</span>{% endfor %}
-                {% if row.devices|length > 2 %}<span class="chip">+{{ row.devices|length - 2 }}</span>{% endif %}
-              </small>
-            </div>
-            {% else %}
-            <span class="text-muted">No device</span>
-            {% endif %}
+            <small class="device-chips">
+              {% for serial in row.devices[:2] %}<span class="chip">{{ serial }}</span>{% endfor %}
+              {% if row.devices|length > 2 %}<span class="chip">+{{ row.devices|length - 2 }}</span>{% endif %}
+            </small>
+            {% else %}<span class="text-muted">No device</span>{% endif %}
           </td>
           <td>
             <div class="stacked-cell">
-              <strong>{{ row.plan }}</strong>
-              <small>{{ row.plan_blurb }}</small>
+              {% if row.status == 'active' %}<span class="badge badge-active">Active</span>
+              {% elif row.status == 'expiring' %}<span class="badge badge-pending">Expiring Soon</span>
+              {% elif row.status == 'grace' %}<span class="badge badge-pending">Grace Period</span>
+              {% elif row.status == 'expired' %}<span class="badge badge-rejected">Expired</span>
+              {% elif row.status == 'pending' %}<span class="badge badge-archived">Payment Pending</span>
+              {% else %}<span class="badge badge-archived">No Plan</span>{% endif %}
+              <small class="{% if row.status in ('expiring', 'grace') %}text-orange{% elif row.status == 'expired' %}text-red{% else %}text-muted{% endif %}">{{ row.headline }}</small>
             </div>
+          </td>
+          <td>
+            {% if row.coverage_months %}
+            <div class="stacked-cell">
+              <strong>{{ row.coverage_months }} month{{ '' if row.coverage_months == 1 else 's' }}</strong>
+              <small>From {{ row.period_start }}</small>
+            </div>
+            {% else %}<span class="text-muted">—</span>{% endif %}
+          </td>
+          <td class="nowrap">
+            {% if row.paid_until != '—' %}
+            <div class="stacked-cell">
+              <strong>{{ row.paid_until }}</strong>
+              {% if row.status == 'grace' %}<small class="text-orange">Renew by {{ row.grace_until }}</small>
+              {% elif row.started != '—' %}<small>Member since {{ row.started }}</small>{% endif %}
+            </div>
+            {% else %}<span class="text-muted">—</span>{% endif %}
+          </td>
+          <td>
+            {% if row.last_months %}
+            <div class="stacked-cell">
+              <strong>{{ row.last_months }} month{{ '' if row.last_months == 1 else 's' }}{% if row.last_amount %} · &#8369;{{ '{:,.0f}'.format(row.last_amount|float) if (row.last_amount|float) == (row.last_amount|float)|int else '{:,.2f}'.format(row.last_amount|float) }}{% endif %}</strong>
+              <small>{% if row.last_paid_by %}{{ row.last_paid_by }} · {% endif %}{{ row.last_paid_on }}</small>
+            </div>
+            {% else %}<span class="text-muted">—</span>{% endif %}
           </td>
           <td class="nowrap"><strong class="cell-strong">&#8369;{{ row.price }}</strong> <small class="text-muted">/ month</small></td>
-          <td>
-            {% if row.status == 'active' %}
-            <span class="badge badge-active">Active</span>
-            {% elif row.status == 'expiring' %}
-            <span class="badge badge-pending">Expiring Soon</span>
-            {% else %}
-            <span class="badge badge-rejected">Expired</span>
-            {% endif %}
-          </td>
-          <td class="nowrap">{{ row.start }}</td>
-          <td class="nowrap">
-            {{ row.expiry }}
-            {% if row.days_left is not none %}
-              {% if row.status == 'expiring' %}
-              <small class="text-orange">{{ row.days_left }} days left</small>
-              {% elif row.status == 'expired' %}
-              <small class="text-red">Expired {{ -row.days_left }} days ago</small>
-              {% endif %}
-            {% endif %}
-          </td>
-          <td>
-            {% if row.auto_renew %}
-            <span class="renew-yes"><i data-lucide="circle-check"></i> Yes</span>
-            {% else %}
-            <span class="renew-no"><i data-lucide="circle-x"></i> No</span>
-            {% endif %}
-          </td>
         </tr>
         {% endfor %}
         <tr class="table-empty" {% if rows %}hidden{% endif %}>
-          <td colspan="9">
+          <td colspan="7">
             <div class="empty-state">
               <span class="empty-icon"><i data-lucide="credit-card"></i></span>
               {% if rows %}
-              <strong>No subscriptions match</strong>
+              <strong>No residents match</strong>
               <p>Try a different search or clear the filters.</p>
               {% else %}
-              <strong>No subscriptions yet</strong>
-              <p>Add documents to the <code>subscription</code> collection, or run <code>seed_subscriptions.py</code> to try this page out.</p>
+              <strong>No residents yet</strong>
+              <p>Residents appear here once a family registers them. Their plan starts when you approve their first payment.</p>
               {% endif %}
             </div>
           </td>
