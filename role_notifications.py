@@ -119,7 +119,8 @@ def _emergency_items(user_id, role):
 # ---------- events (Firestore, cached) ----------
 
 def _bhw_events(user_id):
-    from bhw_routes import _device_state, _devices_by_elder, _elders_in_barangay
+    from bhw_routes import (_alerts_for, _device_state, _devices_by_elder,
+                            _elders_in_barangay)
     elders = _elders_in_barangay(_barangay(user_id))
     out = []
     for elder_id, devices in _devices_by_elder(elders).items():
@@ -134,6 +135,22 @@ def _bhw_events(user_id):
                 False, name, f'Device {doc_id} is offline',
                 ac.fmt_time(last_seen) if last_seen else 'Unknown', ms,
                 url_for('bhw.elderly_users')))
+
+    # False alarms the resident cancelled on the device (module 3.3).
+    # Last 7 days only. Alerts a BHW marked as a false alarm themselves
+    # (resolved_by is set) are skipped, since that BHW already knows.
+    since = datetime.now(timezone.utc) - timedelta(days=FEED_DAYS)
+    for a in _alerts_for(set(elders), since=since, limit=20):
+        if ac.row_status(a) != 'false_alarm' or a.get('resolved_by'):
+            continue
+        name = (elders.get(a.get('elder_id')) or {}).get(
+            'full_name') or 'A resident'
+        out.append(_item(
+            f"cancel:{a['id']}", 'false_alarm', 'flag', 'tint-orange', False,
+            name, 'False alarm \u2014 cancelled on the device',
+            ac.fmt_time(a.get('date_triggered')),
+            inbox.to_ms(a.get('date_triggered')),
+            url_for('bhw.alerts', alert=a['id'])))
     return out
 
 

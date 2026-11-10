@@ -1,0 +1,18 @@
+{% extends 'responder/base.html' %}
+{% block title %}My Profile{% endblock %}
+
+{% block content %}
+
+<div class="admin-page-header">
+  <div>
+    <h1>My Profile</h1>
+    <p>Manage your account and personal details.</p>
+  </div>
+</div>
+
+{% include 'account/_profile.html' %}
+{% endblock %}
+
+{% block scripts %}
+<script src="{{ url_for('static', filename='js/account_profile.js') }}"></script>
+{% endblock %}

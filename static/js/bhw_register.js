@@ -16,7 +16,32 @@
 
   const $ = (id) => document.getElementById(id);
   const val = (id) => ($(id) ? $(id).value.trim() : '');
-  const isBhw = () => val('role') === 'bhw';
+  // BHW and Responder share the same 3-step flow (account -> professional -> review).
+  const isBhw = () => ['bhw', 'responder'].includes(val('role'));
+  const isResponder = () => val('role') === 'responder';
+
+  // Swaps the labels/fields of the professional + review steps for the chosen role.
+  function syncRoleUI() {
+    const responder = isResponder();
+    const show = (id, on) => { if ($(id)) $(id).style.display = on ? '' : 'none'; };
+    show('bhwOnlyFields', !responder);
+    show('responderFields', responder);
+    show('validIdOptional', !responder);
+    ['bhw_rev_barangay', 'bhw_rev_health_center', 'bhw_rev_bhw_id', 'bhw_rev_years'].forEach((id) => {
+      const row = $(id) && $(id).closest('.bhw-review-item');
+      if (row) row.style.display = responder ? 'none' : '';
+    });
+    ['rsp_rev_agency', 'rsp_rev_position', 'rsp_rev_agency_id'].forEach((id) => {
+      const row = $(id) && $(id).closest('.bhw-review-item');
+      if (row) row.style.display = responder ? '' : 'none';
+    });
+    if ($('proSubtitle')) {
+      $('proSubtitle').textContent = responder
+        ? 'Tell us about your agency and your work as an emergency responder.'
+        : 'Tell us about your work as a Barangay Health Worker.';
+    }
+    if ($('pendingRole')) $('pendingRole').textContent = responder ? 'responder' : 'BHW';
+  }
 
   // ---------- Step switching ----------
 
@@ -80,7 +105,7 @@
   function validateAccount() {
     if (!val('full_name')) return 'Please enter your full name.';
     if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(val('email'))) return 'Please enter a valid email address.';
-    if (!val('barangay_assigned')) return 'Please select your assigned barangay.';
+    if (!isResponder() && !val('barangay_assigned')) return 'Please select your assigned barangay.';
 
     const password = $('password').value;
     if (password.length < 6) return 'Password must be at least 6 characters.';
@@ -90,6 +115,12 @@
   }
 
   function validateProfessional() {
+    if (isResponder()) {
+      if (!val('agency')) return 'Please select your agency.';
+      if (!val('position')) return 'Please enter your position.';
+      if (!val('agency_id_number')) return 'Please enter your agency ID number.';
+      return validateFile(currentFile());
+    }
     const dob = val('bhw_dob');
     if (!dob) return 'Please enter your date of birth.';
     if (new Date(dob) > new Date()) return 'Date of birth cannot be in the future.';
@@ -107,7 +138,7 @@
   }
 
   function validateFile(file) {
-    if (!file) return null; // optional
+    if (!file) return isResponder() ? 'Please upload a valid ID. It is required for responders.' : null; // optional for BHW
     const ext = file.name.split('.').pop().toLowerCase();
     if (!ALLOWED_ID_EXT.includes(ext)) return 'Valid ID must be a JPG, PNG, or PDF file.';
     if (file.size > MAX_ID_SIZE) return 'Valid ID must be 700 KB or smaller. Try a smaller photo or a screenshot of the ID.';
@@ -190,7 +221,9 @@
     set('bhw_rev_health_center', val('health_center'));
     set('bhw_rev_bhw_id', val('bhw_id_number'));
     set('bhw_rev_years', val('years_of_service'));
-    set('bhw_rev_valid_id', file ? file.name : 'None uploaded');
+    set('rsp_rev_agency', val('agency'));
+    set('rsp_rev_position', val('position'));
+    set('rsp_rev_agency_id', val('agency_id_number'));
   }
 
   // ---------- Public functions (called from register.html) ----------
@@ -270,10 +303,12 @@
     if (role) {
       role.addEventListener('change', () => {
         syncDotCount();
+        syncRoleUI();
         clearErrors();
       });
     }
     syncDotCount();
+    syncRoleUI();
   });
 
   // Pressing Enter inside a BHW field would normally submit the whole form

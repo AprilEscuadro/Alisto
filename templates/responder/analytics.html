@@ -1,0 +1,164 @@
+{% extends 'responder/base.html' %}
+{% block title %}Emergency Analytics{% endblock %}
+
+{% block head %}
+<style>
+  /* Analytics page only. Uses the portal's colour variables, so dark mode works too. */
+  .rsp-search { display: flex; gap: 8px; }
+  .rsp-search input { flex: 1; min-width: 0; height: 46px; border: 1px solid var(--admin-border); border-radius: 12px;
+    padding: 0 14px; font: inherit; font-size: 15px; background: var(--admin-bg); color: var(--admin-text); }
+  .rsp-search input:focus { outline: 2px solid var(--admin-primary); border-color: transparent; }
+  .rsp-search button { height: 46px; padding: 0 16px; border: 0; border-radius: 12px; background: var(--admin-primary);
+    color: #fff; font: inherit; font-weight: 600; cursor: pointer; }
+  .rsp-search button.ghost { background: var(--gray-bg); color: var(--admin-text); }
+  .rsp-hint { font-size: 12px; color: var(--admin-muted); margin: 8px 2px 0; }
+  .rsp-error { color: var(--red); font-size: 13px; margin: 8px 2px 0; display: none; }
+  .rsp-stats { display: grid; grid-template-columns: repeat(2, 1fr); gap: 12px; margin: 16px 0; }
+  .rsp-stat { background: var(--admin-card); border: 1px solid var(--admin-border); border-radius: 14px; padding: 14px; }
+  .rsp-stat span { display: block; font-size: 12px; color: var(--admin-muted); }
+  .rsp-stat strong { display: block; font-size: 22px; margin-top: 4px; }
+  .rsp-stat small { font-size: 12px; color: var(--admin-muted); }
+  .rsp-card { margin-bottom: 16px; }
+  .rsp-card h2 { font-size: 15px; margin: 0 0 12px; }
+  .rsp-heat { width: 100%; border-collapse: separate; border-spacing: 3px; table-layout: fixed; }
+  .rsp-heat th { font-size: 10px; font-weight: 500; color: var(--admin-muted); padding: 2px 0; }
+  .rsp-heat th.day { text-align: left; width: 34px; font-size: 11px; }
+  .rsp-heat td { height: 34px; border-radius: 6px; text-align: center; font-size: 11px; font-weight: 600; }
+  .rsp-bar { display: grid; grid-template-columns: 96px 1fr 34px; align-items: center; gap: 8px; margin: 7px 0; font-size: 13px; }
+  .rsp-bar .name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .rsp-bar .track { height: 10px; background: var(--gray-bg); border-radius: 99px; overflow: hidden; }
+  .rsp-bar .fill { display: block; height: 100%; background: var(--admin-primary); border-radius: 99px; }
+  .rsp-bar .num { text-align: right; color: var(--admin-muted); font-variant-numeric: tabular-nums; }
+  .rsp-empty { color: var(--admin-muted); font-size: 14px; padding: 6px 0; margin: 0; }
+  .rsp-note { font-size: 12px; color: var(--admin-muted); text-align: center; margin: 18px 0 10px; }
+  .rsp-loading { opacity: .5; pointer-events: none; }
+  @media (min-width: 700px) { .rsp-stats { grid-template-columns: repeat(4, 1fr); } .rsp-bar { grid-template-columns: 150px 1fr 40px; } }
+</style>
+{% endblock %}
+
+{% block content %}
+<div id="rspPage">
+  <div class="admin-page-header">
+    <div>
+      <h1>Emergency Analytics</h1>
+      <p>When and where emergencies usually happen. Counts only, no resident details.</p>
+    </div>
+  </div>
+
+  <section class="admin-card">
+    <form class="rsp-search" id="rspSearchForm" autocomplete="off">
+      <input id="rspBarangayInput" list="rspBarangayList" placeholder="All Cebu City - type a barangay" aria-label="Search barangay" />
+      <button type="submit">Search</button>
+      <button type="button" class="ghost" id="rspResetBtn" aria-label="Show all Cebu City">All</button>
+    </form>
+    <datalist id="rspBarangayList">
+      {% for b in barangays %}<option value="{{ b }}"></option>{% endfor %}
+    </datalist>
+    <p class="rsp-error" id="rspError"></p>
+    <p class="rsp-hint" id="rspScope">Showing: All Cebu City</p>
+  </section>
+
+  <div class="rsp-stats">
+    <div class="rsp-stat"><span>Total emergencies</span><strong id="sTotal">-</strong></div>
+    <div class="rsp-stat"><span>False alarms</span><strong id="sFalse">-</strong><small id="sFalseRate"></small></div>
+    <div class="rsp-stat"><span>Busiest day</span><strong id="sDay">-</strong></div>
+    <div class="rsp-stat"><span>Busiest time</span><strong id="sTime">-</strong></div>
+  </div>
+
+  <section class="admin-card rsp-card">
+    <h2>Day and time (darker = more emergencies)</h2>
+    <div id="heatWrap"></div>
+  </section>
+
+  <section class="admin-card rsp-card">
+    <h2>How they were triggered</h2>
+    <div id="triggerWrap"></div>
+  </section>
+
+  <section class="admin-card rsp-card">
+    <h2>Per month</h2>
+    <div id="monthWrap"></div>
+  </section>
+
+  <section class="admin-card rsp-card">
+    <h2>Barangays with the most emergencies</h2>
+    <div id="rankWrap"></div>
+  </section>
+
+  <p class="rsp-note">The system records when and how an alert was triggered, not the kind of emergency.</p>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+  var DATA_URL = "{{ url_for('responder.analytics_data') }}";
+  var BARANGAYS = [{% for b in barangays %}{{ b|tojson }}{{ ',' if not loop.last }}{% endfor %}];
+  var $r = function (id) { return document.getElementById(id); };
+
+  function esc(s) { var d = document.createElement('div'); d.textContent = s; return d.innerHTML; }
+
+  function bars(rows, labelKey) {
+    if (!rows.length) return '<p class="rsp-empty">No data yet.</p>';
+    var max = Math.max.apply(null, rows.map(function (r) { return r.count; })) || 1;
+    return rows.map(function (r) {
+      return '<div class="rsp-bar"><span class="name" title="' + esc(r[labelKey]) + '">' + esc(r[labelKey]) +
+        '</span><span class="track"><span class="fill" style="width:' + Math.round(100 * r.count / max) +
+        '%"></span></span><span class="num">' + r.count + '</span></div>';
+    }).join('');
+  }
+
+  function renderHeat(d) {
+    if (!d.total) { $r('heatWrap').innerHTML = '<p class="rsp-empty">No emergencies recorded here yet.</p>'; return; }
+    var html = '<table class="rsp-heat"><thead><tr><th class="day"></th>' +
+      d.block_labels.map(function (b) { return '<th>' + esc(b) + '</th>'; }).join('') + '</tr></thead><tbody>';
+    d.heat.forEach(function (row, i) {
+      html += '<tr><th class="day">' + esc(d.day_names[i].slice(0, 3)) + '</th>' + row.map(function (n) {
+        var a = d.heat_max ? n / d.heat_max : 0;
+        var bg = n ? 'rgba(20,99,255,' + (0.18 + 0.82 * a).toFixed(2) + ')' : 'var(--gray-bg)';
+        var color = a > 0.55 ? '#fff' : 'var(--admin-text)';
+        return '<td style="background:' + bg + ';color:' + color + '">' + (n || '') + '</td>';
+      }).join('') + '</tr>';
+    });
+    $r('heatWrap').innerHTML = html + '</tbody></table>';
+  }
+
+  function render(d) {
+    $r('sTotal').textContent = d.total;
+    $r('sFalse').textContent = d.false_alarms;
+    $r('sFalseRate').textContent = d.total ? d.false_alarm_rate + '% of alerts' : '';
+    $r('sDay').textContent = d.busiest_day || '-';
+    $r('sTime').textContent = d.busiest_block || '-';
+    $r('rspScope').textContent = 'Showing: ' + d.barangay;
+    renderHeat(d);
+    $r('triggerWrap').innerHTML = d.total
+      ? bars([{ label: 'Voice', count: d.voice }, { label: 'Button', count: d.button }], 'label')
+      : '<p class="rsp-empty">No data yet.</p>';
+    $r('monthWrap').innerHTML = bars(d.monthly.map(function (m) { return { label: m.month, count: m.count }; }), 'label');
+    $r('rankWrap').innerHTML = bars(d.ranking, 'barangay');
+  }
+
+  function load(barangay) {
+    var err = $r('rspError'); err.style.display = 'none';
+    $r('rspPage').classList.add('rsp-loading');
+    fetch(DATA_URL + '?barangay=' + encodeURIComponent(barangay || ''), { credentials: 'same-origin' })
+      .then(function (r) { return r.json().then(function (j) { return { ok: r.ok, body: j }; }); })
+      .then(function (res) {
+        if (!res.ok || !res.body.success) { err.textContent = res.body.message || 'Could not load the data.'; err.style.display = 'block'; return; }
+        render(res.body);
+      })
+      .catch(function () { err.textContent = 'Could not reach the server. Check your connection.'; err.style.display = 'block'; })
+      .then(function () { $r('rspPage').classList.remove('rsp-loading'); });
+  }
+
+  $r('rspSearchForm').addEventListener('submit', function (e) {
+    e.preventDefault();
+    var v = $r('rspBarangayInput').value.trim();
+    if (v && !BARANGAYS.some(function (b) { return b.toLowerCase() === v.toLowerCase(); })) {
+      var err = $r('rspError'); err.textContent = 'Pick a barangay from the suggestions.'; err.style.display = 'block'; return;
+    }
+    load(v);
+  });
+  $r('rspResetBtn').addEventListener('click', function () { $r('rspBarangayInput').value = ''; load(''); });
+  load('');
+</script>
+{% endblock %}

@@ -704,6 +704,11 @@ def users():
         profile = doc.to_dict() or {}
         bhw_profiles[profile.get('user_id')] = profile
 
+    responder_profiles = {}
+    for doc in db.collection('responder_profile').stream():
+        profile = doc.to_dict() or {}
+        responder_profiles[profile.get('user_id')] = profile
+
     # Care plan per elder: same source as the family dashboard
     # (subscription/{elder_id} read through care_plan_service).
     subs = {doc.id: doc.to_dict() or {}
@@ -763,7 +768,7 @@ def users():
 
     for user_id, user in accounts:
         role = user.get('role')
-        if role not in ('family', 'bhw'):
+        if role not in ('family', 'bhw', 'responder'):
             continue  # admins are not listed
 
         row = {
@@ -801,6 +806,26 @@ def users():
             # Barangay of the first loved one that has one.
             row['barangay'] = next((elder_barangay[e] for e in linked
                                     if elder_barangay.get(e)), '')
+        elif role == 'responder':
+            approval = user.get('approval_status', 'pending')
+            profile = responder_profiles.get(user_id, {})
+            row['display_id'] = _short_id('RSP', user_id)
+            row['devices'] = 0
+            if user.get('is_archived'):
+                row['status'] = 'archived'
+            else:
+                row['status'] = {'approved': 'active',
+                                 'rejected': 'rejected'}.get(approval, 'pending')
+            row['details'] += [
+                ['Agency', profile.get('agency') or '—'],
+                ['Position', profile.get('position') or '—'],
+                ['Agency ID Number', profile.get('agency_id_number') or '—'],
+            ]
+            if profile.get('valid_id_stored_as'):
+                row['valid_id_url'] = url_for(
+                    'admin.bhw_valid_id', user_id=user_id)
+                row['valid_id_name'] = profile.get(
+                    'valid_id_filename') or 'View file'
         else:
             approval = user.get('approval_status', 'pending')
             profile = bhw_profiles.get(user_id, {})
@@ -887,8 +912,8 @@ def update_bhw_approval(user_id):
     ref = db.collection('user_account').document(user_id)
     doc = ref.get()
     user = doc.to_dict() if doc.exists else None
-    if not user or user.get('role') != 'bhw':
-        flash('That BHW account could not be found.', 'error')
+    if not user or user.get('role') not in ('bhw', 'responder'):
+        flash('That account could not be found.', 'error')
         return redirect(url_for('admin.users'))
 
     ref.update({
@@ -989,8 +1014,8 @@ def delete_user(user_id):
     if not user:
         flash('That user could not be found.', 'error')
         return redirect(url_for('admin.users'))
-    if user.get('role') not in ('family', 'bhw'):
-        flash('Only family and BHW accounts can be deleted here.', 'error')
+    if user.get('role') not in ('family', 'bhw', 'responder'):
+        flash('Only family, BHW and responder accounts can be deleted here.', 'error')
         return redirect(url_for('admin.users'))
 
     name = user.get('full_name') or 'This user'
@@ -1009,6 +1034,7 @@ def delete_user(user_id):
     # 2) Their data.
     try:
         _delete_matching('bhw_profile', 'user_id', user_id)
+        _delete_matching('responder_profile', 'user_id', user_id)
         try:
             valid_id_store.delete(user_id)
         except Exception as e:
@@ -1062,6 +1088,9 @@ def bhw_valid_id(user_id):
     """Show a BHW's uploaded ID to admins only (never a public link)."""
     matches = list(db.collection('bhw_profile').where(
         'user_id', '==', user_id).limit(1).stream())
+    if not matches:
+        matches = list(db.collection('responder_profile').where(
+            'user_id', '==', user_id).limit(1).stream())
     stored = (matches[0].to_dict() or {}).get(
         'valid_id_stored_as') if matches else None
     if not stored:

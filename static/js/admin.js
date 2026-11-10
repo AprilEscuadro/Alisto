@@ -272,7 +272,7 @@
 
     details.forEach(([label, value]) => addDetail(list, label, String(value)));
 
-    if (row.dataset.type === 'bhw') {
+    if (row.dataset.type === 'bhw' || row.dataset.type === 'responder') {
       const dd = addDetail(list, 'Valid ID', row.dataset.validIdUrl ? '' : 'None uploaded');
       if (row.dataset.validIdUrl) {
         const link = document.createElement('a');
@@ -1210,8 +1210,8 @@
   const lines = (v) => (has(v) ? String(v).split('\n').filter(Boolean) : []);
   const options = JSON.parse(($('#upOptions') || { textContent: '{}' }).textContent);
 
-  const TYPE_LABEL = { elderly: 'Elderly', family: 'Family member', bhw: 'Barangay Health Worker' };
-  const TYPE_ICON = { elderly: 'heart-pulse', family: 'users', bhw: 'shield-check' };
+  const TYPE_LABEL = { elderly: 'Elderly', family: 'Family member', bhw: 'Barangay Health Worker', responder: 'Responder' };
+  const TYPE_ICON = { elderly: 'heart-pulse', family: 'users', bhw: 'shield-check', responder: 'siren' };
   const STATUS_ICON = { active: 'circle-check', pending: 'clock', rejected: 'circle-x', archived: 'archive' };
 
   // ---------- small builders ----------
@@ -1294,6 +1294,15 @@
       right += section('heart-pulse', 'Loved ones', elders.length
         ? `<div class="up-stack">${elders.map((n, i) => person(n, has(serials[i]) ? `Device · ${serials[i]}` : 'No device', 'blue')).join('')}</div>`
         : empty('user-x', 'No loved ones linked.'));
+    } else if (ds.type === 'responder') {
+      right += section('siren', 'Agency', `<div class="up-rows">
+        ${infoRow('building-2', 'Agency', d['Agency'])}
+        ${infoRow('briefcase', 'Position', d['Position'])}
+        ${infoRow('id-card', 'Agency ID number', d['Agency ID Number'], { mono: true })}
+      </div>`);
+      left += section('badge-check', 'Verification', ds.validIdUrl
+        ? `<a class="up-file" href="${esc(ds.validIdUrl)}" target="_blank" rel="noopener"><i data-lucide="file-check-2"></i><span>${esc(ds.validIdName)}</span><i data-lucide="external-link"></i></a>`
+        : empty('file-x-2', 'No valid ID uploaded.'));
     } else {
       right += section('map-pinned', 'Assignment', `<div class="up-rows">
         ${infoRow('map-pin', 'Barangay', d['Barangay'])}
@@ -1327,7 +1336,7 @@
            <button type="submit" class="up-btn up-btn-approve"><i data-lucide="check"></i>Approve</button></form>` : '';
     foot.innerHTML = `<div class="up-foot-left">${del}${restore}</div>
       <div class="up-foot-right">${pending}
-        <button type="button" class="up-btn up-btn-dark" id="upEditBtn"><i data-lucide="pencil"></i>Edit</button></div>`;
+        ${ds.type === 'responder' ? '' : `<button type="button" class="up-btn up-btn-dark" id="upEditBtn"><i data-lucide="pencil"></i>Edit</button>`}</div>`;
   }
 
   // ---------- EDIT MODE ----------

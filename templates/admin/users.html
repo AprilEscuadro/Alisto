@@ -70,6 +70,7 @@
       <option value="elderly">Elderly</option>
       <option value="family">Family</option>
       <option value="bhw">BHW</option>
+      <option value="responder">Responder</option>
     </select>
     <select id="barangayFilter" aria-label="Barangay">
       <option value="">Barangay</option>
@@ -151,7 +152,7 @@
           data-plan-until="{{ row.plan.until if row.plan else '' }}"
           data-plan-badge="{{ row.plan.badge if row.plan else '' }}"
           {% if row.valid_id_url %}data-valid-id-url="{{ row.valid_id_url }}" data-valid-id-name="{{ row.valid_id_name }}"{% endif %}
-          {% if row.type == 'bhw' %}data-approval-url="{{ url_for('admin.update_bhw_approval', user_id=row.id) }}"{% endif %}
+          {% if row.type in ('bhw', 'responder') %}data-approval-url="{{ url_for('admin.update_bhw_approval', user_id=row.id) }}"{% endif %}
         >
           <td>
             <div class="user-cell">

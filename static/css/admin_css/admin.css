@@ -1075,6 +1075,12 @@ h2 {
   color: var(--purple);
 }
 
+
+.badge-responder {
+  background: var(--red-bg, #fdecec);
+  color: var(--red, #d93636);
+}
+
 .badge-active {
   background: var(--green-bg);
   color: var(--green);

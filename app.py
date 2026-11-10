@@ -7,6 +7,7 @@ from admin_routes import admin_bp
 # module import too -- the auto-backup loop below calls its _run_backup()/_system_settings()
 import admin_routes
 from bhw_routes import bhw_bp
+from responder_routes import responder_bp
 from inbox_routes import inbox_bp
 from notifications import notif_bp
 from role_notifications import rbell_bp
@@ -34,6 +35,7 @@ app = Flask(__name__)
 app.secret_key = os.environ['SECRET_KEY']
 app.register_blueprint(admin_bp)  # admin panel at /admin
 app.register_blueprint(bhw_bp)    # BHW portal at /bhw
+app.register_blueprint(responder_bp)  # Responder analytics at /responder
 app.register_blueprint(inbox_bp)  # inbox JSON API at /inbox/api
 app.register_blueprint(notif_bp)  # family notification bell at /notifications
 app.register_blueprint(rbell_bp)  # BHW + admin notification bell at /rbell
@@ -332,11 +334,13 @@ def register():
             return jsonify(success=False, message='Please fill up all required account fields.'), 400
         if password != confirm_password:
             return jsonify(success=False, message='Password and confirm password do not match.'), 400
-        if role not in ('family', 'bhw'):
+        if role not in ('family', 'bhw', 'responder'):
             return jsonify(success=False, message='Invalid role selected.'), 400
 
         if role == 'bhw':
             return _register_bhw(full_name, email, password, contact_number, barangay_assigned)
+        if role == 'responder':
+            return _register_responder(full_name, email, password, contact_number)
 
         password_error = _check_family_password(password)
         if password_error:
@@ -430,6 +434,7 @@ def register():
         barangays=bg.CEBU_CITY_BARANGAYS,
         health_centers=HEALTH_CENTERS,
         years_of_service_options=YEARS_OF_SERVICE_OPTIONS,
+        responder_agencies=RESPONDER_AGENCIES,
     )
 
 
@@ -513,6 +518,75 @@ def _register_bhw(full_name, email, password, contact_number, barangay_assigned)
         })
     except Exception as e:
         # Don't leave half an account behind.
+        for cleanup in (lambda: valid_id_store.delete(user_ref.id), user_ref.delete):
+            try:
+                cleanup()
+            except Exception:
+                pass
+        return jsonify(success=False, message=f'Error: {str(e)}'), 500
+
+    return jsonify(success=True, message='Registration submitted. Your account is pending approval.')
+
+
+RESPONDER_AGENCIES = ['CDRRMO', 'BFP (Fire)', 'Ambulance / EMS', 'Police',
+                      'Red Cross', 'Barangay Tanod', 'Other']
+
+
+def _register_responder(full_name, email, password, contact_number):
+    """Emergency responder sign-up. No barangay: responders go wherever the
+    emergency is. Same approval flow as a BHW (pending -> admin approves)."""
+    agency = request.form.get('agency', '').strip()
+    position = request.form.get('position', '').strip()
+    agency_id_number = request.form.get('agency_id_number', '').strip()
+    valid_id = request.files.get('valid_id')
+
+    password_error = _check_family_password(password)
+    if password_error:
+        return jsonify(success=False, message=password_error), 400
+    if not agency or not position or not agency_id_number:
+        return jsonify(success=False, message='Please fill up all professional information fields.'), 400
+    if agency not in RESPONDER_AGENCIES:
+        return jsonify(success=False, message='Please select your agency from the list.'), 400
+    if not valid_id or not valid_id.filename:
+        return jsonify(success=False, message='Please upload a valid ID. It is required for responders.'), 400
+
+    if list(db.collection('user_account').where('email', '==', email).limit(1).stream()):
+        return jsonify(success=False, message='An account with this email already exists.'), 400
+    if list(db.collection('responder_profile').where('agency_id_number', '==', agency_id_number).limit(1).stream()):
+        return jsonify(success=False, message='This agency ID number is already registered.'), 400
+
+    ext = valid_id.filename.rsplit(
+        '.', 1)[-1].lower() if '.' in valid_id.filename else ''
+    if ext not in VALID_ID_EXTENSIONS:
+        return jsonify(success=False, message='Valid ID must be a JPG, PNG, or PDF file.'), 400
+    valid_id_bytes = valid_id.read(VALID_ID_MAX_BYTES + 1)
+    if not valid_id_bytes:
+        return jsonify(success=False, message='The uploaded ID file is empty.'), 400
+    if len(valid_id_bytes) > VALID_ID_MAX_BYTES:
+        return jsonify(success=False, message='Valid ID must be 700 KB or smaller.'), 400
+    valid_id_filename = secure_filename(valid_id.filename) or f'valid_id.{ext}'
+
+    user_ref = db.collection('user_account').document()
+    try:
+        user_ref.set({
+            'full_name': full_name, 'email': email,
+            'password_hash': generate_password_hash(password),
+            'role': 'responder', 'contact_number': contact_number,
+            'approval_status': 'pending',
+            'created_at': firestore.SERVER_TIMESTAMP, 'deleted_at': None, 'is_archived': 0
+        })
+        stored_as = valid_id_store.save(
+            user_ref.id, valid_id_bytes, valid_id_filename, ext)
+        db.collection('responder_profile').add({
+            'user_id': user_ref.id,
+            'agency': agency,
+            'position': position,
+            'agency_id_number': agency_id_number,
+            'valid_id_filename': valid_id_filename,
+            'valid_id_stored_as': stored_as,
+            'created_at': firestore.SERVER_TIMESTAMP,
+        })
+    except Exception as e:
         for cleanup in (lambda: valid_id_store.delete(user_ref.id), user_ref.delete):
             try:
                 cleanup()
@@ -625,13 +699,14 @@ def login():
                     email, password) is not None
 
         if user and not user.get('deleted_at') and password_ok:
-            if user.get('role') == 'bhw' and user.get('approval_status') != 'approved':
+            if user.get('role') in ('bhw', 'responder') and user.get('approval_status') != 'approved':
+                label = 'BHW' if user.get('role') == 'bhw' else 'responder'
                 if user.get('approval_status') == 'rejected':
                     flash(
-                        'Your BHW account was not approved. Please contact the system administrator.', 'error')
+                        f'Your {label} account was not approved. Please contact the system administrator.', 'error')
                 else:
                     flash(
-                        'Your BHW account is still pending approval by the system administrator.', 'error')
+                        f'Your {label} account is still pending approval by the system administrator.', 'error')
                 return redirect(url_for('login'))
 
             # Unchecked (the default): a normal browser-session cookie --
@@ -657,7 +732,11 @@ def login():
                 user_doc.reference.update(updates)
                 flash(
                     f"{'Welcome back' if session['previous_login'] else 'Welcome'}, {user['full_name']}!", 'success')
-                return redirect(url_for('bhw.dashboard'))
+            if user['role'] == 'responder':
+                user_doc.reference.update(updates)
+                flash(
+                    f"{'Welcome back' if session['previous_login'] else 'Welcome'}, {user['full_name']}!", 'success')
+                return redirect(url_for('responder.analytics'))
 
             user_doc.reference.update(updates)
             flash(

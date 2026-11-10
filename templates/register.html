@@ -145,6 +145,7 @@
                     <option value="">-- I am registering as --</option>
                     <option value="family">Family Member</option>
                     <option value="bhw">Barangay Health Worker (BHW)</option>
+                    <option value="responder">Emergency Responder</option>
                   </select>
                 </div>
               </div>
@@ -630,8 +631,10 @@
             <div class="step-icon-header"><i data-lucide="briefcase"></i></div>
             <h1>Professional Information</h1>
             <p class="auth-subtitle">
-              Tell us about your work as a Barangay Health Worker.
+              <span id="proSubtitle">Tell us about your work as a Barangay Health Worker.</span>
             </p>
+
+            <div id="bhwOnlyFields">
 
             <div class="form-row">
               <div class="form-group">
@@ -681,10 +684,53 @@
               </div>
             </div>
 
+            </div>
+
+            <div id="responderFields" style="display: none">
+              <div class="form-row">
+                <div class="form-group">
+                  <label class="field-label">Agency</label>
+                  <div class="select-icon-wrap">
+                    <i data-lucide="building-2" class="input-icon"></i>
+                    <select id="agency" name="agency">
+                      <option value="">Select your agency</option>
+                      {% for a in responder_agencies %}
+                      <option value="{{ a }}">{{ a }}</option>
+                      {% endfor %}
+                    </select>
+                  </div>
+                </div>
+                <div class="form-group">
+                  <label class="field-label">Position</label>
+                  <div class="input-icon-wrap">
+                    <i data-lucide="briefcase" class="input-icon"></i>
+                    <input
+                      type="text"
+                      id="position"
+                      name="position"
+                      placeholder="e.g. EMT, Firefighter"
+                    />
+                  </div>
+                </div>
+              </div>
+              <div class="form-group">
+                <label class="field-label">Agency ID Number</label>
+                <div class="input-icon-wrap">
+                  <i data-lucide="id-card" class="input-icon"></i>
+                  <input
+                    type="text"
+                    id="agency_id_number"
+                    name="agency_id_number"
+                    placeholder="Enter your agency ID number"
+                  />
+                </div>
+              </div>
+            </div>
+
             <div class="form-group">
               <label class="field-label"
                 >Upload Valid ID
-                <span class="optional-tag">(Optional)</span></label
+                <span class="optional-tag" id="validIdOptional">(Optional)</span></label
               >
               <label
                 class="upload-dropzone"
@@ -790,6 +836,24 @@
                 <button type="button" class="bhw-review-edit" onclick="bhwEdit('years_of_service')">Edit</button>
               </div>
               <div class="bhw-review-item">
+                <span class="bhw-review-icon"><i data-lucide="building-2"></i></span>
+                <span class="bhw-review-label">Agency</span>
+                <span class="bhw-review-value" id="rsp_rev_agency">—</span>
+                <button type="button" class="bhw-review-edit" onclick="bhwEdit('agency')">Edit</button>
+              </div>
+              <div class="bhw-review-item">
+                <span class="bhw-review-icon"><i data-lucide="briefcase"></i></span>
+                <span class="bhw-review-label">Position</span>
+                <span class="bhw-review-value" id="rsp_rev_position">—</span>
+                <button type="button" class="bhw-review-edit" onclick="bhwEdit('position')">Edit</button>
+              </div>
+              <div class="bhw-review-item">
+                <span class="bhw-review-icon"><i data-lucide="id-card"></i></span>
+                <span class="bhw-review-label">Agency ID Number</span>
+                <span class="bhw-review-value" id="rsp_rev_agency_id">—</span>
+                <button type="button" class="bhw-review-edit" onclick="bhwEdit('agency_id_number')">Edit</button>
+              </div>
+              <div class="bhw-review-item">
                 <span class="bhw-review-icon"><i data-lucide="file-text"></i></span>
                 <span class="bhw-review-label">Uploaded Valid ID</span>
                 <span class="bhw-review-value" id="bhw_rev_valid_id">—</span>
@@ -823,7 +887,7 @@
             </div>
             <h1 style="text-align: center">Pending Approval</h1>
             <p class="auth-subtitle" style="text-align: center">
-              Your BHW account is now pending verification by the system
+              Your <span id="pendingRole">BHW</span> account is now pending verification by the system
               administrator.
             </p>
             <p class="auth-subtitle" style="text-align: center">
@@ -834,7 +898,8 @@
             <div class="info-note bhw-pending-note">
               <i data-lucide="info"></i>
               <span
-                >You will be notified via email or SMS once your account is
+                >The administrator will review your details. Please try
+                signing in again later to check if your account is
                 approved.</span
               >
             </div>
