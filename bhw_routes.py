@@ -406,12 +406,12 @@ def _elderly_rows(elders, open_alerts_by_elder=None, family_counts=None):
                  if elder.get('date_of_birth') else '—'],
                 ['Date of Birth', elder.get('date_of_birth') or '—'],
                 ['Address', _address_text(elder.get('address'))],
+                ['Occupation', elder.get('occupation') or 'Not provided'],
                 ['Device ID', ', '.join(
                     d_id for d_id, _ in devices) or 'No device'],
                 ['Device Number', sim or 'Not reported'],
                 ['Load', f"{load['text']} (checked {load['checked']})"
                  if load else 'Not checked yet'],
-                ['Connected Accounts', accounts_text],
                 ['Last Update', _fmt_datetime(last_seen)],
             ],
         })

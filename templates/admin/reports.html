@@ -26,6 +26,18 @@
     </nav>
   </header>
 
+  <!-- ============ TABS ============ -->
+  <div class="rp-tabs" role="tablist" aria-label="Report type">
+    <button type="button" class="rp-tab is-active" role="tab" id="tabAlerts" data-tab="alerts" aria-selected="true" aria-controls="panelAlerts">
+      <i data-lucide="bell-ring"></i> Emergency Alerts
+    </button>
+    <button type="button" class="rp-tab" role="tab" id="tabAccounts" data-tab="accounts" aria-selected="false" aria-controls="panelAccounts">
+      <i data-lucide="users"></i> User Accounts
+    </button>
+  </div>
+
+  <div class="rp-panel" id="panelAlerts" role="tabpanel" aria-labelledby="tabAlerts">
+
   <!-- ============ KEY NUMBERS ============ -->
   <section class="rp-kpis" aria-label="Key numbers">
     <article class="rp-card rp-kpi">
@@ -281,6 +293,10 @@
       </table>
     </div>
   </section>
+  </div><!-- /panelAlerts -->
+
+  <div class="rp-panel" id="panelAccounts" role="tabpanel" aria-labelledby="tabAccounts" hidden>
+
   <!-- ============ USER ACCOUNT REPORT (module 4.1) ============ -->
   <section class="rp-kpis" aria-label="User accounts summary" id="uaKpis">
     <article class="rp-card rp-kpi">
@@ -350,19 +366,36 @@
         </tbody>
       </table>
     </div>
-    <div class="rp-table-head" id="uaMoreWrap" hidden style="justify-content:center">
-      <button type="button" class="rp-btn" id="uaMore">Show more</button>
+    <div class="ua-pager" id="uaPager" hidden>
+      <span class="ua-pager-info" id="uaPagerInfo"></span>
+      <div class="ua-pager-ctrl">
+        <button type="button" class="rp-btn" id="uaPrev">Prev</button>
+        <span id="uaPages" class="ua-pages"></span>
+        <button type="button" class="rp-btn" id="uaNext">Next</button>
+      </div>
     </div>
+    <style>
+      .ua-pager { display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap; padding: 14px 20px; }
+      .ua-pager[hidden] { display: none; }
+      .ua-pager-info { font-size: 13px; opacity: .75; }
+      .ua-pager-ctrl, .ua-pages { display: flex; align-items: center; gap: 6px; }
+      .ua-pager .rp-btn { min-width: 36px; justify-content: center; }
+      .ua-pager .rp-btn:disabled { opacity: .4; cursor: not-allowed; }
+      .ua-pager .ua-pg.is-on { background: #1d7bf5; color: #fff; }
+      .ua-gap { padding: 0 4px; opacity: .6; }
+    </style>
   </section>
+
+  </div><!-- /panelAccounts -->
 
   <script>
     // User account report: loads once, filters in the browser, PDF follows the filters.
     (function () {
       const $ = (id) => document.getElementById(id);
-      const PAGE = 25;
+      const PAGE = 5;
       const ROLE = { family: 'Family', bhw: 'BHW', elderly: 'Elderly' };
       let all = [];
-      let shown = PAGE;
+      let page = 1;
 
       const esc = (v) => String(v == null ? '' : v).replace(/[&<>"']/g, (c) => (
         { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -379,12 +412,15 @@
 
       function render() {
         const rows = filtered();
+        const pages = Math.max(1, Math.ceil(rows.length / PAGE));
+        if (page > pages) page = pages;
+        const startAt = (page - 1) * PAGE;
         const body = $('uaBody');
         if (!rows.length) {
           body.innerHTML = '<tr><td colspan="6"><div class="rp-empty"><i data-lucide="search-x"></i>' +
             '<strong>No accounts match</strong><span>Try another search or filter.</span></div></td></tr>';
         } else {
-          body.innerHTML = rows.slice(0, shown).map((r) => {
+          body.innerHTML = rows.slice(startAt, startAt + PAGE).map((r) => {
             const contact = [r.email, r.phone].filter(Boolean).map(esc).join('<br>') || '<span class="rp-muted">—</span>';
             return '<tr><td><strong>' + esc(r.name) + '</strong><small>ID: ' + esc(r.display_id) + '</small></td>' +
               '<td><span class="badge badge-' + esc(r.role) + '">' + esc(ROLE[r.role] || r.role) + '</span></td>' +
@@ -394,10 +430,26 @@
               '<td>' + esc(r.joined) + '</td></tr>';
           }).join('');
         }
-        const left = rows.length - shown;
-        $('uaMoreWrap').hidden = left <= 0;
-        $('uaMore').textContent = 'Show more (' + Math.max(left, 0) + ' left)';
+        pager(rows.length, pages, startAt);
         icons();
+      }
+
+      function pager(total, pages, startAt) {
+        $('uaPager').hidden = total <= PAGE;
+        $('uaPagerInfo').textContent = total
+          ? 'Showing ' + (startAt + 1) + '–' + Math.min(startAt + PAGE, total) + ' of ' + total
+          : '';
+        $('uaPrev').disabled = page <= 1;
+        $('uaNext').disabled = page >= pages;
+        const nums = [];
+        for (let p = 1; p <= pages; p++) {
+          if (p === 1 || p === pages || Math.abs(p - page) <= 1) nums.push(p);
+          else if (nums[nums.length - 1] !== '…') nums.push('…');
+        }
+        $('uaPages').innerHTML = nums.map((p) => p === '…'
+          ? '<span class="ua-gap">…</span>'
+          : '<button type="button" class="rp-btn ua-pg' + (p === page ? ' is-on' : '') + '" data-p="' + p + '">' + p + '</button>'
+        ).join('');
       }
 
       function cards(s) {
@@ -410,9 +462,14 @@
       }
 
       ['uaSearch', 'uaRole', 'uaStatus'].forEach((id) => {
-        $(id).addEventListener(id === 'uaSearch' ? 'input' : 'change', () => { shown = PAGE; render(); });
+        $(id).addEventListener(id === 'uaSearch' ? 'input' : 'change', () => { page = 1; render(); });
       });
-      $('uaMore').addEventListener('click', () => { shown += PAGE; render(); });
+      $('uaPrev').addEventListener('click', () => { page -= 1; render(); });
+      $('uaNext').addEventListener('click', () => { page += 1; render(); });
+      $('uaPages').addEventListener('click', (e) => {
+        const b = e.target.closest('[data-p]');
+        if (b) { page = Number(b.dataset.p); render(); }
+      });
       $('uaPdf').addEventListener('click', () => {
         const params = new URLSearchParams();
         if ($('uaRole').value) params.set('role', $('uaRole').value);
@@ -471,6 +528,49 @@
         window.location = `${btn.dataset.export}?${params}`;
       });
     });
+  })();
+</script>
+<style>
+  .rp-tabs { display: flex; gap: 6px; padding: 5px; border-radius: 14px; background: var(--rp-fill); }
+  .rp-tab { flex: 1; display: inline-flex; align-items: center; justify-content: center; gap: 8px; padding: 11px 16px;
+    border: 0; border-radius: 10px; background: transparent; color: var(--rp-label); font: inherit; font-size: 14px; font-weight: 600; cursor: pointer;
+    transition: background .2s, color .2s, box-shadow .2s; }
+  .rp-tab i, .rp-tab svg { width: 18px; height: 18px; }
+  .rp-tab:hover:not(.is-active) { background: rgba(118, 118, 128, 0.12); }
+  .rp-tab.is-active { background: var(--rp-blue); color: #fff; box-shadow: 0 2px 8px rgba(0, 122, 255, .35); }
+  .rp-tab:focus-visible { outline: 3px solid color-mix(in srgb, var(--rp-blue) 45%, transparent); outline-offset: 2px; }
+  .rp-panel { display: flex; flex-direction: column; gap: 20px; }
+  .rp-panel[hidden] { display: none; }
+  .rp-segmented.rp-off { display: none; }
+  @media (max-width: 560px) { .rp-tab { padding: 10px 8px; font-size: 13px; } }
+</style>
+<script>
+  // Tabs: Emergency Alerts | User Accounts (remembered in the URL hash)
+  (function () {
+    const tabs = Array.from(document.querySelectorAll('.rp-tab'));
+    const period = document.querySelector('.rp-segmented');
+    const links = period ? Array.from(period.querySelectorAll('a')) : [];
+    const bases = links.map((a) => a.getAttribute('href').split('#')[0]);
+
+    function show(name, updateHash) {
+      if (name !== 'accounts') name = 'alerts';
+      tabs.forEach((t) => {
+        const on = t.dataset.tab === name;
+        t.classList.toggle('is-active', on);
+        t.setAttribute('aria-selected', on ? 'true' : 'false');
+        document.getElementById(t.getAttribute('aria-controls')).hidden = !on;
+      });
+      // The period filter only applies to Emergency Alerts
+      if (period) period.classList.toggle('rp-off', name === 'accounts');
+      // keep the chosen tab when the period changes (links reload the page)
+      links.forEach((a, i) => { a.href = bases[i] + (name === 'accounts' ? '#accounts' : ''); });
+      if (updateHash) history.replaceState(null, '', name === 'accounts' ? '#accounts' : location.pathname + location.search);
+      if (window.lucide) window.lucide.createIcons();
+    }
+
+    tabs.forEach((t) => t.addEventListener('click', () => show(t.dataset.tab, true)));
+    window.addEventListener('hashchange', () => show(location.hash === '#accounts' ? 'accounts' : 'alerts', false));
+    show(location.hash === '#accounts' ? 'accounts' : 'alerts', false);
   })();
 </script>
 {% endblock %}
