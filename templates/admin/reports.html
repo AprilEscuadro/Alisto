@@ -281,6 +281,162 @@
       </table>
     </div>
   </section>
+  <!-- ============ USER ACCOUNT REPORT (module 4.1) ============ -->
+  <section class="rp-kpis" aria-label="User accounts summary" id="uaKpis">
+    <article class="rp-card rp-kpi">
+      <span class="rp-kpi-label"><i data-lucide="users"></i> Total accounts</span>
+      <strong class="rp-kpi-value" id="uaTotal">–</strong>
+      <span class="rp-kpi-foot" id="uaTotalFoot">Loading…</span>
+    </article>
+    <article class="rp-card rp-kpi">
+      <span class="rp-kpi-label"><i data-lucide="heart-handshake"></i> Family</span>
+      <strong class="rp-kpi-value" id="uaFamily">–</strong>
+      <span class="rp-kpi-foot">Family accounts</span>
+    </article>
+    <article class="rp-card rp-kpi">
+      <span class="rp-kpi-label"><i data-lucide="shield-check"></i> BHW</span>
+      <strong class="rp-kpi-value" id="uaBhw">–</strong>
+      <span class="rp-kpi-foot" id="uaBhwFoot">Barangay Health Workers</span>
+    </article>
+    <article class="rp-card rp-kpi">
+      <span class="rp-kpi-label"><i data-lucide="heart-pulse"></i> Elderly</span>
+      <strong class="rp-kpi-value" id="uaElderly">–</strong>
+      <span class="rp-kpi-foot">Registered residents</span>
+    </article>
+  </section>
+
+  <section class="rp-card rp-table-card" id="uaCard">
+    <header class="rp-table-head">
+      <div>
+        <h2>User account report</h2>
+        <span class="rp-sub">Download PDF follows the filters below.</span>
+      </div>
+      <div class="rp-toolbar">
+        <label class="rp-search">
+          <i data-lucide="search"></i>
+          <input type="search" id="uaSearch" placeholder="Search name, email, barangay" aria-label="Search accounts" />
+        </label>
+        <select id="uaRole" class="rp-select" aria-label="Role">
+          <option value="">All roles</option>
+          <option value="family">Family</option>
+          <option value="bhw">BHW</option>
+          <option value="elderly">Elderly</option>
+        </select>
+        <select id="uaStatus" class="rp-select" aria-label="Status">
+          <option value="">All statuses</option>
+          <option value="active">Active</option>
+          <option value="pending">Pending</option>
+          <option value="rejected">Rejected</option>
+          <option value="archived">Archived</option>
+        </select>
+        <button type="button" class="rp-btn" id="uaPdf"><i data-lucide="file-text"></i> Download PDF</button>
+      </div>
+    </header>
+
+    <div class="table-scroll">
+      <table class="rp-table" id="uaTable">
+        <thead>
+          <tr>
+            <th>Account</th>
+            <th>Role</th>
+            <th>Barangay</th>
+            <th>Contact</th>
+            <th>Status</th>
+            <th>Joined</th>
+          </tr>
+        </thead>
+        <tbody id="uaBody">
+          <tr><td colspan="6"><div class="rp-empty"><strong>Loading accounts…</strong></div></td></tr>
+        </tbody>
+      </table>
+    </div>
+    <div class="rp-table-head" id="uaMoreWrap" hidden style="justify-content:center">
+      <button type="button" class="rp-btn" id="uaMore">Show more</button>
+    </div>
+  </section>
+
+  <script>
+    // User account report: loads once, filters in the browser, PDF follows the filters.
+    (function () {
+      const $ = (id) => document.getElementById(id);
+      const PAGE = 25;
+      const ROLE = { family: 'Family', bhw: 'BHW', elderly: 'Elderly' };
+      let all = [];
+      let shown = PAGE;
+
+      const esc = (v) => String(v == null ? '' : v).replace(/[&<>"']/g, (c) => (
+        { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+      const icons = () => { if (window.lucide) window.lucide.createIcons(); };
+
+      function filtered() {
+        const q = $('uaSearch').value.trim().toLowerCase();
+        const role = $('uaRole').value;
+        const status = $('uaStatus').value;
+        return all.filter((r) =>
+          (!role || r.role === role) && (!status || r.status === status) &&
+          (!q || [r.name, r.email, r.phone, r.barangay, r.display_id].join(' ').toLowerCase().includes(q)));
+      }
+
+      function render() {
+        const rows = filtered();
+        const body = $('uaBody');
+        if (!rows.length) {
+          body.innerHTML = '<tr><td colspan="6"><div class="rp-empty"><i data-lucide="search-x"></i>' +
+            '<strong>No accounts match</strong><span>Try another search or filter.</span></div></td></tr>';
+        } else {
+          body.innerHTML = rows.slice(0, shown).map((r) => {
+            const contact = [r.email, r.phone].filter(Boolean).map(esc).join('<br>') || '<span class="rp-muted">—</span>';
+            return '<tr><td><strong>' + esc(r.name) + '</strong><small>ID: ' + esc(r.display_id) + '</small></td>' +
+              '<td><span class="badge badge-' + esc(r.role) + '">' + esc(ROLE[r.role] || r.role) + '</span></td>' +
+              '<td>' + (r.barangay ? esc(r.barangay) : '<span class="rp-muted">—</span>') + '</td>' +
+              '<td>' + contact + '</td>' +
+              '<td><span class="badge badge-' + esc(r.status) + '">' + esc(r.status.charAt(0).toUpperCase() + r.status.slice(1)) + '</span></td>' +
+              '<td>' + esc(r.joined) + '</td></tr>';
+          }).join('');
+        }
+        const left = rows.length - shown;
+        $('uaMoreWrap').hidden = left <= 0;
+        $('uaMore').textContent = 'Show more (' + Math.max(left, 0) + ' left)';
+        icons();
+      }
+
+      function cards(s) {
+        $('uaTotal').textContent = s.total;
+        $('uaFamily').textContent = s.family;
+        $('uaBhw').textContent = s.bhw;
+        $('uaElderly').textContent = s.elderly;
+        $('uaTotalFoot').innerHTML = '<b>' + s.active + '</b> active · <b>' + s.pending + '</b> pending · <b>' + s.archived + '</b> archived';
+        $('uaBhwFoot').innerHTML = s.pending ? '<b>' + s.pending + '</b> waiting for approval' : 'Barangay Health Workers';
+      }
+
+      ['uaSearch', 'uaRole', 'uaStatus'].forEach((id) => {
+        $(id).addEventListener(id === 'uaSearch' ? 'input' : 'change', () => { shown = PAGE; render(); });
+      });
+      $('uaMore').addEventListener('click', () => { shown += PAGE; render(); });
+      $('uaPdf').addEventListener('click', () => {
+        const params = new URLSearchParams();
+        if ($('uaRole').value) params.set('role', $('uaRole').value);
+        if ($('uaStatus').value) params.set('status', $('uaStatus').value);
+        if ($('uaSearch').value.trim()) params.set('q', $('uaSearch').value.trim());
+        window.location = "{{ url_for('admin.user_account_report_pdf') }}" + (params.toString() ? '?' + params : '');
+      });
+
+      fetch("{{ url_for('admin.user_account_report_data') }}", { headers: { 'Accept': 'application/json' } })
+        .then((res) => res.json())
+        .then((data) => {
+          if (!data.success) throw new Error('failed');
+          all = data.rows;
+          cards(data.stats);
+          render();
+        })
+        .catch(() => {
+          $('uaTotalFoot').textContent = 'Could not load';
+          $('uaBody').innerHTML = '<tr><td colspan="6"><div class="rp-empty"><i data-lucide="triangle-alert"></i>' +
+            '<strong>Could not load the accounts</strong><span>Refresh the page to try again.</span></div></td></tr>';
+          icons();
+        });
+    })();
+  </script>
 </div>
 
 <script>

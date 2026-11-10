@@ -1096,3 +1096,123 @@ def remove_photo():
     ok, message = account_profile.remove_photo(session['user_id'])
     flash(message, 'success' if ok else 'error')
     return redirect(url_for('bhw.profile'))
+
+# ---------- ELDERLY PROFILE + EDIT (BHW) ----------
+# GET  -> everything the View window shows beyond the table row: occupation,
+#         the connected family accounts (name, email, relationship) and the
+#         emergency contacts.
+# POST -> saves name, date of birth, occupation and address.
+# A BHW can only open/edit residents whose address is in their own barangay,
+# and the address must stay in that barangay (moving a resident to another
+# barangay is the admin's job).
+
+
+def _elder_accounts(elder_id):
+    """Active family accounts linked to this elder, with how they are related."""
+    rows, seen = [], set()
+    for link in db.collection('family_elder_link').where('elder_id', '==', elder_id).stream():
+        data = link.to_dict() or {}
+        uid = data.get('family_user_id')
+        if not uid or uid in seen:
+            continue
+        seen.add(uid)
+        udoc = db.collection('user_account').document(uid).get()
+        user = udoc.to_dict() if udoc.exists else None
+        if not user or user.get('deleted_at') or user.get('role') != 'family':
+            continue
+        rows.append({'name': user.get('full_name') or 'Unnamed',
+                     'email': user.get('email') or '',
+                     'phone': user.get('contact_number') or '',
+                     'relationship': data.get('relationship') or '',
+                     'role': 'Family'})
+    rows.sort(key=lambda r: r['name'].casefold())
+    return rows
+
+
+def _elder_contacts(elder_id):
+    """Emergency contacts the ALISTO device will text, A to Z."""
+    rows = []
+    for doc in db.collection('emergency_contact').where('elder_id', '==', elder_id).stream():
+        c = doc.to_dict() or {}
+        if c.get('deleted_at') or c.get('is_archived') or c.get('status') == 'INACTIVE':
+            continue
+        rows.append({'full_name': c.get('full_name') or '',
+                     'relationship': c.get('relationship') or '',
+                     'contact_num': c.get('contact_num') or '',
+                     'contact_type': c.get('contact_type') or 'OTHER'})
+    rows.sort(key=lambda r: r['full_name'].casefold())
+    return rows
+
+
+@bhw_bp.route('/elderly/<elder_id>/edit', methods=['GET', 'POST'])
+@bhw_required
+def edit_elderly(elder_id):
+    ref = db.collection('elder_profile').document(elder_id)
+    doc = ref.get()
+    elder = doc.to_dict() if doc.exists else None
+    if (not elder or elder.get('deleted_at')
+            or not _in_barangay(elder.get('address'), g.barangay)):
+        return jsonify(success=False,
+                       message='That resident could not be found in your barangay.'), 404
+
+    barangay = canonical(g.barangay) or g.barangay
+    current_address = _address_text(elder.get('address'))
+
+    if request.method == 'GET':
+        try:
+            accounts = _elder_accounts(elder_id)
+            contacts = _elder_contacts(elder_id)
+        except Exception as e:
+            return jsonify(success=False, message=f'Error: {e}'), 500
+        return jsonify(success=True, resident={
+            'full_name': elder.get('full_name') or '',
+            'date_of_birth': str(elder.get('date_of_birth') or ''),
+            'occupation': elder.get('occupation') or '',
+            'address': current_address,
+            'barangay': barangay,
+        }, accounts=accounts, contacts=contacts)
+
+    data = request.get_json(silent=True) or {}
+    full_name = (data.get('full_name') or '').strip()[:100]
+    dob = (data.get('date_of_birth') or '').strip()
+    occupation = (data.get('occupation') or '').strip()[:80]
+    address = (data.get('address') or '').strip()[:200]
+
+    if len(full_name) < 2:
+        return jsonify(success=False, message="Enter the resident's full name."), 400
+    if not dob:
+        return jsonify(success=False, message='Enter the date of birth.'), 400
+    error = _dob_error(dob)
+    if error:
+        return jsonify(success=False, message=error), 400
+    if not address:
+        return jsonify(success=False, message='Enter the address.'), 400
+    if not _in_barangay(address, g.barangay):
+        return jsonify(success=False,
+                       message=f'The address must stay in Barangay {barangay}. '
+                       'To move a resident to another barangay, ask the admin.'), 400
+
+    # Same person already registered here (not counting this resident)?
+    _ELDERS_CACHE.pop(g.barangay, None)
+    for other_id, other in _elders_in_barangay(g.barangay).items():
+        if (other_id != elder_id
+                and (other.get('full_name') or '').strip().casefold() == full_name.casefold()
+                and (other.get('date_of_birth') or '') == dob):
+            return jsonify(success=False,
+                           message=f'{full_name} is already registered in this barangay.'), 409
+
+    update = {
+        'full_name': full_name,
+        'date_of_birth': dob,
+        'occupation': occupation or None,
+        'updated_at': firestore.SERVER_TIMESTAMP,
+        'updated_by': session['user_id'],
+    }
+    # Leave the stored address alone unless it was really changed.
+    if address != current_address:
+        update['address'] = address
+    ref.update(update)
+    _ELDERS_CACHE.pop(g.barangay, None)
+
+    flash(f'{full_name} was updated.', 'success')
+    return jsonify(success=True, message='Saved.')

@@ -307,6 +307,7 @@
           data-name="{{ row.name }}"
           data-display-id="{{ row.device_ids|join(', ') or 'No device' }}"
           data-type="elderly"
+          data-edit-url="{{ url_for('bhw.edit_elderly', elder_id=row.id) }}"
           data-status="{{ row.device_status }}"
           data-subtitle="Resident{% if row.age is not none %} · Age {{ row.age }}{% endif %}"
           data-skip-meta="1"
@@ -718,4 +719,5 @@
     });
   })();
 </script>
+<script src="{{ url_for('static', filename='js/bhw_elderly_edit.js') }}"></script>
 {% endblock %}

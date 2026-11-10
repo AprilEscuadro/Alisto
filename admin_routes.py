@@ -34,8 +34,9 @@ import report_export
 import valid_id_store
 # One source of truth for reading addresses and working out whether a device is
 # online. Both portals show the same thing, so they share the same helpers.
-from bhw_routes import (PASSWORD_RULES, _address_parts, _address_text,
-                        _device_state, _short_address)
+from bhw_routes import (PASSWORD_RULES, _ELDERS_CACHE, _address_parts,
+                        _address_text, _clean_device_id, _device_state,
+                        _dob_error, _short_address)
 from database import db
 
 admin_bp = Blueprint('admin', __name__, url_prefix='/admin')
@@ -1153,6 +1154,129 @@ def add_user():
 
     flash(f'{full_name} was added as a family member and can sign in immediately.', 'success')
     return jsonify(success=True, message='Family member added.')
+
+
+@admin_bp.route('/users/check-elderly-device', methods=['POST'])
+@admin_required
+def check_elderly_device():
+    """Live check for the Device ID box when registering an Elderly."""
+    data = request.get_json(silent=True) or {}
+    serial = _clean_device_id(data.get('device_id'))
+    if not serial:
+        return jsonify(valid=False, message='Enter the Device ID.'), 400
+    doc = db.collection('device').document(serial).get()
+    if not doc.exists:
+        return jsonify(valid=False,
+                       message='No matching Device ID found. Check the sticker or QR on the device.')
+    if (doc.to_dict() or {}).get('is_registered'):
+        return jsonify(valid=False,
+                       message='This device is already linked to another resident.')
+    return jsonify(valid=True, message='Device ID verified.')
+
+
+@admin_bp.route('/users/new-elderly', methods=['POST'])
+@admin_required
+def add_elderly_user():
+    """Registers an Elderly resident from the admin Add User window.
+
+    Elderly have no web login, so no account is created: only the elder_profile
+    and the link to their ALISTO device. The Device ID is what lets a family
+    member connect to this resident later (the family registration page looks
+    the device up and joins the resident that is already linked to it).
+
+    POSTed via fetch() from setupAddUser() in admin.js and answers with JSON."""
+    f = request.form
+    full_name = f.get('full_name', '').strip()
+    dob = f.get('elder_dob', '').strip()
+    house_no = f.get('elder_house_no', '').strip()[:40]
+    street = f.get('elder_street', '').strip()[:80]
+    barangay = _bg.canonical(f.get('elder_barangay', '').strip()) or ''
+    serial = _clean_device_id(f.get('elder_device_id'))
+
+    if len(full_name) < 2:
+        return jsonify(success=False, message="Enter the resident's full name."), 400
+    if not dob:
+        return jsonify(success=False, message='Enter the date of birth.'), 400
+    error = _dob_error(dob)
+    if error:
+        return jsonify(success=False, message=error), 400
+    if not serial:
+        return jsonify(success=False,
+                       message='Enter the Device ID so a family member can connect to this resident.'), 400
+    if barangay not in CEBU_CITY_BARANGAYS:
+        return jsonify(success=False, message='Please select a valid barangay.'), 400
+
+    address = ', '.join(
+        filter(None, [house_no, street, barangay, 'Cebu City', 'Cebu']))
+
+    # Same person already registered?
+    for doc in db.collection('elder_profile').stream():
+        elder = doc.to_dict() or {}
+        if elder.get('deleted_at'):
+            continue
+        if ((elder.get('full_name') or '').strip().casefold() == full_name.casefold()
+                and (elder.get('date_of_birth') or '') == dob):
+            return jsonify(success=False,
+                           message=f'{full_name} is already registered.'), 409
+
+    try:
+        device_doc = db.collection('device').document(serial).get()
+        if not device_doc.exists:
+            return jsonify(success=False,
+                           message='No matching Device ID found. Check the sticker or QR on the device.'), 400
+        device_data = device_doc.to_dict() or {}
+        if device_data.get('is_registered'):
+            return jsonify(success=False,
+                           message='This device is already linked to another resident.'), 409
+
+        elder_ref = db.collection('elder_profile').document()
+        elder_ref.set({
+            'full_name': full_name,
+            'date_of_birth': dob,
+            'address': address,
+            'occupation': None,
+            'photo_url': None,
+            'created_at': firestore.SERVER_TIMESTAMP,
+            'created_by': session['user_id'],
+            'deleted_at': None,
+            'is_archived': 0,
+        })
+        elder_id = elder_ref.id
+
+        db.collection('device').document(serial).set({
+            'elder_id': elder_id,
+            'is_registered': True,
+            'registered_at': firestore.SERVER_TIMESTAMP,
+            'registered_by': session['user_id'],
+            'serial_number': serial,
+            'gps': device_data.get('gps', 'Inactive'),
+            'sim_number': device_data.get('sim_number'),
+            'status': device_data.get('status', 'Offline'),
+        }, merge=True)
+
+        # History row (best effort: never blocks the registration)
+        try:
+            db.collection('activity_log').add({
+                'elder_id': elder_id, 'type': 'device',
+                'title': f'{full_name} was registered by the Administrator',
+                'detail': f'Device {serial} linked',
+                'badge': 'Linked',
+                'badge_class': 'success',
+                'location_address': address,
+                'device_id': serial,
+                'actor_user_id': session['user_id'],
+                'ref_id': None,
+                'created_at': firestore.SERVER_TIMESTAMP,
+            })
+        except Exception as e:
+            print(f'[admin] could not log activity: {e}')
+
+        _ELDERS_CACHE.clear()   # the BHW portal shows them right away
+        flash(f'{full_name} was added as an elderly resident.', 'success')
+        return jsonify(success=True, message='Elderly added.')
+
+    except Exception as e:
+        return jsonify(success=False, message=f'Error: {str(e)}'), 500
 
 
 @admin_bp.route('/users/<user_id>/edit', methods=['POST'])
@@ -2621,3 +2745,330 @@ def remove_photo():
     _PHOTO_CACHE.pop(session['user_id'], None)
     flash(message, 'success' if ok else 'error')
     return redirect(url_for('admin.profile'))
+
+
+# ---------- EMERGENCY CONTACTS (Users page > elderly profile) ----------
+from bhw_routes import _clean_ph_mobile  # noqa: E402
+
+# Same emergency_contact records the family portal manages, so whatever the
+# admin changes here is what the family sees and what the ALISTO device texts.
+# Delete is a soft delete (status INACTIVE + deleted_at), like the family side.
+
+ADMIN_CONTACT_MAX = 10
+ADMIN_CONTACT_FAMILY_RELATIONS = {'Son/Daughter', 'Spouse', 'Sibling',
+                                  'Grandchild', 'Relative'}
+
+
+def _admin_contact_elder_ok(elder_id):
+    doc = db.collection('elder_profile').document(elder_id).get()
+    return doc.exists and not (doc.to_dict() or {}).get('deleted_at')
+
+
+def _admin_active_contacts(elder_id):
+    """[(doc_id, data)] of the contacts the device will text, A to Z."""
+    rows = []
+    for doc in db.collection('emergency_contact').where('elder_id', '==', elder_id).stream():
+        c = doc.to_dict() or {}
+        if c.get('deleted_at') or c.get('is_archived') or c.get('status') == 'INACTIVE':
+            continue
+        rows.append((doc.id, c))
+    rows.sort(key=lambda r: (r[1].get('full_name') or '').lower())
+    return rows
+
+
+def _admin_contact_view(doc_id, c):
+    return {'id': doc_id,
+            'full_name': c.get('full_name') or '',
+            'relationship': c.get('relationship') or '',
+            'contact_num': c.get('contact_num') or '',
+            'contact_type': c.get('contact_type') or 'OTHER'}
+
+
+def _admin_contact_form(keep_type=None):
+    """Validated fields from the JSON body, or (None, error message)."""
+    data = request.get_json(silent=True) or {}
+    full_name = (data.get('full_name') or '').strip()[:100]
+    relationship = (data.get('relationship') or '').strip()[:60]
+    number = _clean_ph_mobile(data.get('contact_num'))
+    if not full_name:
+        return None, 'Enter the contact\'s full name.'
+    if not number:
+        return None, 'Enter a valid mobile number, like 09171234567.'
+    if keep_type == 'BHW':
+        contact_type = 'BHW'
+    elif relationship in ADMIN_CONTACT_FAMILY_RELATIONS:
+        contact_type = 'FAMILY'
+    else:
+        contact_type = 'OTHER'
+    return {'full_name': full_name, 'relationship': relationship,
+            'contact_num': number, 'contact_type': contact_type}, None
+
+
+@admin_bp.route('/users/<elder_id>/contacts')
+@admin_required
+def elder_contacts(elder_id):
+    if not _admin_contact_elder_ok(elder_id):
+        return jsonify(success=False, message='That user could not be found.'), 404
+    try:
+        contacts = [_admin_contact_view(i, c)
+                    for i, c in _admin_active_contacts(elder_id)]
+    except Exception as e:
+        return jsonify(success=False, message=f'Error: {e}'), 500
+    return jsonify(success=True, contacts=contacts, max_contacts=ADMIN_CONTACT_MAX)
+
+
+@admin_bp.route('/users/<elder_id>/contacts/add', methods=['POST'])
+@admin_required
+def add_elder_contact(elder_id):
+    if not _admin_contact_elder_ok(elder_id):
+        return jsonify(success=False, message='That user could not be found.'), 404
+    fields, error = _admin_contact_form()
+    if error:
+        return jsonify(success=False, message=error), 400
+    existing = _admin_active_contacts(elder_id)
+    if len(existing) >= ADMIN_CONTACT_MAX:
+        return jsonify(success=False,
+                       message=f'You can add up to {ADMIN_CONTACT_MAX} contacts.'), 400
+    if any(c.get('contact_num') == fields['contact_num'] for _, c in existing):
+        return jsonify(success=False, message='That number is already a contact.'), 409
+    db.collection('emergency_contact').add({
+        **fields, 'email_add': '', 'elder_id': elder_id, 'status': 'ACTIVE',
+        'created_by': session['user_id'],
+        'created_at': firestore.SERVER_TIMESTAMP,
+        'updated_at': firestore.SERVER_TIMESTAMP,
+        'deleted_at': None, 'is_archived': False,
+    })
+    return jsonify(success=True, message='Contact added.')
+
+
+def _admin_contact_ref(elder_id, contact_id):
+    """(ref, data) when the contact belongs to this elder and is not deleted."""
+    ref = db.collection('emergency_contact').document(contact_id)
+    doc = ref.get()
+    c = (doc.to_dict() or {}) if doc.exists else {}
+    if c.get('elder_id') != elder_id or c.get('deleted_at'):
+        return None, None
+    return ref, c
+
+
+@admin_bp.route('/users/<elder_id>/contacts/<contact_id>/update', methods=['POST'])
+@admin_required
+def update_elder_contact(elder_id, contact_id):
+    ref, current = _admin_contact_ref(elder_id, contact_id)
+    if not ref:
+        return jsonify(success=False, message='Contact not found.'), 404
+    fields, error = _admin_contact_form(keep_type=current.get('contact_type'))
+    if error:
+        return jsonify(success=False, message=error), 400
+    if any(i != contact_id and c.get('contact_num') == fields['contact_num']
+           for i, c in _admin_active_contacts(elder_id)):
+        return jsonify(success=False, message='That number is already a contact.'), 409
+    ref.update({**fields, 'updated_at': firestore.SERVER_TIMESTAMP,
+                'updated_by': session['user_id']})
+    return jsonify(success=True, message='Contact updated.')
+
+
+@admin_bp.route('/users/<elder_id>/contacts/<contact_id>/delete', methods=['POST'])
+@admin_required
+def delete_elder_contact(elder_id, contact_id):
+    ref, _ = _admin_contact_ref(elder_id, contact_id)
+    if not ref:
+        return jsonify(success=False, message='Contact not found.'), 404
+    ref.update({'status': 'INACTIVE', 'is_archived': True,
+                'deleted_at': firestore.SERVER_TIMESTAMP,
+                'updated_at': firestore.SERVER_TIMESTAMP,
+                'updated_by': session['user_id']})
+    return jsonify(success=True, message='Contact removed.')
+
+# ---------- USER ACCOUNT REPORT (Reports page) ----------
+# Module 4.1 "Generate User Account Report": a small summary + table of every
+# Family, BHW and Elderly account, with a PDF download. Both the page and the
+# PDF read the same rows, so the numbers always match.
+
+
+USER_REPORT_ROLES = {'family': 'Family', 'bhw': 'BHW', 'elderly': 'Elderly'}
+USER_REPORT_STATUSES = ('active', 'pending', 'rejected', 'archived')
+
+
+def _user_report_rows():
+    """One row per Family / BHW account and per Elderly profile, newest first."""
+    accounts = _active_docs('user_account')
+    elders = _active_docs('elder_profile')
+
+    elder_barangay = {eid: _bg.find_in_parts(_address_parts(e.get('address')))
+                      for eid, e in elders}
+    elders_per_family = {}
+    for doc in db.collection('family_elder_link').stream():
+        link = doc.to_dict() or {}
+        elders_per_family.setdefault(
+            link.get('family_user_id'), []).append(link.get('elder_id'))
+    bhw_barangay = {}
+    for doc in db.collection('bhw_profile').stream():
+        p = doc.to_dict() or {}
+        bhw_barangay[p.get('user_id')] = p.get('barangay_assigned') or ''
+
+    rows = []
+    for eid, e in elders:
+        rows.append({
+            'display_id': _short_id('ELD', eid), 'role': 'elderly',
+            'name': e.get('full_name') or 'Unnamed',
+            'barangay': elder_barangay.get(eid, ''),
+            'email': '', 'phone': '',
+            'status': 'archived' if e.get('is_archived') else 'active',
+            'joined': _fmt_date(e.get('created_at')),
+            'sort': _sort_key(e.get('created_at')),
+        })
+
+    for uid, u in accounts:
+        role = u.get('role')
+        if role not in ('family', 'bhw'):
+            continue  # admins are not listed
+        if role == 'family':
+            status = 'archived' if u.get('is_archived') else 'active'
+            barangay = next((elder_barangay[e] for e in elders_per_family.get(uid, [])
+                             if elder_barangay.get(e)), '')
+            prefix = 'FAM'
+        else:
+            approval = u.get('approval_status', 'pending')
+            if u.get('is_archived'):
+                status = 'archived'
+            else:
+                status = {'approved': 'active',
+                          'rejected': 'rejected'}.get(approval, 'pending')
+            assigned = bhw_barangay.get(uid, '')
+            barangay = _bg.canonical(assigned) or assigned
+            prefix = 'BHW'
+        rows.append({
+            'display_id': _short_id(prefix, uid), 'role': role,
+            'name': u.get('full_name') or 'Unnamed',
+            'barangay': barangay,
+            'email': u.get('email') or '',
+            'phone': u.get('contact_number') or '',
+            'status': status,
+            'joined': _fmt_date(u.get('created_at')),
+            'sort': _sort_key(u.get('created_at')),
+        })
+
+    rows.sort(key=lambda r: (-r['sort'], r['name'].casefold()))
+    return rows
+
+
+def _user_report_stats(rows):
+    roles = Counter(r['role'] for r in rows)
+    statuses = Counter(r['status'] for r in rows)
+    return {'total': len(rows),
+            'family': roles['family'], 'bhw': roles['bhw'], 'elderly': roles['elderly'],
+            'active': statuses['active'], 'pending': statuses['pending'],
+            'rejected': statuses['rejected'], 'archived': statuses['archived']}
+
+
+def _user_report_filter(rows):
+    """Apply ?role= ?status= ?q= (the same filters the page table uses)."""
+    role = request.args.get('role', '').strip().lower()
+    status = request.args.get('status', '').strip().lower()
+    q = request.args.get('q', '').strip().lower()
+    out = []
+    for r in rows:
+        if role in USER_REPORT_ROLES and r['role'] != role:
+            continue
+        if status in USER_REPORT_STATUSES and r['status'] != status:
+            continue
+        if q and q not in ' '.join([r['name'], r['email'], r['phone'],
+                                    r['barangay'], r['display_id']]).lower():
+            continue
+        out.append(r)
+    label_bits = []
+    if role in USER_REPORT_ROLES:
+        label_bits.append(f'Role: {USER_REPORT_ROLES[role]}')
+    if status in USER_REPORT_STATUSES:
+        label_bits.append(f'Status: {status.capitalize()}')
+    if q:
+        label_bits.append(f'Search: "{q}"')
+    return out, ' · '.join(label_bits) or 'All accounts'
+
+
+@admin_bp.route('/reports/user-accounts')
+@admin_required
+def user_account_report_data():
+    rows = _user_report_rows()
+    for r in rows:
+        r.pop('sort', None)
+    return jsonify(success=True, rows=rows, stats=_user_report_stats(rows))
+
+
+def _user_report_pdf(rows, stats, filter_label, generated):
+    from xml.sax.saxutils import escape
+    from reportlab.lib import colors
+    from reportlab.lib.pagesizes import A4, landscape
+    from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+    from reportlab.lib.units import cm
+    from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle
+
+    blue = colors.HexColor('#4a86f7')
+    page = landscape(A4)
+    buf = io.BytesIO()
+    doc = SimpleDocTemplate(buf, pagesize=page, leftMargin=1.5 * cm, rightMargin=1.5 * cm,
+                            topMargin=1.4 * cm, bottomMargin=1.5 * cm,
+                            title='ALISTO User Account Report')
+    ss = getSampleStyleSheet()
+    h1 = ParagraphStyle(
+        'h1', parent=ss['Title'], textColor=colors.HexColor('#0f1b3d'))
+    h2 = ParagraphStyle(
+        'h2', parent=ss['Heading2'], textColor=blue, spaceBefore=10)
+    small = ParagraphStyle(
+        'small', parent=ss['Normal'], fontSize=8, leading=10)
+    body = ss['Normal']
+
+    def table(header, data, widths=None):
+        cells = [[Paragraph(f'<b>{escape(h)}</b>', small) for h in header]]
+        cells += [[Paragraph(escape(str(c)), small) for c in row] for row in data] or \
+                 [[Paragraph('No accounts match.', small)] +
+                  [''] * (len(header) - 1)]
+        t = Table(cells, colWidths=widths, repeatRows=1)
+        t.setStyle(TableStyle([
+            ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#eaf1ff')),
+            ('GRID', (0, 0), (-1, -1), 0.4, colors.HexColor('#d5dbe8')),
+            ('ROWBACKGROUNDS', (0, 1), (-1, -1),
+             [colors.white, colors.HexColor('#f7f9fc')]),
+            ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
+        ]))
+        return t
+
+    usable = page[0] - 3 * cm
+    story = [
+        Paragraph('ALISTO User Account Report', h1),
+        Paragraph(
+            f'Filter: <b>{escape(filter_label)}</b> &nbsp;&nbsp; Generated: {escape(generated)}', body),
+        Spacer(1, 8),
+        Paragraph('Summary', h2),
+        table(['Total', 'Family', 'BHW', 'Elderly', 'Active', 'Pending', 'Rejected', 'Archived'],
+              [[stats['total'], stats['family'], stats['bhw'], stats['elderly'],
+                stats['active'], stats['pending'], stats['rejected'], stats['archived']]]),
+        Paragraph('Accounts', h2),
+        table(['ID', 'Name', 'Role', 'Barangay', 'Email', 'Phone', 'Status', 'Joined'],
+              [[r['display_id'], r['name'], USER_REPORT_ROLES.get(r['role'], r['role']),
+                r['barangay'] or '—', r['email'] or '—', r['phone'] or '—',
+                r['status'].capitalize(), r['joined']] for r in rows],
+              widths=[usable * w for w in (.10, .19, .08, .15, .21, .11, .07, .09)]),
+    ]
+
+    def footer(canvas, d):
+        canvas.setFont('Helvetica', 8)
+        canvas.setFillColor(colors.grey)
+        canvas.drawString(1.5 * cm, 0.9 * cm, 'ALISTO - User Account Report')
+        canvas.drawRightString(page[0] - 1.5 * cm, 0.9 * cm, f'Page {d.page}')
+
+    doc.build(story, onFirstPage=footer, onLaterPages=footer)
+    return buf.getvalue()
+
+
+@admin_bp.route('/reports/user-accounts.pdf')
+@admin_required
+def user_account_report_pdf():
+    rows, filter_label = _user_report_filter(_user_report_rows())
+    now = datetime.now(ac.PH_TIME)
+    pdf = _user_report_pdf(rows, _user_report_stats(rows), filter_label,
+                           now.strftime('%b %d, %Y %I:%M %p'))
+    return Response(pdf, mimetype='application/pdf', headers={
+        'Content-Disposition':
+            f"attachment; filename=alisto-user-accounts-{now.strftime('%Y-%m-%d')}.pdf"})

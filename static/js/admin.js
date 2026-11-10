@@ -692,6 +692,27 @@
     const famBox = $('#auFamily');
     const bhwBox = $('#auBhw');
     const bhwBrgyBox = $('#auBhwBarangay');
+    const elderBox = $('#auElderly');
+    const elderLeftBox = $('#auElderLeft');
+    const loginBox = $('#auLogin');
+    const emailWrap = $('#auEmailWrap');
+    const contactWrap = $('#auContactWrap');
+    const card = $('.au-card', modal);
+    const leftTitle = $('#auLeftTitle');
+    const subtitle = $('#addUserSub');
+    const elderDevice = $('#au_elder_device');
+    const elderMsg = $('#auElderMsg');
+    const elderScan = $('#auScan');
+    const ELDER_HINT = 'A family member connects to this resident using this Device ID.';
+    let checkedElderDevice = '';
+    const scanModal = $('#auScannerModal');
+    const scanBtn = $('#auScanBtn');
+    const scanVideo = $('#auQrVideo');
+    const scanCanvas = $('#auQrCanvas');
+    const scanHint = $('#auScannerHint');
+    const SCAN_HINT = 'Point your camera at the QR code on the device.';
+    let scanStream = null;
+    let scanning = false;
     const addressBox = $('#auAddress');
     const pw = $('#au_password');
     const pw2 = $('#au_confirm');
@@ -745,6 +766,7 @@
         healthCentersByBarangay = data.health_centers || {};
         fillSelect($('#au_family_barangay'), 'Select barangay', data.barangays);
         fillSelect($('#au_barangay'), 'Select barangay', data.barangays);
+        fillSelect($('#au_elder_barangay'), 'Select barangay', data.barangays);
         fillSelect(bhwBarangay, 'Select assigned barangay', data.barangays);
         barangaysLoaded = true;
       } catch (err) {
@@ -767,6 +789,19 @@
       show(famBox, role === 'family');
       show(bhwBox, role === 'bhw');
       show(bhwBrgyBox, role === 'bhw');
+      show(elderBox, role === 'elderly');
+      show(elderLeftBox, role === 'elderly');
+
+      // An elderly resident has no web login, so there is no account to create:
+      // hide email, phone and the whole password block (disabled = not sent / not required).
+      const noLogin = role === 'elderly';
+      [emailWrap, contactWrap, loginBox].forEach((el) => { el.hidden = noLogin; });
+      [$('#au_email'), $('#au_contact_number'), pw, pw2].forEach((input) => { input.disabled = noLogin; });
+      card.classList.toggle('is-elderly', noLogin);
+      leftTitle.textContent = noLogin ? 'Resident Information' : 'Create Account';
+      subtitle.textContent = noLogin
+        ? 'Registers an elderly resident. No login is created. A family member connects later using the Device ID.'
+        : 'Creates a Family or BHW account that can sign in right away. No approval needed.';
       $('#auLengthText').textContent = role === 'bhw' ? 'Be at least 8 characters' : 'Be at least 6 characters';
       updateRules();
     }
@@ -884,6 +919,124 @@
       }
     });
 
+    // ----- elderly Device ID: live check (admin.check_elderly_device)
+    function setElderMsg(text, state) {
+      elderMsg.textContent = text;
+      elderMsg.classList.toggle('is-bad', state === 'bad');
+      elderMsg.classList.toggle('is-ok', state === 'ok');
+      elderScan.classList.toggle('is-bad', state === 'bad');
+      elderScan.classList.toggle('is-ok', state === 'ok');
+    }
+
+    async function checkElderDevice() {
+      const id = elderDevice.value.trim();
+      if (!id) { setElderMsg('Enter the Device ID.', 'bad'); return false; }
+      try {
+        const res = await fetch(modal.dataset.checkElderDevice, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ device_id: id }),
+        });
+        const data = await res.json();
+        if (!data.valid) { setElderMsg(data.message || 'Invalid Device ID.', 'bad'); return false; }
+        checkedElderDevice = id;
+        setElderMsg(data.message || 'Device ID verified.', 'ok');
+        return true;
+      } catch (err) {
+        setElderMsg('Could not check the Device ID. Try again.', 'bad');
+        return false;
+      }
+    }
+    elderDevice.addEventListener('blur', () => {
+      if (elderDevice.value.trim() && elderDevice.value.trim() !== checkedElderDevice) checkElderDevice();
+    });
+    elderDevice.addEventListener('input', () => {
+      if (elderDevice.value.trim() !== checkedElderDevice) {
+        checkedElderDevice = '';
+        setElderMsg(ELDER_HINT, '');
+      }
+    });
+    // ----- QR scanner for the Elderly Device ID (same flow as the sign-up page:
+    //       open the camera, read the QR with jsQR, fill in the Device ID, then verify it)
+    function stopScan() {
+      scanning = false;
+      if (scanStream) {
+        scanStream.getTracks().forEach((track) => track.stop());
+        scanStream = null;
+      }
+    }
+
+    function closeScan() {
+      scanModal.hidden = true;
+      stopScan();
+    }
+
+    function scanLoop() {
+      if (!scanning) return;
+      if (scanVideo.readyState === scanVideo.HAVE_ENOUGH_DATA) {
+        scanCanvas.width = scanVideo.videoWidth;
+        scanCanvas.height = scanVideo.videoHeight;
+        const ctx = scanCanvas.getContext('2d');
+        ctx.drawImage(scanVideo, 0, 0, scanCanvas.width, scanCanvas.height);
+        const img = ctx.getImageData(0, 0, scanCanvas.width, scanCanvas.height);
+        const code = window.jsQR && window.jsQR(img.data, img.width, img.height, { inversionAttempts: 'dontInvert' });
+        if (code && code.data) {
+          onScanned(code.data.trim());
+          return;   // result found, stop looping
+        }
+      }
+      requestAnimationFrame(scanLoop);
+    }
+
+    function onScanned(deviceId) {
+      stopScan();
+      scanHint.textContent = 'QR code detected! Processing...';
+      scanHint.classList.add('is-success');
+      // short pause so the "detected" state is visible, then fill + verify the Device ID
+      setTimeout(() => {
+        closeScan();
+        elderDevice.value = deviceId;
+        checkedElderDevice = '';
+        checkElderDevice();
+      }, 500);
+    }
+
+    function openScan() {
+      errorBox.hidden = true;
+      if (typeof window.jsQR !== 'function') {
+        errorBox.textContent = 'The QR scanner could not load. Check your internet connection, or type the Device ID instead.';
+        errorBox.hidden = false;
+        return;
+      }
+      scanHint.textContent = SCAN_HINT;
+      scanHint.classList.remove('is-success');
+      scanModal.hidden = false;
+
+      if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+        scanHint.textContent = 'Camera is not available here. Use HTTPS or localhost, or type the Device ID.';
+        return;
+      }
+      navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } })
+        .then((stream) => {
+          if (scanModal.hidden) {   // closed before the camera was ready
+            stream.getTracks().forEach((track) => track.stop());
+            return;
+          }
+          scanStream = stream;
+          scanVideo.srcObject = stream;
+          scanVideo.play();
+          scanning = true;
+          requestAnimationFrame(scanLoop);
+        })
+        .catch(() => {
+          scanHint.textContent = 'Unable to access the camera. Please allow camera permission in your browser, or type the Device ID.';
+        });
+    }
+
+    scanBtn.addEventListener('click', openScan);
+    scanModal.addEventListener('click', (e) => {
+      if (e.target.closest('[data-scan-close]')) closeScan();
+    });
     // ----- open / close
     open.addEventListener('click', () => {
       modal.hidden = false;
@@ -894,7 +1047,9 @@
       if (e.target.closest('[data-close-modal]')) modal.hidden = true;
     });
     document.addEventListener('keydown', (e) => {
-      if (e.key === 'Escape') modal.hidden = true;
+      if (e.key !== 'Escape') return;
+      if (!scanModal.hidden) closeScan();   // close the scanner first, keep the form open
+      else modal.hidden = true;
     });
 
     // ----- submit
@@ -931,10 +1086,23 @@
           return;
         }
       }
+      // An elderly resident needs a verified Device ID too.
+      if (role === 'elderly' && elderDevice.value.trim() !== checkedElderDevice) {
+        const ok = await checkElderDevice();
+        if (!ok) {
+          errorBox.textContent = elderMsg.textContent;
+          errorBox.hidden = false;
+          button.disabled = false;
+          button.textContent = originalText;
+          return;
+        }
+      }
       updateRelationship();
 
       try {
-        const res = await fetch(form.action, { method: 'POST', body: new FormData(form) });
+        // Elderly go to their own route (no account is created, only a resident profile).
+        const url = role === 'elderly' ? form.dataset.elderlyAction : form.action;
+        const res = await fetch(url, { method: 'POST', body: new FormData(form) });
         const data = await res.json().catch(() => ({ success: false, message: 'Something went wrong on the server. Please try again.' }));
         if (data.success) {
           window.location.reload();
@@ -1116,7 +1284,9 @@
       right += section('users', 'Linked family', fam.length
         ? `<div class="up-stack">${fam.map((n) => person(n, 'Family member', 'blue')).join('')}</div>`
         : empty('user-x', 'No family linked.'));
-      right += planSec;
+      right += section('phone-call', 'Emergency contacts',
+        '<div class="up-contacts" id="upContacts"><div class="up-note"><i data-lucide="loader"></i>Loading…</div></div>');
+      left += planSec;
     } else if (ds.type === 'family') {
       left += planSec;
       const elders = lines(d['Linked Elder']);
@@ -1139,6 +1309,7 @@
     body.innerHTML = `<div class="up-col">${left}</div><div class="up-col">${right}</div>`;
     renderFooterView();
     icons();
+    if (ds.type === 'elderly') loadContacts();
   }
 
   function renderFooterView() {
@@ -1228,6 +1399,119 @@
     btn.disabled = false;
     btn.lastChild.textContent = 'Save changes';
   }
+
+  // ---------- EMERGENCY CONTACTS (elderly profile only) ----------
+  const REL_OPTIONS = ['Son/Daughter', 'Spouse', 'Sibling', 'Grandchild', 'Relative', 'Neighbor', 'Caregiver', 'Other'];
+  const cstate = { list: [], max: 10, editing: null, removing: null, error: '' };
+  const contactsUrl = (suffix = '') => row.dataset.editUrl.replace(/\/edit$/, '/contacts') + suffix;
+
+  function contactForm(c) {
+    const rels = c.relationship && !REL_OPTIONS.includes(c.relationship) ? [c.relationship, ...REL_OPTIONS] : REL_OPTIONS;
+    const opts = rels.map((o) => `<option value="${esc(o)}"${o === c.relationship ? ' selected' : ''}>${esc(o)}</option>`).join('');
+    return `<div class="up-cform" data-cform="${esc(c.id || 'new')}">
+      <label class="up-field"><span>Full name</span><input type="text" data-cf="full_name" maxlength="100" value="${esc(c.full_name)}" placeholder="e.g. Ana Santos" /></label>
+      <label class="up-field"><span>Mobile number</span><input type="tel" data-cf="contact_num" maxlength="20" value="${esc(c.contact_num)}" placeholder="09XX XXX XXXX" /></label>
+      <label class="up-field"><span>Relationship</span><select data-cf="relationship"><option value="">Select…</option>${opts}</select></label>
+      <div class="up-cform-actions">
+        <button type="button" class="up-btn up-btn-ghost" data-contact-cancel>Cancel</button>
+        <button type="button" class="up-btn up-btn-dark" data-contact-save>Save</button>
+      </div></div>`;
+  }
+
+  function renderContacts() {
+    const box = $('#upContacts');
+    if (!box) return;
+    const initials = (n) => n.split(/\s+/).slice(0, 2).map((w) => w[0] || '').join('').toUpperCase();
+    let html = cstate.error ? `<div class="up-c-error">${esc(cstate.error)}</div>` : '';
+    if (!cstate.list.length && cstate.editing !== 'new') {
+      html += '<div class="up-note"><i data-lucide="phone-off"></i>No emergency contacts yet.</div>';
+    }
+    html += cstate.list.map((c) => {
+      if (cstate.editing === c.id) return contactForm(c);
+      const sub = [c.relationship, c.contact_num].filter(Boolean).join(' · ');
+      const actions = cstate.removing === c.id
+        ? `<div class="up-contact-actions"><small>Remove?</small>
+             <button type="button" class="up-btn up-btn-ghost up-btn-sm" data-contact-cancel>No</button>
+             <button type="button" class="up-btn up-btn-danger up-btn-sm" data-contact-remove="${esc(c.id)}">Yes</button></div>`
+        : `<div class="up-contact-actions">
+             <button type="button" class="up-icon-btn" data-contact-edit="${esc(c.id)}" aria-label="Edit contact"><i data-lucide="pencil"></i></button>
+             <button type="button" class="up-icon-btn up-icon-btn-danger" data-contact-del="${esc(c.id)}" aria-label="Remove contact"><i data-lucide="trash-2"></i></button></div>`;
+      return `<div class="up-person up-contact">
+        <span class="up-person-avatar tone-blue">${esc(initials(c.full_name))}</span>
+        <div class="up-contact-main"><strong>${esc(c.full_name)}</strong><small>${esc(sub)}</small></div>${actions}</div>`;
+    }).join('');
+    if (cstate.editing === 'new') html += contactForm({});
+    else if (cstate.list.length < cstate.max) {
+      html += '<button type="button" class="up-btn up-btn-ghost up-contact-add" data-contact-add><i data-lucide="plus"></i>Add contact</button>';
+    }
+    box.innerHTML = html;
+    icons();
+  }
+
+  async function loadContacts() {
+    const forRow = row;
+    cstate.editing = null; cstate.removing = null; cstate.error = '';
+    try {
+      const res = await fetch(contactsUrl());
+      const data = await res.json();
+      if (row !== forRow) return;
+      if (!data.success) throw new Error(data.message);
+      cstate.list = data.contacts || [];
+      cstate.max = data.max_contacts || 10;
+    } catch (x) {
+      if (row !== forRow) return;
+      const box = $('#upContacts');
+      if (box) box.innerHTML = '<div class="up-note"><i data-lucide="triangle-alert"></i>Could not load the emergency contacts.</div>';
+      icons();
+      return;
+    }
+    renderContacts();
+  }
+
+  async function sendContact(url, payload) {
+    const forRow = row;
+    try {
+      const res = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload || {}) });
+      const data = await res.json().catch(() => ({ success: false, message: 'Something went wrong on the server. Please try again.' }));
+      if (row !== forRow) return;
+      if (data.success) { await loadContacts(); return; }
+      cstate.error = data.message || 'Could not save the contact.';
+    } catch (x) {
+      if (row !== forRow) return;
+      cstate.error = 'Could not reach the server. Check your connection and try again.';
+    }
+    renderContacts();
+  }
+
+  function saveContact(formEl) {
+    const val = (k) => ($(`[data-cf="${k}"]`, formEl) || {}).value || '';
+    const id = formEl.dataset.cform;
+    cstate.error = '';
+    sendContact(id === 'new' ? contactsUrl('/add') : contactsUrl(`/${id}/update`), {
+      full_name: val('full_name'), contact_num: val('contact_num'), relationship: val('relationship'),
+    });
+  }
+
+  body.addEventListener('click', (e) => {
+    const t = e.target.closest('[data-contact-add],[data-contact-edit],[data-contact-del],[data-contact-remove],[data-contact-cancel],[data-contact-save]');
+    if (!t || !$('#upContacts')) return;
+    cstate.error = '';
+    if (t.hasAttribute('data-contact-add')) { cstate.editing = 'new'; cstate.removing = null; }
+    else if (t.hasAttribute('data-contact-edit')) { cstate.editing = t.getAttribute('data-contact-edit'); cstate.removing = null; }
+    else if (t.hasAttribute('data-contact-del')) { cstate.removing = t.getAttribute('data-contact-del'); cstate.editing = null; }
+    else if (t.hasAttribute('data-contact-cancel')) { cstate.editing = null; cstate.removing = null; }
+    else if (t.hasAttribute('data-contact-remove')) { sendContact(contactsUrl(`/${t.getAttribute('data-contact-remove')}/delete`)); return; }
+    else if (t.hasAttribute('data-contact-save')) { saveContact(t.closest('[data-cform]')); return; }
+    renderContacts();
+    const first = $('[data-cf="full_name"]', body);
+    if (first && cstate.editing) first.focus();
+  });
+  body.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter' && e.target.matches && e.target.matches('[data-cf]')) {
+      e.preventDefault();
+      saveContact(e.target.closest('[data-cform]'));
+    }
+  });
 
   // ---------- open / close ----------
   function open(tr) {

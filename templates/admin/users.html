@@ -248,13 +248,13 @@
 
 <!-- ADD USER MODAL (Family or BHW). Same fields as the public registration page.
      Posts to admin.add_user, which reuses the registration rules. -->
-<div class="admin-modal" id="addUserModal" hidden>
+<div class="admin-modal" id="addUserModal" data-check-elder-device="{{ url_for('admin.check_elderly_device') }}" hidden>
   <div class="admin-modal-backdrop" data-close-modal></div>
   <div class="admin-modal-card au-card" role="dialog" aria-modal="true" aria-labelledby="addUserTitle">
     <div class="admin-modal-header">
       <div>
         <strong id="addUserTitle">Add User</strong>
-        <small class="text-muted">Creates a Family or BHW account that can sign in right away. No approval needed.</small>
+        <small class="text-muted" id="addUserSub">Creates a Family or BHW account that can sign in right away. No approval needed.</small>
       </div>
       <button type="button" class="admin-modal-close" data-close-modal aria-label="Close">
         <i data-lucide="x"></i>
@@ -263,28 +263,28 @@
 
     <div class="admin-alert admin-alert-error" id="addUserError" hidden></div>
 
-    <form method="POST" action="{{ url_for('admin.add_user') }}" id="addUserForm" enctype="multipart/form-data">
+    <form method="POST" action="{{ url_for('admin.add_user') }}" data-elderly-action="{{ url_for('admin.add_elderly_user') }}" id="addUserForm" enctype="multipart/form-data">
       <div class="au-columns">
 
         <!-- LEFT: Create Your Account (same order as the registration page) -->
-        <section class="au-col">
-          <h3 class="au-title"><i data-lucide="user-round"></i> Create Account</h3>
+        <section class="au-col au-col-left">
+          <h3 class="au-title"><i data-lucide="user-round"></i> <span id="auLeftTitle">Create Account</span></h3>
 
           <div class="au-row">
             <label class="field">
               <span>Full Name</span>
               <input type="text" name="full_name" id="au_full_name" placeholder="Full Name" required autofocus />
             </label>
-            <label class="field">
+            <label class="field" id="auEmailWrap">
               <span>Email</span>
-              <input type="email" name="email" placeholder="Email" required />
+              <input type="email" name="email" id="au_email" placeholder="Email" required />
             </label>
           </div>
 
           <div class="au-row">
-            <label class="field">
+            <label class="field" id="auContactWrap">
               <span>Contact Number</span>
-              <input type="text" name="contact_number" placeholder="09XX XXX XXXX" />
+              <input type="text" name="contact_number" id="au_contact_number" placeholder="09XX XXX XXXX" />
             </label>
             <label class="field">
               <span>Role</span>
@@ -292,6 +292,7 @@
                 <option value="">-- Registering as --</option>
                 <option value="family">Family Member</option>
                 <option value="bhw">Barangay Health Worker (BHW)</option>
+                <option value="elderly">Elderly (Senior Citizen)</option>
               </select>
             </label>
           </div>
@@ -305,6 +306,7 @@
             </label>
           </fieldset>
 
+          <div id="auLogin">
           <div class="au-row">
             <label class="field">
               <span>Password</span>
@@ -335,6 +337,15 @@
             <li data-rule="special"><i data-lucide="circle-check"></i> Include a special character</li>
             <li data-rule="match"><i data-lucide="circle-check"></i> Both passwords match</li>
           </ul>
+          </div>
+
+          <!-- ELDERLY (left side): date of birth -->
+          <fieldset class="au-fieldset" id="auElderLeft" hidden disabled>
+            <label class="field">
+              <span>Date of Birth</span>
+              <input type="date" name="elder_dob" id="au_elder_dob" required />
+            </label>
+          </fieldset>
         </section>
 
         <!-- RIGHT: depends on the role -->
@@ -473,6 +484,38 @@
               <input type="file" name="valid_id" id="au_valid_id" accept=".jpg,.jpeg,.png,.pdf" />
             </label>
           </fieldset>
+
+          <!-- ELDERLY (right side): Device ID (links a family member later) + home address.
+               No login, so no email / password / phone. -->
+          <fieldset class="au-fieldset" id="auElderly" hidden disabled>
+            <h3 class="au-title"><i data-lucide="qr-code"></i> Device ID</h3>
+            <p class="au-hint">Enter the Device ID of the resident's ALISTO device.</p>
+            <div class="au-scan" id="auScan">
+              <input type="text" name="elder_device_id" id="au_elder_device" placeholder="Enter Device ID" autocomplete="off" required />
+              <button type="button" class="au-scan-btn" id="auScanBtn" aria-label="Scan device QR code" title="Scan device QR code">
+                <i data-lucide="scan-line"></i>
+              </button>
+            </div>
+            <small class="field-hint" id="auElderMsg">A family member connects to this resident using this Device ID.</small>
+
+            <h3 class="au-title"><i data-lucide="house"></i> Home Address</h3>
+            <div class="au-row">
+              <label class="field">
+                <span>House / Building No.</span>
+                <input type="text" name="elder_house_no" placeholder="House / Building No." />
+              </label>
+              <label class="field">
+                <span>Street</span>
+                <input type="text" name="elder_street" placeholder="Street" />
+              </label>
+            </div>
+            <label class="field au-full">
+              <span>Barangay</span>
+              <select name="elder_barangay" id="au_elder_barangay" required>
+                <option value="">Select barangay</option>
+              </select>
+            </label>
+          </fieldset>
         </section>
       </div>
 
@@ -483,6 +526,25 @@
     </form>
   </div>
 </div>
+<!-- QR SCANNER (opens from the scan icon in the Elderly Device ID box; same behavior as the sign-up page) -->
+<div class="admin-modal" id="auScannerModal" hidden>
+  <div class="admin-modal-backdrop" data-scan-close></div>
+  <div class="admin-modal-card au-scanner-card" role="dialog" aria-modal="true" aria-labelledby="auScannerTitle">
+    <div class="admin-modal-header">
+      <div><strong id="auScannerTitle">Scan Device QR</strong></div>
+      <button type="button" class="admin-modal-close" data-scan-close aria-label="Close">
+        <i data-lucide="x"></i>
+      </button>
+    </div>
+    <div class="au-scanner-body">
+      <video id="auQrVideo" autoplay playsinline muted></video>
+      <canvas id="auQrCanvas" hidden></canvas>
+      <div class="au-scan-frame"></div>
+    </div>
+    <p class="au-scanner-hint" id="auScannerHint">Point your camera at the QR code on the device.</p>
+  </div>
+</div>
+
 <!-- USER PROFILE MODAL (opens when a row is clicked) -->
 <script id="upOptions" type="application/json">{{ {'barangays': cebu_city_barangays, 'years': years_of_service_options}|tojson }}</script>
 <div class="up-modal" id="upModal" hidden>
@@ -500,4 +562,9 @@
     <footer class="up-foot" id="upFoot"></footer>
   </div>
 </div>
+{% endblock %}
+
+{% block scripts %}
+<!-- jsQR reads the device QR code from the camera (same library as the sign-up page) -->
+<script src="https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.js"></script>
 {% endblock %}
