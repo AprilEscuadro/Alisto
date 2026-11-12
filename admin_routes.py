@@ -183,10 +183,6 @@ NOTIF_STYLE = {
     'device': ('wifi-off', 'tint-orange'),
     'subscription': ('credit-card', 'tint-blue'),
 }
-# Emergencies come first regardless of how recent everything else is --
-# an active emergency always outranks a pending registration or an
-# expiring subscription.
-NOTIF_PRIORITY = {'emergency': 0, 'bhw': 1, 'responder': 1, 'device': 2, 'subscription': 3}
 
 # The bell's context_processor runs on EVERY admin page load, and each of
 # its 4 categories scans a whole collection -- real testing found that
@@ -313,11 +309,10 @@ def _notif_items():
     for item in items:
         item['icon'], item['tint'] = NOTIF_STYLE[item['kind']]
 
-    # Sorts by kind first (NOTIF_PRIORITY), then most-urgent-within-that-
-    # kind second. `sort` only ever gets compared against other items of
-    # the SAME kind (ties on the primary key), so mixing what it measures
-    # across kinds -- a timestamp here, `-days_left` there -- is safe.
-    items.sort(key=lambda it: (NOTIF_PRIORITY[it['kind']], -it['sort']))
+    # Newest first across every kind. Subscription items have no real
+    # timestamp (their `sort` is -days_left), so they go after the timed
+    # ones, soonest-expiring first.
+    items.sort(key=lambda it: (it['kind'] == 'subscription', -it['sort']))
     return items
 
 

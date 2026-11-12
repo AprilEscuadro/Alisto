@@ -164,7 +164,7 @@ def _admin_events():
         if it['kind'] == 'emergency':
             continue
         # 'sort' = a real timestamp
-        timed = it['kind'] in ('bhw', 'device')
+        timed = it['kind'] in ('bhw', 'responder', 'device')
         ms = int(it['sort'] * 1000) if timed else 0
         # 'when' and 'subtitle' change over time ("5 min ago", "expires in 9
         # days"), so they can't be part of the id or a read item would turn
@@ -264,8 +264,9 @@ def panel():
     except Exception as e:
         print(f'[role_bell] messages: {e}')
 
-    # Emergencies always first, then newest first.
-    items.sort(key=lambda i: (not i['pinned'], -i['ms']))
+    # Newest first, whatever the kind. Emergencies stay red (pinned only
+    # drives the styling now), but a newer item sits above an older one.
+    items.sort(key=lambda i: -i['ms'])
     items = items[:PANEL_LIMIT]
     return jsonify(success=True, items=items,
                    unread_count=sum(i['unread'] for i in items))
