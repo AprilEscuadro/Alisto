@@ -714,6 +714,7 @@ def users():
     elder_names = {eid: e.get('full_name') or 'Unnamed' for eid, e in elders}
     family_names = {uid: u.get('full_name')
                     or 'Unnamed' for uid, u in accounts}
+    family_emails = {uid: u.get('email') or '' for uid, u in accounts}
 
     def serial_text(elder_id):
         return ', '.join(sorted(serials_per_elder.get(elder_id, []))) or 'No device'
@@ -763,6 +764,11 @@ def users():
     rows = []
 
     for elder_id, elder in elders:
+        # (name, email) of each linked family member, sorted by name.
+        fam_pairs = sorted(
+            ((family_names[f], family_emails.get(f) or '—')
+             for f in set(families_per_elder.get(elder_id, []))
+             if f in family_names), key=lambda p: p[0])
         rows.append({
             'id': elder_id, 'display_id': _short_id('ELD', elder_id), 'type': 'elderly',
             'barangay': elder_barangay.get(elder_id, ''),
@@ -779,9 +785,9 @@ def users():
                 ['Address', elder.get('address') or '—'],
                 # One name per line (the popup keeps line breaks).
                 ['Device Serial', serial_text(elder_id)],
-                ['Linked Family', '\n'.join(sorted(
-                    family_names[f] for f in set(families_per_elder.get(elder_id, []))
-                    if f in family_names)) or '—'],
+                ['Linked Family', '\n'.join(n for n, _ in fam_pairs) or '—'],
+                ['Linked Family Email', '\n'.join(
+                    e for _, e in fam_pairs) or '—'],
             ],
         })
 
@@ -890,6 +896,13 @@ def users():
         u = account_by_id.get(r['id'], {})
         r['edit'] = {'full_name': u.get('full_name') or '',
                      'contact_number': u.get('contact_number') or ''}
+        if r['type'] == 'responder':
+            p = responder_profiles.get(r['id'], {})
+            r['edit'].update({
+                'agency': p.get('agency') or '',
+                'position': p.get('position') or '',
+                'agency_id_number': p.get('agency_id_number') or '',
+            })
         if r['type'] == 'bhw':
             p = bhw_profiles.get(r['id'], {})
             r['edit'].update({
@@ -923,6 +936,7 @@ def users():
                                 for r in rows if r['barangay']}),
         years_of_service_options=YEARS_OF_SERVICE_OPTIONS,
         cebu_city_barangays=CEBU_CITY_BARANGAYS,
+        responder_agencies=RESPONDER_AGENCY_OPTIONS,
     )
 
 
@@ -1373,6 +1387,10 @@ def add_elderly_user():
         return jsonify(success=False, message=f'Error: {str(e)}'), 500
 
 
+RESPONDER_AGENCY_OPTIONS = ['CDRRMO', 'BFP (Fire)', 'Ambulance / EMS', 'Police',
+                            'Red Cross', 'Barangay Tanod', 'Other']
+
+
 @admin_bp.route('/users/<user_id>/edit', methods=['POST'])
 @admin_required
 def edit_user(user_id):
@@ -1419,7 +1437,7 @@ def edit_user(user_id):
     ref = db.collection('user_account').document(user_id)
     doc = ref.get()
     user = doc.to_dict() if doc.exists else None
-    if not user or user.get('role') not in ('family', 'bhw'):
+    if not user or user.get('role') not in ('family', 'bhw', 'responder'):
         return jsonify(success=False, message='That user could not be found.'), 404
 
     phone = request.form.get('contact_number', '').strip()
@@ -1452,6 +1470,27 @@ def edit_user(user_id):
             db.collection('bhw_profile').add({
                 'user_id': user_id, 'health_center': HEALTH_CENTERS[0],
                 'created_at': firestore.SERVER_TIMESTAMP, **profile_update})
+
+    if user.get('role') == 'responder':
+        agency = request.form.get('agency', '').strip()
+        position = request.form.get('position', '').strip()
+        agency_id = request.form.get('agency_id_number', '').strip()
+        if agency not in RESPONDER_AGENCY_OPTIONS:
+            return jsonify(success=False, message='Please select a valid agency.'), 400
+        if not position:
+            return jsonify(success=False, message='Position is required.'), 400
+        if not agency_id:
+            return jsonify(success=False, message='Agency ID number is required.'), 400
+        profiles = list(db.collection('responder_profile').where(
+            'user_id', '==', user_id).limit(1).stream())
+        profile_update = {'agency': agency, 'position': position,
+                          'agency_id_number': agency_id, **stamp}
+        if profiles:
+            profiles[0].reference.update(profile_update)
+        else:
+            db.collection('responder_profile').add({
+                'user_id': user_id, 'created_at': firestore.SERVER_TIMESTAMP,
+                **profile_update})
 
     ref.update({'full_name': full_name, 'contact_number': phone, **stamp})
     flash(f'{full_name} was updated.', 'success')

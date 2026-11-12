@@ -139,7 +139,7 @@
       </div>
     </div>
 
-    <script src="{{ url_for('static', filename='js/admin.js') }}"></script>
+    <script src="{{ url_for('static', filename='js/admin.js') }}?v=20261112b"></script>
     <!-- Emergency alarm on every admin page (same siren/banner as BHW + Family) -->
     <script>
       window.ALISTO_WATCH = {
@@ -150,8 +150,8 @@
       };
     </script>
     <script src="{{ url_for('static', filename='js/bhw_alert_watch.js') }}"></script>
-    {% block scripts %}{% endblock %} 
-        <script>
+    {% block scripts %}{% endblock %}
+    <script>
       // Inbox badge in the sidebar: checked every 30 seconds while the tab is open.
       (function () {
         const badges = document.querySelectorAll("[data-inbox-badge]");

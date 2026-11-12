@@ -4743,3 +4743,52 @@ body.up-lock {
 .up-card[data-type="elderly"] .up-col>.up-section:last-child> :last-child {
   flex: none;
 }
+
+/* Users page: red Clear button so it's noticeable */
+#userClearFilters {
+  background: var(--red, #dc2626);
+  border-color: var(--red, #dc2626);
+  color: #fff;
+  font-weight: 600;
+}
+
+#userClearFilters:hover {
+  background: #b91c1c;
+  border-color: #b91c1c;
+  color: #fff;
+}
+
+#userClearFilters i,
+#userClearFilters svg {
+  color: #fff;
+}
+
+/* Red "Clear" filter buttons so they stand out */
+#userClearFilters,
+#elderlyClearFilters,
+#logClearFilters,
+#subClearFilters,
+#deviceClearFilters {
+  background: #ef4444;
+  border-color: #ef4444;
+  color: #fff;
+  font-weight: 600;
+}
+
+#userClearFilters:hover,
+#elderlyClearFilters:hover,
+#logClearFilters:hover,
+#subClearFilters:hover,
+#deviceClearFilters:hover {
+  background: #dc2626;
+  border-color: #dc2626;
+  color: #fff;
+}
+
+#userClearFilters svg,
+#elderlyClearFilters svg,
+#logClearFilters svg,
+#subClearFilters svg,
+#deviceClearFilters svg {
+  color: #fff;
+}

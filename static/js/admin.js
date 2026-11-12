@@ -1244,11 +1244,11 @@
       <h3 class="up-section-title"><i data-lucide="${icon}"></i>${esc(title)}</h3>${inner}</section>`;
   }
 
-  function person(name, sub, tone) {
+  function person(name, sub, tone, extra) {
     const initials = name.split(/\s+/).slice(0, 2).map((w) => w[0] || '').join('').toUpperCase();
     return `<div class="up-person">
       <span class="up-person-avatar tone-${tone}">${esc(initials)}</span>
-      <div><strong>${esc(name)}</strong>${sub ? `<small>${esc(sub)}</small>` : ''}</div></div>`;
+      <div><strong>${esc(name)}</strong>${sub ? `<small>${esc(sub)}</small>` : ''}${extra ? `<small>${esc(extra)}</small>` : ''}</div></div>`;
   }
 
   function planBadge(ds) {
@@ -1298,8 +1298,9 @@
         ? `<div class="up-rows">${serials.map((s) => infoRow('radio', 'Device ID', s, { mono: true })).join('')}</div>`
         : empty('plug-zap', 'No device registered yet.'));
       const fam = lines(d['Linked Family']);
+      const famEmails = String(d['Linked Family Email'] || '').split('\n');
       right += section('users', 'Linked family', fam.length
-        ? `<div class="up-stack">${fam.map((n) => person(n, 'Family member', 'blue')).join('')}</div>`
+        ? `<div class="up-stack">${fam.map((n, i) => person(n, 'Family member', 'blue', has(famEmails[i]) ? '✉ ' + famEmails[i] : 'No email on file')).join('')}</div>`
         : empty('user-x', 'No family linked.'));
       right += section('phone-call', 'Emergency contacts',
         '<div class="up-contacts" id="upContacts"><div class="up-note"><i data-lucide="loader"></i>Loading…</div></div>');
@@ -1351,9 +1352,11 @@
            <button type="submit" class="up-btn up-btn-outline-danger"><i data-lucide="x"></i>Reject</button></form>
          <form method="POST" action="${esc(ds.approvalUrl)}"><input type="hidden" name="action" value="approve" />
            <button type="submit" class="up-btn up-btn-approve"><i data-lucide="check"></i>Approve</button></form>` : '';
+    // BHW + Responder: Edit only after the account is approved (Active).
+    const canEdit = !['bhw', 'responder'].includes(ds.type) || ds.status === 'active';
     foot.innerHTML = `<div class="up-foot-left">${del}${restore}</div>
       <div class="up-foot-right">${pending}
-        ${ds.type === 'responder' ? '' : `<button type="button" class="up-btn up-btn-dark" id="upEditBtn"><i data-lucide="pencil"></i>Edit</button>`}</div>`;
+        ${canEdit ? `<button type="button" class="up-btn up-btn-dark" id="upEditBtn"><i data-lucide="pencil"></i>Edit</button>` : ''}</div>`;
   }
 
   // ---------- EDIT MODE ----------
@@ -1393,6 +1396,13 @@
         ${field('barangay_assigned', 'Barangay assigned', e.barangay_assigned, { options: options.barangays || [] })}
         ${field('years_of_service', 'Years of service', e.years_of_service, { options: options.years || [] })}
         ${field('bhw_id_number', 'BHW ID number', e.bhw_id_number, { required: true, full: true })}
+      </div>`);
+    }
+    if (ds.type === 'responder') {
+      html += section('siren', 'Agency', `<div class="up-grid">
+        ${field('agency', 'Agency', e.agency, { options: options.agencies || [] })}
+        ${field('position', 'Position', e.position, { required: true })}
+        ${field('agency_id_number', 'Agency ID number', e.agency_id_number, { required: true, full: true })}
       </div>`);
     }
     html += '</form>';
