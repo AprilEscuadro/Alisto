@@ -309,10 +309,11 @@ def _notif_items():
     for item in items:
         item['icon'], item['tint'] = NOTIF_STYLE[item['kind']]
 
-    # Newest first across every kind. Subscription items have no real
-    # timestamp (their `sort` is -days_left), so they go after the timed
-    # ones, soonest-expiring first.
-    items.sort(key=lambda it: (it['kind'] == 'subscription', -it['sort']))
+    # Active emergencies always on top (newest first), then everything else
+    # newest first. Subscription items have no real timestamp (their `sort`
+    # is -days_left), so they go last, soonest-expiring first.
+    items.sort(key=lambda it: (it['kind'] != 'emergency',
+                               it['kind'] == 'subscription', -it['sort']))
     return items
 
 

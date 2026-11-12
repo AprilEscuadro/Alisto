@@ -210,6 +210,7 @@ def panel():
                 items.append({
                     'id': f'alert:{d.id}', 'kind': 'alert',
                     'icon': 'siren', 'tint': 'red', 'unread': d.id in active,
+                    'active': d.id in active,
                     'title': elders.get(a.get('elder_id')) or 'Your loved one',
                     'subtitle': f"Emergency alert · {ac.status_label(status)}",
                     'when': ac.fmt_time(a.get('date_triggered')),
@@ -225,6 +226,7 @@ def panel():
                 items.append({
                     'id': f'alert:{aid}', 'kind': 'alert',
                     'icon': 'siren', 'tint': 'red', 'unread': True,
+                    'active': True,
                     'title': elders.get(a.get('elder_id')) or 'Your loved one',
                     'subtitle': 'Emergency alert · Active',
                     'when': ac.fmt_time(a.get('date_triggered')),
@@ -250,7 +252,9 @@ def panel():
         except Exception as e:
             print(f'[notifications] medicine (index?): {e}')
 
-    items.sort(key=lambda i: i['ms'], reverse=True)
+    # Active emergencies always on top (newest first), then everything else
+    # newest first.
+    items.sort(key=lambda i: (not i.get('active'), -(i['ms'] or 0)))
     items = items[:PANEL_LIMIT]
     return jsonify(success=True, items=items,
                    unread_count=sum(i['unread'] for i in items))

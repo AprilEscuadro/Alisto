@@ -264,9 +264,9 @@ def panel():
     except Exception as e:
         print(f'[role_bell] messages: {e}')
 
-    # Newest first, whatever the kind. Emergencies stay red (pinned only
-    # drives the styling now), but a newer item sits above an older one.
-    items.sort(key=lambda i: -i['ms'])
+    # Active emergencies (pinned) always on top, newest first; everything
+    # else below them, newest first.
+    items.sort(key=lambda i: (not i['pinned'], -i['ms']))
     items = items[:PANEL_LIMIT]
     return jsonify(success=True, items=items,
                    unread_count=sum(i['unread'] for i in items))
