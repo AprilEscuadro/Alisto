@@ -32,6 +32,7 @@ import care_plan_service as cps
 import device_info
 import report_export
 import valid_id_store
+import mailer
 # One source of truth for reading addresses and working out whether a device is
 # online. Both portals show the same thing, so they share the same helpers.
 from bhw_routes import (PASSWORD_RULES, _ELDERS_CACHE, _address_parts,
@@ -139,24 +140,33 @@ def _fmt_when(value):
 
 
 def _pending_bhws():
-    """BHW registrations waiting for the admin to approve or reject, newest first."""
+    """BHW and emergency responder registrations waiting for the admin to
+    approve or reject, newest first."""
+    pending_users = [(uid, u) for uid, u in _active_docs('user_account')
+                     if u.get('role') in ('bhw', 'responder')
+                     and u.get('approval_status', 'pending') == 'pending']
+    if not pending_users:
+        return []
+
     profiles = {}
-    for doc in db.collection('bhw_profile').stream():
-        profile = doc.to_dict() or {}
-        profiles[profile.get('user_id')] = profile
+    for coll in ('bhw_profile', 'responder_profile'):
+        if any(u.get('role') == coll.split('_')[0] for _, u in pending_users):
+            for doc in db.collection(coll).stream():
+                profile = doc.to_dict() or {}
+                profiles[profile.get('user_id')] = profile
 
     pending = []
-    for user_id, user in _active_docs('user_account'):
-        if user.get('role') != 'bhw' or user.get('approval_status', 'pending') != 'pending':
-            continue
+    for user_id, user in pending_users:
         profile = profiles.get(user_id, {})
         name = user.get('full_name') or 'Unnamed'
         pending.append({
             'id': user_id,
+            'role': user.get('role'),
             'name': name,
             'initials': _initials(name),
             'barangay': profile.get('barangay_assigned') or '',
             'health_center': profile.get('health_center') or '',
+            'agency': profile.get('agency') or '',
             'when': _fmt_when(user.get('created_at')),
             'sort': _sort_key(user.get('created_at')),
         })
@@ -168,6 +178,7 @@ def _pending_bhws():
 # kind -> (lucide icon, .tint-* class) for the bell's icon bubble.
 NOTIF_STYLE = {
     'bhw': ('user-plus', 'tint-purple'),
+    'responder': ('user-plus', 'tint-purple'),
     'emergency': ('siren', 'tint-red'),
     'device': ('wifi-off', 'tint-orange'),
     'subscription': ('credit-card', 'tint-blue'),
@@ -175,7 +186,7 @@ NOTIF_STYLE = {
 # Emergencies come first regardless of how recent everything else is --
 # an active emergency always outranks a pending registration or an
 # expiring subscription.
-NOTIF_PRIORITY = {'emergency': 0, 'bhw': 1, 'device': 2, 'subscription': 3}
+NOTIF_PRIORITY = {'emergency': 0, 'bhw': 1, 'responder': 1, 'device': 2, 'subscription': 3}
 
 # The bell's context_processor runs on EVERY admin page load, and each of
 # its 4 categories scans a whole collection -- real testing found that
@@ -199,6 +210,12 @@ def _cached(key, builder):
     value = builder()
     _notif_cache[key] = (now, value)
     return value
+
+
+def clear_pending_registrations_cache():
+    """Called when someone registers as a BHW/responder or the admin reviews
+    one, so the bell shows the change right away instead of after 5 min."""
+    _notif_cache.pop('pending_bhws', None)
 
 
 def _offline_devices_raw():
@@ -244,9 +261,15 @@ def _notif_items():
 
     # always on
     for p in _cached('pending_bhws', _pending_bhws):
+        if p['role'] == 'responder':
+            subtitle = 'Emergency responder registration waiting for approval' + (
+                f" · {p['agency']}" if p['agency'] else '')
+        else:
+            subtitle = 'BHW registration waiting for approval' + (
+                f" · {p['barangay']}" if p['barangay'] else '')
         items.append({
-            'kind': 'bhw', 'title': p['name'],
-            'subtitle': 'BHW registration waiting for approval' + (f" · {p['barangay']}" if p['barangay'] else ''),
+            'kind': p['role'], 'title': p['name'],
+            'subtitle': subtitle,
             'when': p['when'], 'sort': p['sort'],
             'href': url_for('admin.users', status='pending'),
         })
@@ -922,12 +945,50 @@ def update_bhw_approval(user_id):
         'approval_reviewed_by': session['user_id'],
     })
 
+    clear_pending_registrations_cache()
+
     name = user.get('full_name', 'The BHW')
-    if action == 'approve':
-        flash(f'{name} is approved and can now sign in.', 'success')
+    emailed = _send_approval_email(user, action == 'approve')
+    if emailed:
+        note = ' An email was sent to let them know.'
+    elif user.get('email'):
+        note = ' (No email was sent: email is not set up on the server.)'
     else:
-        flash(f"{name}'s registration was rejected.", 'success')
+        note = ''
+    if action == 'approve':
+        flash(f'{name} is approved and can now sign in.{note}', 'success')
+    else:
+        flash(f"{name}'s registration was rejected.{note}", 'success')
     return redirect(url_for('admin.users'))
+
+
+def _send_approval_email(user, approved):
+    """Tells a BHW/responder by email that the admin reviewed their sign-up."""
+    label = 'Barangay Health Worker' if user.get('role') == 'bhw' else 'Emergency Responder'
+    name = user.get('full_name') or 'there'
+    login_url = url_for('login', _external=True)
+    if approved:
+        subject = 'Your ALISTO account has been approved'
+        heading = 'Your account is approved'
+        paragraphs = [
+            f'Hi {name},',
+            f'Good news! The ALISTO administrator has approved your {label} account. '
+            'You can now sign in using the email and password you registered with.',
+        ]
+        text = '\n\n'.join(paragraphs + [f'Sign in here: {login_url}'])
+        html = mailer.simple_html(heading, paragraphs, 'Sign in to ALISTO', login_url)
+    else:
+        subject = 'Your ALISTO registration was not approved'
+        heading = 'Registration not approved'
+        paragraphs = [
+            f'Hi {name},',
+            f'The ALISTO administrator reviewed your {label} registration and was not '
+            'able to approve it. If you think this is a mistake, please contact the '
+            'system administrator or your barangay office.',
+        ]
+        text = '\n\n'.join(paragraphs)
+        html = mailer.simple_html(heading, paragraphs)
+    return mailer.send(user.get('email'), subject, text, html)
 
 
 @admin_bp.route('/users/<user_id>/archive', methods=['POST'])

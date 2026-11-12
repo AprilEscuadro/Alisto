@@ -13,6 +13,8 @@ from notifications import notif_bp
 from role_notifications import rbell_bp
 import inbox_service as inbox
 import valid_id_store
+import mailer
+import auth_accounts
 from firebase_admin import firestore, auth as firebase_auth
 from datetime import datetime, timedelta, timezone
 import alerts_common as ac
@@ -489,10 +491,12 @@ def _register_bhw(full_name, email, password, contact_number, barangay_assigned)
             valid_id.filename) or f'valid_id.{ext}'
 
     user_ref = db.collection('user_account').document()
+    error = _create_auth_login(user_ref.id, email, password, full_name)
+    if error:
+        return error
     try:
         user_ref.set({
             'full_name': full_name, 'email': email,
-            'password_hash': generate_password_hash(password),
             'role': 'bhw', 'contact_number': contact_number,
             'approval_status': 'pending',
             'created_at': firestore.SERVER_TIMESTAMP, 'deleted_at': None, 'is_archived': 0
@@ -518,14 +522,28 @@ def _register_bhw(full_name, email, password, contact_number, barangay_assigned)
         })
     except Exception as e:
         # Don't leave half an account behind.
-        for cleanup in (lambda: valid_id_store.delete(user_ref.id), user_ref.delete):
+        for cleanup in (lambda: valid_id_store.delete(user_ref.id), user_ref.delete,
+                        lambda: firebase_auth.delete_user(user_ref.id)):
             try:
                 cleanup()
             except Exception:
                 pass
         return jsonify(success=False, message=f'Error: {str(e)}'), 500
 
-    return jsonify(success=True, message='Registration submitted. Your account is pending approval.')
+    admin_routes.clear_pending_registrations_cache()
+    return jsonify(success=True, message='Registration submitted. Please wait for the administrator to approve your account. You will be notified by email once it is approved.')
+
+
+def _create_auth_login(uid, email, password, full_name):
+    """Creates the Firebase Auth login for a new BHW/responder (uid = their
+    user_account doc id). Returns an error response, or None if it worked."""
+    try:
+        auth_accounts.create_user(uid, email, password, full_name)
+        return None
+    except firebase_auth.EmailAlreadyExistsError:
+        return jsonify(success=False, message='An account with this email already exists.'), 400
+    except Exception as e:
+        return jsonify(success=False, message=f'Could not create your login: {e}'), 500
 
 
 RESPONDER_AGENCIES = ['CDRRMO', 'BFP (Fire)', 'Ambulance / EMS', 'Police',
@@ -567,10 +585,12 @@ def _register_responder(full_name, email, password, contact_number):
     valid_id_filename = secure_filename(valid_id.filename) or f'valid_id.{ext}'
 
     user_ref = db.collection('user_account').document()
+    error = _create_auth_login(user_ref.id, email, password, full_name)
+    if error:
+        return error
     try:
         user_ref.set({
             'full_name': full_name, 'email': email,
-            'password_hash': generate_password_hash(password),
             'role': 'responder', 'contact_number': contact_number,
             'approval_status': 'pending',
             'created_at': firestore.SERVER_TIMESTAMP, 'deleted_at': None, 'is_archived': 0
@@ -587,14 +607,16 @@ def _register_responder(full_name, email, password, contact_number):
             'created_at': firestore.SERVER_TIMESTAMP,
         })
     except Exception as e:
-        for cleanup in (lambda: valid_id_store.delete(user_ref.id), user_ref.delete):
+        for cleanup in (lambda: valid_id_store.delete(user_ref.id), user_ref.delete,
+                        lambda: firebase_auth.delete_user(user_ref.id)):
             try:
                 cleanup()
             except Exception:
                 pass
         return jsonify(success=False, message=f'Error: {str(e)}'), 500
 
-    return jsonify(success=True, message='Registration submitted. Your account is pending approval.')
+    admin_routes.clear_pending_registrations_cache()
+    return jsonify(success=True, message='Registration submitted. Please wait for the administrator to approve your account. You will be notified by email once it is approved.')
 
 
 def _create_account_and_elder(full_name, email, password, role, contact_number,
@@ -692,8 +714,10 @@ def login():
         password_ok = False
         if user and not user.get('deleted_at'):
             if 'password_hash' in user:
-                password_ok = check_password_hash(
-                    user['password_hash'], password)
+                # Older BHW/responder/admin account: moved onto Firebase
+                # Auth here on a good login (see auth_accounts.py).
+                password_ok = auth_accounts.legacy_login_ok(
+                    user_doc.id, user, password)
             else:
                 password_ok = _verify_firebase_password(
                     email, password) is not None
@@ -706,7 +730,8 @@ def login():
                         f'Your {label} account was not approved. Please contact the system administrator.', 'error')
                 else:
                     flash(
-                        f'Your {label} account is still pending approval by the system administrator.', 'error')
+                        f'Your {label} account is still waiting for admin approval. '
+                        'You will be notified through your email once it is approved.', 'error')
                 return redirect(url_for('login'))
 
             # Unchecked (the default): a normal browser-session cookie --
@@ -732,6 +757,7 @@ def login():
                 user_doc.reference.update(updates)
                 flash(
                     f"{'Welcome back' if session['previous_login'] else 'Welcome'}, {user['full_name']}!", 'success')
+                return redirect(url_for('bhw.dashboard'))
             if user['role'] == 'responder':
                 user_doc.reference.update(updates)
                 flash(
@@ -758,6 +784,46 @@ def logout():
     session.clear()
     flash('You have been logged out.', 'success')
     return redirect(url_for('login'))
+
+
+# ---------- FORGOT PASSWORD ----------
+#
+# Every role's login lives in Firebase Authentication (see auth_accounts.py),
+# so Firebase emails the reset link itself -- the same email the mobile
+# app's "Forgot password?" sends. No mail server needed. An older
+# BHW/responder/admin account that hasn't moved to Firebase Auth yet gets
+# its Firebase login created here first.
+
+FORGOT_SENT_MESSAGE = ('If an account exists for that email, a password reset link '
+                       'has been sent. Please check your inbox and spam folder.')
+
+
+@app.route('/forgot-password', methods=['GET', 'POST'])
+def forgot_password():
+    if request.method == 'POST':
+        email = request.form.get('email', '').strip().lower()
+        if not email or '@' not in email:
+            flash('Please enter a valid email address.', 'error')
+            return render_template('forgot_password.html', email=email)
+
+        matches = list(db.collection('user_account')
+                       .where('email', '==', email).limit(1).stream())
+        user_doc = matches[0] if matches else None
+        user = user_doc.to_dict() if user_doc else None
+
+        if user and not user.get('deleted_at'):
+            ready = True
+            if 'password_hash' in user:
+                ready = auth_accounts.ensure_firebase_user(user_doc.id, user)
+            if ready:
+                auth_accounts.send_reset_email(email)
+
+        # Same answer whether or not the email exists, so nobody can use
+        # this page to find out who has an account.
+        flash(FORGOT_SENT_MESSAGE, 'success')
+        return redirect(url_for('forgot_password'))
+
+    return render_template('forgot_password.html', email='')
 
 
 # ---------- MY LOVED ONES ----------
@@ -3629,7 +3695,11 @@ def inbox_page():
         flash('Please log in first.', 'error')
         return redirect(url_for('login'))
     if session.get('role') == 'bhw':
-        return redirect(url_for('bhw.inbox', **request.args))
+        # Old inbox links (/dashboard?thread=...) still land in the inbox;
+        # a plain /dashboard goes to the BHW dashboard.
+        if request.args:
+            return redirect(url_for('bhw.inbox', **request.args))
+        return redirect(url_for('bhw.dashboard'))
     if session.get('role') == 'admin':
         return redirect(url_for('admin.inbox', **request.args))
 
@@ -4107,7 +4177,11 @@ def dashboard():
     if session.get('role') == 'admin':
         return redirect(url_for('admin.dashboard'))
     if session.get('role') == 'bhw':
-        return redirect(url_for('bhw.inbox', **request.args))
+        # Old inbox links (/dashboard?thread=...) still land in the inbox;
+        # a plain /dashboard goes to the BHW dashboard.
+        if request.args:
+            return redirect(url_for('bhw.inbox', **request.args))
+        return redirect(url_for('bhw.dashboard'))
 
     elders = _linked_elders_for_dashboard()
     # Open alerts come from memory (0 reads); the Recent Alerts card only

@@ -14,6 +14,7 @@ from firebase_admin import auth as firebase_auth
 from firebase_admin import firestore
 from werkzeug.security import check_password_hash, generate_password_hash
 
+import auth_accounts
 from database import db
 
 MAX_PHOTO_BASE64_BYTES = 700 * 1024   # same cap as the family page and the app
@@ -98,7 +99,12 @@ def change_password(user_id, form):
     new = form.get('new_password') or ''
     confirm = form.get('confirm_password') or ''
 
-    if not check_password_hash(user.get('password_hash') or '', current):
+    legacy = 'password_hash' in user
+    if legacy:
+        current_ok = check_password_hash(user['password_hash'], current)
+    else:   # Firebase Auth login (see auth_accounts.py)
+        current_ok = auth_accounts.verify_password(user.get('email'), current)
+    if not current_ok:
         return False, 'Your current password is incorrect.'
     if new != confirm:
         return False, 'New password and confirm password do not match.'
@@ -108,10 +114,17 @@ def change_password(user_id, form):
     if missing:
         return False, 'New password needs ' + ', '.join(missing) + '.'
 
-    ref.update({
-        'password_hash': generate_password_hash(new),
-        'password_changed_at': firestore.SERVER_TIMESTAMP,
-    })
+    try:
+        if legacy:
+            ref.update({
+                'password_hash': generate_password_hash(new),
+                'password_changed_at': firestore.SERVER_TIMESTAMP,
+            })
+        else:
+            firebase_auth.update_user(user_id, password=new)
+            ref.update({'password_changed_at': firestore.SERVER_TIMESTAMP})
+    except Exception as e:
+        return False, f'Could not update your password: {e}'
     return True, 'Your password has been updated.'
 
 

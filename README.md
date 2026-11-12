@@ -109,6 +109,8 @@ SECRET_KEY=paste-a-long-random-string-here
 FIREBASE_WEB_API_KEY=your-firebase-web-api-key
 ALISTO_DEVICE_KEY=paste-another-long-random-string-here
 FLASK_DEBUG=1
+MAIL_USERNAME=youraccount@gmail.com
+MAIL_PASSWORD=your-gmail-app-password
 ```
 
 | Variable               | Required? | Where to get it                                                                 |
@@ -117,6 +119,7 @@ FLASK_DEBUG=1
 | `FIREBASE_WEB_API_KEY` | Yes       | Firebase Console → **Project settings → General → Web API Key**                 |
 | `ALISTO_DEVICE_KEY`    | For device | Any long random string. The Raspberry Pi must send the same key.              |
 | `FLASK_DEBUG`          | No        | `1` while developing. Remove it when deploying.                                 |
+| `MAIL_USERNAME` / `MAIL_PASSWORD` | For email | Gmail address + a Gmail **App Password** (Google Account → Security → 2-Step Verification → App passwords). Sends the approval/rejection emails to BHWs and responders. Not needed for forgot password (Firebase sends those). Optional: `MAIL_FROM`, `MAIL_SERVER` (default `smtp.gmail.com`), `MAIL_PORT` (default `587`). |
 
 To generate a random key:
 
