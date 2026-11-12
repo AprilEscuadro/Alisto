@@ -769,7 +769,7 @@ def users():
             'name': elder.get('full_name') or 'Unnamed', 'initials': _initials(elder.get('full_name')),
             'phone': None, 'email': None,
             'devices': devices_per_elder.get(elder_id, 0),
-            'plan': plan_for([elder_id]),
+            'plan': plan_for([elder_id]) if devices_per_elder.get(elder_id) else None,
             'status': 'archived' if elder.get('is_archived') else 'active',
             'joined': _fmt_date(elder.get('created_at')), 'sort': _sort_key(elder.get('created_at')),
             # A list (not a dict) so the details keep this order in the modal.
@@ -821,7 +821,8 @@ def users():
                 ['Device Serial', '\n'.join(serial_text(e)
                                             for e in linked) or '—'],
             ]
-            row['plan'] = plan_for(linked)
+            # subscriptions belong to the elderly (device owner), not the family
+            row['plan'] = None
             # Barangay of the first loved one that has one.
             row['barangay'] = next((elder_barangay[e] for e in linked
                                     if elder_barangay.get(e)), '')
@@ -908,6 +909,11 @@ def users():
         'bhw': sum(1 for r in rows if r['type'] == 'bhw'),
         'pending_bhw': sum(1 for r in rows if r['status'] == 'pending'),
         'total_devices': sum(devices_per_elder.values()),
+        # Only elderly WITH a device can hold a care plan.
+        'active_subscriptions': sum(
+            1 for r in rows
+            if r['type'] == 'elderly' and r['plan']
+            and r['plan']['key'] in ('active', 'expiring')),
     }
 
     return render_template(
@@ -960,7 +966,8 @@ def update_bhw_approval(user_id):
 
 def _send_approval_email(user, approved):
     """Tells a BHW/responder by email that the admin reviewed their sign-up."""
-    label = 'Barangay Health Worker' if user.get('role') == 'bhw' else 'Emergency Responder'
+    label = 'Barangay Health Worker' if user.get(
+        'role') == 'bhw' else 'Emergency Responder'
     name = user.get('full_name') or 'there'
     login_url = url_for('login', _external=True)
     if approved:
@@ -972,7 +979,8 @@ def _send_approval_email(user, approved):
             'You can now sign in using the email and password you registered with.',
         ]
         text = '\n\n'.join(paragraphs + [f'Sign in here: {login_url}'])
-        html = mailer.simple_html(heading, paragraphs, 'Sign in to ALISTO', login_url)
+        html = mailer.simple_html(
+            heading, paragraphs, 'Sign in to ALISTO', login_url)
     else:
         subject = 'Your ALISTO registration was not approved'
         heading = 'Registration not approved'

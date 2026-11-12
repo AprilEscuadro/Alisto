@@ -330,7 +330,7 @@
   const FILTER_TABLES = [
     {
       table: '#usersTable', search: '#userSearch', noun: 'users',
-      filters: { type: '#typeFilter', barangay: '#barangayFilter', status: '#statusFilter', plan: '#subscriptionFilter' }, exportButton: '#exportUsers',
+      filters: { type: '#typeFilter', barangay: '#barangayFilter', status: '#statusFilter', plan: '#subscriptionFilter' }, clearButton: '#userClearFilters', exportButton: '#exportUsers',
     },
     {
       table: '#elderlyTable', search: '#elderlySearch', noun: 'residents',
@@ -532,7 +532,24 @@
     const EXPORTERS = { csv: exportCsv, excel: exportExcel, json: exportJson, pdf: exportPdf };
 
     if (search) search.addEventListener('input', applyFilters);
-    filters.forEach(([, el]) => el.addEventListener('change', applyFilters));
+    // Users page: only elderly have a subscription, so the Subscription
+    // filter is switched off while Family / BHW / Responder is selected.
+    const usersType = config.table === '#usersTable' ? $('#typeFilter') : null;
+    const usersPlan = config.table === '#usersTable' ? $('#subscriptionFilter') : null;
+    function syncPlanFilter() {
+      if (!usersType || !usersPlan) return;
+      const noPlan = ['family', 'bhw', 'responder'].includes(usersType.value);
+      if (noPlan) usersPlan.value = '';
+      usersPlan.disabled = noPlan;
+      usersPlan.title = noPlan ? 'Only elderly have a subscription' : '';
+    }
+    filters.forEach(([, el]) => el.addEventListener('change', () => {
+      syncPlanFilter();
+      applyFilters();
+    }));
+    const userClear = $('#userClearFilters');
+    if (userClear) userClear.addEventListener('click', () => setTimeout(syncPlanFilter, 0));
+    syncPlanFilter();
     if (config.exportButton && $(config.exportButton)) {
       $$('[data-format]', $(config.exportButton)).forEach((btn) => {
         btn.addEventListener('click', () => {

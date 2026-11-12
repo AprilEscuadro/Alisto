@@ -53,7 +53,7 @@
     <span class="stat-icon tint-green"><i data-lucide="credit-card"></i></span>
     <div class="stat-body">
       <span class="stat-label">Active Subscriptions</span>
-      <strong class="stat-value text-green">—</strong>
+      <strong class="stat-value text-green">{{ stats.active_subscriptions }}</strong>
     </div>
   </div>
 </section>
@@ -93,6 +93,9 @@
       <option value="expired">Expired</option>
       <option value="none">No Plan</option>
     </select>
+    <button type="button" class="btn btn-outline" id="userClearFilters">
+      <i data-lucide="filter-x"></i> Clear
+    </button>
   </div>
   <div class="toolbar-actions">
     <div class="export-menu" id="exportUsers">
