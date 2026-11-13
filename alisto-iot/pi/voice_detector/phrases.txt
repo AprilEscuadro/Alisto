@@ -1,0 +1,15 @@
+# CATEGORY|what to say   -- a STARTER set, two phrases per category.
+# Replace or extend this with your own phrase list (one per line).
+# Categories: FIRE, INTRUDER, MEDICATION, FALL_INJURY, MEDICAL_SYMPTOM, GENERAL_HELP
+FIRE|Alisto, naay sunog
+FIRE|Alisto, nasunog ang balay
+INTRUDER|Alisto, naay nisulod sa balay
+INTRUDER|Alisto, naay kawatan
+MEDICATION|Alisto, kinahanglan nako ang akong tambal
+MEDICATION|Alisto, nahurot na akong tambal
+FALL_INJURY|Alisto, nahulog ko
+FALL_INJURY|Alisto, nadagma ko ug nagdugo
+MEDICAL_SYMPTOM|Alisto, naay sakit akong dughan
+MEDICAL_SYMPTOM|Alisto, mahimatay ko
+GENERAL_HELP|Alisto, tabang
+GENERAL_HELP|Alisto, tabang, naay problema

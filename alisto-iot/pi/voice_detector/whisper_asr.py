@@ -13,9 +13,19 @@ module for the keyword lists. This is what lets the system recognize many
 different real phrasings instead of one fixed "Alisto Tabang" script, now
 that we have actual speech-to-text instead of exact-template matching.
 
---audio-ctx 768 and -bs 1 (greedy decoding, no beam search) cut a 3s clip's
+--audio-ctx and -bs 1 (greedy decoding, no beam search) cut a 3s clip's
 processing time from ~17.6s down to ~4.5s on a Pi 3B+ -- both matter, don't
 drop them.
+
+MODEL CHOICE (measured on this Pi 4, ab_test_whisper.py, same recorded
+"Alisto tabang" clips, service stopped, speaker at a true 3 m):
+    tiny  ctx768  1/8 wake word    2.4 s per clip   <- was in use
+    base  ctx512  5/8 wake word    3.6 s per clip   <- in use now
+    base  ctx640  6/8 wake word    4.7 s per clip   (too close to TIMEOUT_S)
+Closer to the device (~1 m) tiny already did 7/8, so the gap is distance.
+base at ctx768 took 5.3 s and at ctx384/256 sometimes looped on a repeated
+phrase for 6-7 s (past TIMEOUT_S), so ctx512 is the safe middle. Going back
+to tiny is just WHISPER_MODEL + WHISPER_AUDIO_CTX below.
 """
 
 import os
@@ -26,12 +36,15 @@ import time
 from collections import Counter
 
 WHISPER_BIN = "/home/alisto/whisper.cpp/build/bin/whisper-cli"
-WHISPER_MODEL = "/home/alisto/whisper.cpp/models/ggml-tiny-q5_1.bin"
+WHISPER_MODEL = "/home/alisto/whisper.cpp/models/ggml-base-q5_1.bin"
+# To roll back: ggml-tiny-q5_1.bin and WHISPER_AUDIO_CTX = "768".
+WHISPER_AUDIO_CTX = "512"
 WHISPER_LANG = "tl"
 OUTPUT_PREFIX = "/home/alisto/voice_detector/whisper_out"
 OUTPUT_TXT = OUTPUT_PREFIX + ".txt"
-TIMEOUT_S = 7  # successful runs consistently finish in ~4.5-4.7s -- fail fast
-               # rather than block listening for a long hang
+TIMEOUT_S = 7  # base ctx512 finishes in ~3.6s (measured, service stopped; a bit
+               # more while the mic loop runs) -- fail fast rather than block
+               # listening for a long hang or a repeated-phrase loop
 NUM_THREADS = "3"  # leave 1 of the Pi's 4 cores free for the ESP32 serial
                     # reader / LED blink threads running concurrently
 
@@ -65,7 +78,7 @@ def transcribe(wav_path):
         subprocess.run(
             [
                 WHISPER_BIN, "-m", WHISPER_MODEL, "-l", WHISPER_LANG,
-                "-f", wav_path, "--audio-ctx", "768", "-bs", "1", "-nf",
+                "-f", wav_path, "--audio-ctx", WHISPER_AUDIO_CTX, "-bs", "1", "-nf",
                 "-t", NUM_THREADS, "-nt", "-otxt", "-of", OUTPUT_PREFIX,
             ],
             capture_output=True, text=True, timeout=TIMEOUT_S,
