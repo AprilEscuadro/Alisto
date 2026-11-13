@@ -14,6 +14,7 @@ Setup:
     python3 phrase_test.py                            # uses phrases.txt here
     python3 phrase_test.py --delay=20                 # time to walk to 3 m
     python3 phrase_test.py --only=FIRE,INTRUDER       # just some categories
+    python3 phrase_test.py --repeat=2                 # say each phrase twice
     python3 phrase_test.py --file=my_phrases.txt
     sudo systemctl start alisto-emergency.service     # when finished!
 
@@ -67,6 +68,10 @@ def say_and_transcribe(i, n, category, phrase):
         print(f"   in {c}...", end="\r", flush=True)
         time.sleep(1)
     print("   SAY IT NOW   ")
+    # Terminal bell: lets you hear when to speak when you are too far from the
+    # screen to read it (a beep from the laptop's terminal).
+    sys.stdout.write("\a")
+    sys.stdout.flush()
     raw = audio_io.record_seconds(TAKE_SECONDS)
     y = vad.HighPass().process(raw)
     y = vad.normalize_level(trim_to_speech(y))
@@ -93,6 +98,17 @@ def main():
     if not phrases:
         print("No phrases to test.")
         return 1
+    # --repeat=N: say every phrase N times (one after another), for more
+    # samples of how whisper spells the same words.
+    phrases = phrases * max(1, int(arg_value("repeat", "1")))
+
+    # Print the whole list first, so it can be read (or memorised) before
+    # walking away from the screen. One take is ~10 s: 2 s countdown, 4 s
+    # recording, then ~4 s while whisper works -- speak at each beep.
+    print(f"{len(phrases)} takes. In order:")
+    for i, (category, phrase) in enumerate(phrases, 1):
+        print(f"  {i:>2}. [{category}] {phrase}")
+    print()
 
     for left in range(int(arg_value("delay", "0")), 0, -1):
         print(f"  walk to your spot... starting in {left:2d} s", end="\r", flush=True)

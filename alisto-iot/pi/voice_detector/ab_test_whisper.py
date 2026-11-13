@@ -64,7 +64,11 @@ def trim_to_speech(y):
         return y
     frames = y[:n].reshape(-1, FRAME).astype(np.float64)
     rms = np.sqrt((frames ** 2).mean(axis=1))
-    threshold = max(2.5 * float(np.median(rms)), 150.0)
+    # The absolute floor was 150 for the old box (noise floor ~60). In the new
+    # quieter box (floor ~40) a 3 m voice can sit below 150, so nothing counted
+    # as speech, the clip was left untrimmed and normalized on mostly noise
+    # (base then answered '...'). 40 keeps a floor without hiding quiet speech.
+    threshold = max(2.5 * float(np.median(rms)), 40.0)
     loud = np.where(rms > threshold)[0]
     if len(loud) == 0:
         return y

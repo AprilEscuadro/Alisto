@@ -31,46 +31,103 @@ _CATEGORY_KEYWORDS = [
         ["sunog", "sunug", "onog",  # "onog" -- real test: Whisper heard
                                      # "sunog" as "o nogg"
          "sono",  # real test: Whisper heard "sunog" as "sono"
-         "kalayo", "kayo", "kayu", "kalayu", "fire"],
+         "suno",  # real test (whisper base, 3 m): "naay sunog" -> "ay suno."
+         # "kayo"/"kayu" were removed: whisper hears "tabang KAAYO" as
+         # "babang kayo", and those two short keywords made it a FIRE alert.
+         "kalayo", "kalayu", "fire",
+         # Added to reach 25 per category: more fire words in Cebuano,
+         # Tagalog (Whisper runs in "tl" mode) and English. Deliberately NOT
+         # "apoy": it is inside "kapoy" (tired, MEDICAL) and FIRE is checked first.
+         "liyab", "maapoy", "dilaab", "usok", "sindi", "bumbero", "bombero",
+         "gasul", "pagbuto", "nagbuto", "kuryente", "flame", "smoke", "burn",
+         "spark",
+         "sonug", "sonog",  # real test (whisper base): "nasunog" -> "sonug"
+         ],
     ),
     (
         "INTRUDER",
         [
             "kaila", "nisulod", "nisulud", "sulod", "sulud", "makagawas",
+            "sulun",  # real test (whisper base): "nisulod" -> "ni-sulun"
             "na-trap", "natrap", "tulisan", "kawatan", "magnanakaw",
             "nangawat", "abatan",  # "abatan" -- real test: Whisper heard
                                     # "kawatan" as "abatan"
+            # Added to reach 25 per category: stealing, weapons, strangers,
+            # being locked in, doors/windows, police.
+            "nagnakaw", "nanakaw", "holdap", "holdup", "baril", "pusil",
+            "estranghero", "nakulong", "pultahan", "bintana", "pulis",
+            # real tests (whisper base): "nangawat" -> "nangawad",
+            # "nisulod" -> "ni-solod" / "nisulut", "tulisan" -> "tulisat"
+            "nangawad", "solod", "sulut", "tulisat",
         ],
     ),
-    ("MEDICATION", ["tambal", "tambl", "tambalan", "gamot", "gamut"]),
+    (
+        "MEDICATION",
+        [
+            "tambal", "tambl", "tambalan", "gamot", "gamut",
+            # Added to reach 25 per category: pills/doses, prescription,
+            # pharmacy, and the common elderly medicines (the app's own
+            # reminder example is "diatabs").
+            "tablet", "pildoras", "pill", "kapsula", "capsule", "dosis",
+            "dose", "reseta", "botika", "botica", "insulin", "diatabs",
+            "metformin", "amlodipine", "losartan", "vitamins", "bitamina",
+            "biogesic", "paracetamol", "medisina",
+            "tampal",  # real test (whisper base): "tambal" -> "tampal"
+            # real test (whisper base): "gamot" -> "damot". Also a real word
+            # ("stingy"), added on purpose because it only counts after "Alisto".
+            "damot",
+        ],
+    ),
     (
         "FALL_INJURY",
         [
             "nahulog", "hulog", "holo",  # "holo" -- real test: Whisper heard
                                           # "nahulog" as "ng holo"
+            "hulok",  # real test (whisper base): "nahulog ko" -> "na huloko"
+                      # (not "hulo": that would also match "hulot", "ran out")
             "natumba", "tumba", "nadagma", "dagma", "nabali", "bali",
             "vale",  # real test: Whisper heard "nabali" as "vale"
             "naigo", "nasamdan", "samdan", "nagdugo", "dugo",
             "dogo",  # real test: Whisper heard "dugo" as "dogo"
             "bukog", "naipit", "aksidente", "na-lock", "nalock",
             "makalihok", "makatindog",
+            "dulas",  # "nadulas" = slipped
+            # real test (whisper base): "nahulog" -> "hula-go"
+            "hulago", "hula-go",
+            "i-go-go", "igogo",  # real test (whisper base): "naigo ko" -> "i-go-go"
         ],
     ),
     (
         "MEDICAL_SYMPTOM",
         [
             "nahimatay", "himatay", "kakuyapon",
+            "himata",  # real test (whisper base): "mahimatay" -> "himatai"
+            "sahit",   # real test (whisper base): "sakit" -> "isa hit"
+            "lugan",   # real test (whisper base): "dughan" -> "lugan"
             "yapon",  # real test: Whisper heard "kakuyapon" as "yapon"
             "huyang", "kahuyang", "luya", "kapoy", "sakit", "dughan",
             "nalipong", "lipong", "atakihon", "doktor", "ginhawa",
             "hawa",  # real test: Whisper heard "makaginhawa" as "hawah"
             "mahimatay", "medical",
+            # Added to reach 25: fever, vomiting, cold, asthma/breathless.
+            "hilanat", "nagsuka", "sipon", "hubak",
+            # real tests (whisper base): "huyang" -> "buyang",
+            # "lisod ko ginhawa" -> "kung ginawa"
+            "buyang", "ginawa",
         ],
     ),
     (
         "GENERAL_HELP",
         ["tabang", "abang", "bang", "emergency", "problema", "alert",
-         "assistance", "help"],
+         "assistance", "help",
+         # Added to reach 25: "help"/"danger" in Tagalog (saklolo, tulong),
+         # Cebuano (bulig, palihug), Spanish-derived and English words.
+         "saklolo", "tulong", "bulig", "palihug", "mayday", "urgent",
+         "delikado", "peligro", "ambulansya", "ambulance", "rescue",
+         "respond", "emerhensya", "ayuda", "singgit", "kalisod",
+         "panalipdi",
+         "emergen",  # real test (whisper base): "emergency" -> "emergents"
+         ],
     ),
 ]
 

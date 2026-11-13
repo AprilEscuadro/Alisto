@@ -1,15 +1,42 @@
-# CATEGORY|what to say   -- a STARTER set, two phrases per category.
-# Replace or extend this with your own phrase list (one per line).
+# CATEGORY|what to say   -- short, natural Cebuano. Keep each one under ~3 seconds
+# (the live segmenter cuts an utterance at 4 s, so a long sentence loses its end).
+# Edit freely: replace any line with what the elder would really say.
 # Categories: FIRE, INTRUDER, MEDICATION, FALL_INJURY, MEDICAL_SYMPTOM, GENERAL_HELP
+
 FIRE|Alisto, naay sunog
 FIRE|Alisto, nasunog ang balay
-INTRUDER|Alisto, naay nisulod sa balay
+FIRE|Alisto, sunog
+FIRE|Alisto, naay kalayo
+FIRE|Alisto, nasunog ang kusina
+
+INTRUDER|Alisto, naay nisulod
 INTRUDER|Alisto, naay kawatan
-MEDICATION|Alisto, kinahanglan nako ang akong tambal
+INTRUDER|Alisto, naay nisulod nga tawo
+INTRUDER|Alisto, naay nangawat
+INTRUDER|Alisto, naay tulisan
+
 MEDICATION|Alisto, nahurot na akong tambal
+MEDICATION|Alisto, kinahanglan nako ang tambal
+MEDICATION|Alisto, wala koy tambal
+MEDICATION|Alisto, ang akong gamot
+MEDICATION|Alisto, oras na sa akong tambal
+
 FALL_INJURY|Alisto, nahulog ko
-FALL_INJURY|Alisto, nadagma ko ug nagdugo
+FALL_INJURY|Alisto, natumba ko
+FALL_INJURY|Alisto, nadagma ko
+FALL_INJURY|Alisto, nagdugo ako
+FALL_INJURY|Alisto, nabali akong tiil
+FALL_INJURY|Alisto, naigo ko
+
 MEDICAL_SYMPTOM|Alisto, naay sakit akong dughan
 MEDICAL_SYMPTOM|Alisto, mahimatay ko
+MEDICAL_SYMPTOM|Alisto, huyang kaayo ko
+MEDICAL_SYMPTOM|Alisto, lisod ko ginhawa
+MEDICAL_SYMPTOM|Alisto, nalipong ko
+MEDICAL_SYMPTOM|Alisto, sakit akong ulo
+
 GENERAL_HELP|Alisto, tabang
-GENERAL_HELP|Alisto, tabang, naay problema
+GENERAL_HELP|Alisto, tabang kaayo
+GENERAL_HELP|Alisto, naay problema
+GENERAL_HELP|Alisto, emergency
+GENERAL_HELP|Alisto, palihug tabang
