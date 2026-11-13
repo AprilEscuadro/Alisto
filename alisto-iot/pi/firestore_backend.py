@@ -200,6 +200,38 @@ def send_heartbeat(serial):
         print(f"firestore: failed to send heartbeat: {e}")
 
 
+def watch_device_command(serial, callback):
+    """Listens to ONE document, device_command/{serial}, where the app leaves
+    a request for the device (currently only "forget_wifi"). A listener on a
+    document nobody writes costs about one read when it connects -- unlike
+    listening to device/{serial}, which the heartbeat rewrites every 30 s and
+    would bill a read for each of those. `callback(data_dict)` is called from
+    the Firestore client's own thread for every snapshot of an existing
+    document (including the first one on connect). Returns the watch handle
+    (`.unsubscribe()`)."""
+    db = _get_db()
+    ref = db.collection("device_command").document(serial)
+
+    def _on_snapshot(doc_snapshots, changes, read_time):
+        for doc in doc_snapshots:
+            if doc.exists:
+                try:
+                    callback(doc.to_dict())
+                except Exception as e:
+                    print(f"firestore: device_command callback failed: {e}")
+
+    return ref.on_snapshot(_on_snapshot)
+
+
+def delete_device_command(serial):
+    """Removes the handled command so it can't linger. Best-effort; needs
+    internet, so callers do this BEFORE touching the WiFi."""
+    try:
+        _get_db().collection("device_command").document(serial).delete()
+    except Exception as e:
+        print(f"firestore: failed to delete device_command: {e}")
+
+
 def set_device_sim_number(serial, sim_number):
     """Best-effort push of an auto-detected SIM number (see
     alisto_sms.read_own_sim_number() for why this often can't be

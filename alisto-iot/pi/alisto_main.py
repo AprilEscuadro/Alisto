@@ -51,6 +51,8 @@ import reverse_geocode  # noqa: E402  (offline lat/lon -> barangay name)
 import firestore_backend  # noqa: E402  (Admin SDK -- finds who claimed this device)
 import outbox  # noqa: E402  (offline store-and-forward for emergency alerts)
 import load_alert  # noqa: E402  (when to speak the "SIM load is low" warning)
+import wifi_forget  # noqa: E402  (app's "Forget WiFi Network": delete saved WiFi, open setup hotspot)
+import rtc_sync  # noqa: E402  (when to write the Pi's time into the ESP32's DS3231)
 
 try:
     from alisto_sms import DEFAULT_MESSAGE  # noqa: E402
@@ -98,6 +100,7 @@ cancel_event = threading.Event()
 audio_ready_event = threading.Event()
 audio_done_event = threading.Event()
 rtc_time_event = threading.Event()
+rtc_set_event = threading.Event()  # the ESP32 answered CMD:SET_TIME with RTC_SET_OK
 _rtc_time_value = None
 
 RTC_TIMEOUT_S = 3
@@ -189,6 +192,8 @@ def esp32_reader(ser):
         elif line.startswith("TIME:"):
             _rtc_time_value = line[len("TIME:"):]
             rtc_time_event.set()
+        elif line == "RTC_SET_OK":
+            rtc_set_event.set()
         # EVENT:EMERGENCY_ACTIVE and the boot banner are informational only
 
 
@@ -239,6 +244,63 @@ def sync_clock_from_rtc(ser):
                 f"WARNING: failed to set system clock: {result.stderr.strip()}")
     except Exception as e:
         print(f"WARNING: failed to set system clock: {e}")
+
+
+RTC_KEEPER_FIRST_DELAY_S = 180   # give NTP time to sync after boot
+RTC_KEEPER_INTERVAL_S = 6 * 60 * 60
+RTC_KEEPER_RETRY_S = 10 * 60     # while the Pi's own clock is not synced yet
+
+
+def ntp_synchronized():
+    """True when the Pi's clock has been set from the internet (so it is the
+    one clock we trust enough to write into the RTC)."""
+    try:
+        r = subprocess.run(
+            ["timedatectl", "show", "-p", "NTPSynchronized", "--value"],
+            capture_output=True, text=True, timeout=5)
+        return r.stdout.strip() == "yes"
+    except Exception:
+        return False
+
+
+def rtc_keeper_loop(ser):
+    """Keeps the ESP32's DS3231 RTC correct. The RTC is what gives an OFFLINE
+    boot the right time (sync_clock_from_rtc), but nothing ever set it, so a
+    new module -- or one whose backup battery died -- stayed at 2000-01-01.
+    Whenever the Pi's clock is NTP-synchronized, this reads the RTC and writes
+    the Pi's time into it if it is missing the time or has drifted (see
+    rtc_sync.decide_rtc_write). Never touches the RTC while the Pi's own clock
+    is not trustworthy, and never during an emergency."""
+    from datetime import datetime
+    time.sleep(RTC_KEEPER_FIRST_DELAY_S)
+    while True:
+        wait_s = RTC_KEEPER_INTERVAL_S
+        try:
+            if _emergency_in_progress:
+                wait_s = 60
+            elif not ntp_synchronized():
+                print("RTC: Pi clock not NTP-synchronized yet -- leaving the RTC alone.")
+                wait_s = RTC_KEEPER_RETRY_S
+            else:
+                rtc_time_event.clear()
+                send_command(ser, "CMD:GET_TIME")
+                text = _rtc_time_value if rtc_time_event.wait(
+                    timeout=RTC_TIMEOUT_S) else None
+                now = datetime.now()
+                write, reason = rtc_sync.decide_rtc_write(text, now, True)
+                if write:
+                    rtc_set_event.clear()
+                    send_command(
+                        ser, "CMD:SET_TIME:" + rtc_sync.format_set_time(now))
+                    ok = rtc_set_event.wait(timeout=RTC_TIMEOUT_S)
+                    print(f"RTC: {reason} -> wrote "
+                          f"{rtc_sync.format_set_time(now)}: "
+                          f"{'ok' if ok else 'NO REPLY from the ESP32'}")
+                else:
+                    print(f"RTC: {reason}.")
+        except Exception as e:
+            print(f"RTC keeper failed: {e}")
+        time.sleep(wait_s)
 
 
 def stream_audio(ser, path, clear_stale_cancel=False):
@@ -1285,6 +1347,71 @@ def heartbeat_loop():
         time.sleep(HEARTBEAT_INTERVAL_S)
 
 
+_device_command_lock = threading.Lock()
+_device_command_watch = None  # keeps the Firestore listener alive
+COMMAND_WAIT_FOR_EMERGENCY_S = 300  # never reconfigure WiFi mid-emergency
+
+
+def _handle_device_command(ser, serial, data):
+    """Acts on a request the app left in device_command/{serial}. Today the
+    only one is "forget_wifi" (Device Information -> Forget WiFi Network): the
+    saved WiFi is deleted and the "Alisto-Setup" hotspot opens so the phone can
+    give the device a new network. See wifi_forget.py for the safety checks.
+    The lock plus the saved request id make sure a repeated snapshot or a
+    restart can never run the same request twice."""
+    from datetime import datetime, timezone
+    with _device_command_lock:
+        ok, reason = wifi_forget.command_is_actionable(
+            data, datetime.now(timezone.utc),
+            wifi_forget.load_last_request_id())
+        if not ok:
+            if reason != "already handled":
+                print(f"Device command ignored: {reason}")
+            return
+        # Remember it BEFORE acting, so a crash/restart mid-way can't replay it.
+        wifi_forget.save_last_request_id(data["request_id"])
+        print("Device command: forget_wifi requested from the app.")
+
+        waited = 0
+        while _emergency_in_progress and waited < COMMAND_WAIT_FOR_EMERGENCY_S:
+            time.sleep(5)
+            waited += 5
+        if _emergency_in_progress:
+            print("Device command: forget_wifi skipped -- emergency still in progress.")
+            return
+
+        # Needs internet, so it has to happen before the WiFi is removed.
+        firestore_backend.delete_device_command(serial)
+        result = wifi_forget.forget_saved_wifi()
+        print(f"Device command: forget_wifi result: {result}")
+        if result.get("ok"):
+            play_wifi_forgotten_announcement(ser)
+
+
+def device_command_watcher_loop(ser):
+    """Starts the listener on device_command/{serial} (one document, ~1 read
+    on connect -- see firestore_backend.watch_device_command). The Firestore
+    client reconnects by itself after a network drop."""
+    global _device_command_watch
+    try:
+        serial = firestore_backend.get_own_serial()
+    except Exception as e:
+        print(f"Device commands: could not read own serial ({e}) -- not listening.")
+        return
+    while True:
+        try:
+            _device_command_watch = firestore_backend.watch_device_command(
+                serial,
+                lambda data: threading.Thread(
+                    target=_handle_device_command, args=(ser, serial, data),
+                    daemon=True).start())
+            print("Device commands: listening for requests from the app.")
+            return
+        except Exception as e:
+            print(f"Device commands: could not start listener ({e}) -- retrying in 60s.")
+            time.sleep(60)
+
+
 def sync_sim_number():
     """Best-effort, runs once at startup -- attempts to auto-detect this
     SIM's own number via AT+CNUM and push it to Firestore (see
@@ -1446,6 +1573,29 @@ def _is_undervoltage():
         return bool(value & 0x1)
     except Exception:
         return False
+
+
+def play_wifi_forgotten_announcement(ser):
+    """Same pause-mic/status-LED-off/resume pattern as every other
+    announcement -- see play_medicine_reminder() for why _audio_state_lock
+    is required."""
+    with _audio_state_lock:
+        if frames is not None:
+            frames.pause()
+        send_command(ser, "CMD:STATUS_LED_OFF")
+
+        try:
+            audio_path = tts.synthesize_wifi_forgotten()
+            if audio_path:
+                stream_audio(ser, audio_path, clear_stale_cancel=True)
+            else:
+                print("WiFi-forgotten TTS unavailable -- skipping announcement")
+        finally:
+            dropped = frames.resume() if frames is not None else 0
+            if dropped:
+                print(
+                    f"(discarded {dropped} boundary frame(s) after WiFi-forgotten announcement)")
+            send_command(ser, "CMD:STATUS_LED_ON")
 
 
 def play_low_load_announcement(ser):
@@ -1622,6 +1772,10 @@ def main():
     threading.Thread(target=load_balance_loop,
                      args=(ser,), daemon=True).start()
     threading.Thread(target=heartbeat_loop, daemon=True).start()
+    threading.Thread(target=rtc_keeper_loop,
+                     args=(ser,), daemon=True).start()
+    threading.Thread(target=device_command_watcher_loop,
+                     args=(ser,), daemon=True).start()
     threading.Thread(target=battery_monitor_loop,
                      args=(ser,), daemon=True).start()
 

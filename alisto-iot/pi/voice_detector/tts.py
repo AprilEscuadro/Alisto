@@ -47,6 +47,8 @@ LOW_BATTERY_OUTPUT_RAW = "/home/alisto/alisto_audio/low_battery_announce.raw"  #
 # file too, same reasoning as above.
 LOW_LOAD_OUTPUT_RAW = "/home/alisto/alisto_audio/low_load_announce.raw"  # own
 # file too, same reasoning as above.
+WIFI_FORGOTTEN_OUTPUT_RAW = "/home/alisto/alisto_audio/wifi_forgotten_announce.raw"  # own
+# file too, same reasoning as above.
 
 # volume > 1.0 boosts loudness, but normalize_audio=True already maxes
 # peaks to full scale by default -- pushing volume much past ~1.6-1.7 just
@@ -258,6 +260,14 @@ def synthesize_low_battery():
     report, just "about to die")."""
     text = "Low battery. Please charge Alisto now."
     return _synthesize_to_file(text, LOW_BATTERY_OUTPUT_RAW)
+
+
+def synthesize_wifi_forgotten():
+    """Said right after the app asked the device to forget its WiFi (see
+    wifi_forget.py): tells whoever is next to it what to do next."""
+    text = ("WiFi removed. Please connect your phone to Alisto Setup, "
+            "then add a new WiFi network in the app.")
+    return _synthesize_to_file(text, WIFI_FORGOTTEN_OUTPUT_RAW)
 
 
 def synthesize_low_load():
