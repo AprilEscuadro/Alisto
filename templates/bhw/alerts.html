@@ -113,6 +113,7 @@
                 <span class="type-cell type-{{ row.type_colour }}">
                   <i data-lucide="{{ row.type_icon }}"></i> {{ row.type_label }}
                 </span>
+                <small class="reason-sub {{ 'reason-detected' if not row.reason_confirmed }}">{{ row.reason }}</small>
               </td>
               <td class="nowrap">{{ row.time }}</td>
               <td class="address-cell">{{ row.location }}</td>
@@ -186,6 +187,10 @@
         <dd>{{ detail.type_label }}</dd>
       </div>
       <div>
+        <dt><i data-lucide="stethoscope"></i> Reason</dt>
+        <dd>{{ detail.reason }}</dd>
+      </div>
+      <div>
         <dt><i data-lucide="smartphone"></i> Device</dt>
         <dd>{{ detail.device }}</dd>
       </div>
@@ -222,10 +227,19 @@
       </form>
       {% elif detail.status == 'acknowledged' %}
       <form method="POST" action="{{ url_for('bhw.update_alert', alert_id=detail.id, action='resolve') }}">
+        {% with guess=detail.reason_guess, current=detail.medical_condition %}{% include '_reason_fields.html' %}{% endwith %}
         <button type="submit" class="btn btn-primary btn-block">
           <i data-lucide="shield-check"></i> Mark as Resolved
         </button>
       </form>
+      {% elif detail.status == 'resolved' %}
+      <details class="reason-edit" {% if not detail.reason_confirmed %}open{% endif %}>
+        <summary>{{ 'Edit reason' if detail.reason_confirmed else 'Set the reason' }}</summary>
+        <form method="POST" action="{{ url_for('bhw.set_alert_reason', alert_id=detail.id) }}">
+          {% with guess=detail.reason_guess, current=detail.medical_condition %}{% include '_reason_fields.html' %}{% endwith %}
+          <button type="submit" class="btn btn-outline btn-outline-primary btn-block">Save reason</button>
+        </form>
+      </details>
       {% endif %}
 
       {% if detail.latitude and detail.longitude %}

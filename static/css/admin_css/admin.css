@@ -983,6 +983,22 @@ h2 {
   width: 70px;
 }
 
+.col-check {
+  width: 44px;
+  text-align: center;
+}
+
+.col-check input[type="checkbox"] {
+  width: 16px;
+  height: 16px;
+  cursor: pointer;
+  vertical-align: middle;
+}
+
+#bulkDeleteUsers[hidden] {
+  display: none;
+}
+
 .user-cell {
   display: flex;
   align-items: center;
@@ -3504,8 +3520,32 @@ h2 {
   min-width: 180px;
 }
 
+/* Filters give up a little width so the bulk Delete button fits beside
+   Export / Add User instead of sliding over the Clear button. */
 .admin-toolbar:has(#userSearch) .toolbar-filters select {
+  flex: 0 1 auto;
+  min-width: 120px;
+}
+
+.admin-toolbar:has(#userSearch) .toolbar-filters .btn,
+.admin-toolbar:has(#userSearch) .toolbar-actions {
   flex-shrink: 0;
+}
+
+.admin-toolbar:has(#userSearch) .toolbar-actions .btn {
+  white-space: nowrap;
+}
+
+@media (min-width: 1101px) {
+  .admin-toolbar:has(#userSearch) .toolbar-actions {
+    flex-wrap: nowrap;
+  }
+}
+
+@media (max-width: 1100px) {
+  .admin-toolbar:has(#userSearch) .toolbar-actions {
+    flex-shrink: 1;
+  }
 }
 
 @media (max-width: 1100px) {
@@ -4791,4 +4831,33 @@ body.up-lock {
 #subClearFilters svg,
 #deviceClearFilters svg {
   color: #fff;
+}
+
+/* ---------- Emergency reason (BHW + admin) ---------- */
+.reason-sub {
+  display: block;
+  margin-top: 4px;
+  font-size: 12px;
+  font-weight: 600;
+  color: #111827;
+}
+.reason-detected {
+  font-weight: 400;
+  font-style: italic;
+  color: #6b7280;
+}
+.reason-edit summary {
+  cursor: pointer;
+  margin-bottom: 8px;
+  font-size: 13px;
+  font-weight: 600;
+  color: #2563eb;
+}
+html[data-theme="dark"] .reason-sub { color: #e5e7eb; }
+html[data-theme="dark"] .reason-detected { color: #9ca3af; }
+html[data-theme="dark"] .reason-label select,
+html[data-theme="dark"] .reason-label input {
+  background: #1f2937;
+  border-color: #374151;
+  color: #e5e7eb;
 }

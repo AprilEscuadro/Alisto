@@ -102,6 +102,7 @@
           <th>Alert ID</th>
           <th>Device</th>
           <th>Resident</th>
+          <th>Reason</th>
           <th>Location</th>
           <th>Trigger</th>
           <th>Status</th>
@@ -123,7 +124,7 @@
             "trigger": row.trigger_phrase, "barangay": row.barangay, "location": row.location,
             "response": row.response_text if row.response_minutes is not none else "",
             "handled_by": row.handled_by, "bhw": row.bhw_name, "resolved": row.resolved_time,
-            "notes": row.notes,
+            "notes": row.notes, "reason": row.reason,
             "map_url": url_for('admin.map_view', elder=row.elder_id) if row.elder_id else ""
           }|tojson }}'
         >
@@ -140,6 +141,7 @@
               <small>{% if row.age %}Age: {{ row.age }}{% else %}Age unknown{% endif %}</small>
             </div>
           </td>
+          <td><span class="reason-sub {{ 'reason-detected' if not row.reason_confirmed }}" style="margin:0">{{ row.reason }}</span></td>
           <td>
             <div class="stacked-cell">
               <strong>{{ row.barangay or '—' }}</strong>
@@ -180,14 +182,23 @@
                 </form>
                 {% endif %}
                 {% if row.status in ('active', 'acknowledged') %}
-                <form method="POST" action="{{ url_for('admin.update_alert_status', alert_id=row.id, action='resolve') }}"
-                      class="js-confirm-alert" data-confirm="Mark {{ row.code }} as resolved? This closes the alert.">
-                  <button type="submit" class="text-green" role="menuitem"><i data-lucide="circle-check"></i> Resolve</button>
-                </form>
+                <button type="button" class="text-green js-open-reason" role="menuitem"
+                        data-url="{{ url_for('admin.update_alert_status', alert_id=row.id, action='resolve') }}"
+                        data-title="Resolve {{ row.code }}" data-ok="Mark as resolved"
+                        data-guess="{{ row.reason_guess }}" data-condition="{{ row.medical_condition }}">
+                  <i data-lucide="circle-check"></i> Resolve
+                </button>
                 <form method="POST" action="{{ url_for('admin.update_alert_status', alert_id=row.id, action='false-alarm') }}"
                       class="js-confirm-alert" data-confirm="Mark {{ row.code }} as a false alarm? This closes the alert.">
                   <button type="submit" class="text-red" role="menuitem"><i data-lucide="circle-x"></i> False alarm</button>
                 </form>
+                {% elif row.status == 'resolved' %}
+                <button type="button" class="js-open-reason" role="menuitem"
+                        data-url="{{ url_for('admin.set_alert_reason', alert_id=row.id) }}"
+                        data-title="{{ 'Edit reason' if row.reason_confirmed else 'Set reason' }} for {{ row.code }}" data-ok="Save reason"
+                        data-guess="{{ row.reason_guess }}" data-condition="{{ row.medical_condition }}">
+                  <i data-lucide="stethoscope"></i> {{ 'Edit reason' if row.reason_confirmed else 'Set reason' }}
+                </button>
                 {% endif %}
               </div>
             </div>
@@ -195,7 +206,7 @@
         </tr>
         {% endfor %}
         <tr class="table-empty" {% if rows %}hidden{% endif %}>
-          <td colspan="10">
+          <td colspan="11">
             <div class="empty-state">
               <span class="empty-icon"><i data-lucide="bell-off"></i></span>
               {% if rows %}
@@ -217,6 +228,27 @@
     <nav class="pagination" aria-label="Log pages"></nav>
   </div>
 </section>
+
+<!-- RESOLVE / SET REASON WINDOW -->
+<div class="up-modal" id="reasonModal" hidden>
+  <div class="up-backdrop" data-rs-close></div>
+  <div class="up-card" role="dialog" aria-modal="true" aria-labelledby="reasonTitle" style="max-width:420px">
+    <button type="button" class="up-close" data-rs-close aria-label="Close"><i data-lucide="x"></i></button>
+    <form method="POST" id="reasonForm">
+      <div class="up-body">
+        <h2 id="reasonTitle" style="margin:0 0 14px;font-size:18px">Resolve alert</h2>
+        {% with guess='', current='' %}{% include '_reason_fields.html' %}{% endwith %}
+      </div>
+      <footer class="up-foot">
+        <div class="up-foot-left"></div>
+        <div class="up-foot-right">
+          <button type="button" class="up-btn up-btn-ghost" data-rs-close>Cancel</button>
+          <button type="submit" class="up-btn up-btn-dark" id="reasonOk">Mark as resolved</button>
+        </div>
+      </footer>
+    </form>
+  </div>
+</div>
 
 <!-- ALERT DETAILS WINDOW (same look as the user profile window) -->
 <div class="up-modal" id="alertModal" hidden>
@@ -295,6 +327,7 @@
         `<div class="up-rows">
            ${infoRow('calendar', 'Date & time', d.full_time)}
            ${infoRow('radio', 'Device', d.device, { mono: true })}
+           ${infoRow('stethoscope', 'Reason', d.reason)}
          </div>${has(d.trigger) ? quote('mic', d.trigger) : ''}`);
 
       html += section('map-pin', 'Location',
@@ -347,6 +380,40 @@
     });
     document.addEventListener('keydown', (e) => {
       if (e.key === 'Escape' && !modal.hidden) close();
+    });
+  })();
+
+  // ---------- Resolve / Set reason window ----------
+  (function () {
+    const modal = document.getElementById('reasonModal');
+    const form = document.getElementById('reasonForm');
+    if (!modal || !form) return;
+    const box = form.querySelector('.reason-fields');
+
+    document.addEventListener('click', (e) => {
+      const btn = e.target.closest('.js-open-reason');
+      if (btn) {
+        document.querySelectorAll('.row-menu.open').forEach((m) => m.classList.remove('open'));
+        form.action = btn.dataset.url;
+        document.getElementById('reasonTitle').textContent = btn.dataset.title;
+        document.getElementById('reasonOk').textContent = btn.dataset.ok;
+        form.reset();
+        form.querySelector('[name="reason"]').value = btn.dataset.guess || '';
+        const cond = form.querySelector('[name="medical_condition"]');
+        cond.value = btn.dataset.condition || '';
+        if (btn.dataset.condition && cond.value !== btn.dataset.condition) {
+          cond.value = 'Other';      // a typed-in condition
+          form.querySelector('[name="condition_other"]').value = btn.dataset.condition;
+        }
+        if (window.syncReasonFields) window.syncReasonFields(box);
+        modal.hidden = false;
+        document.body.classList.add('up-lock');
+        return;
+      }
+      if (!modal.hidden && e.target.closest('[data-rs-close]')) {
+        modal.hidden = true;
+        document.body.classList.remove('up-lock');
+      }
     });
   })();
 

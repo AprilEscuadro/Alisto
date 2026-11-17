@@ -15,7 +15,7 @@ responder_profile/{id}   user_id, agency, position, agency_id_number,
 """
 import time
 from collections import Counter
-from datetime import datetime
+from datetime import datetime, timedelta
 from functools import wraps
 
 from flask import (Blueprint, render_template, session, redirect, url_for,
@@ -111,22 +111,57 @@ def _load():
             'elder_id': alert.get('elder_id'),
             'trigger': (alert.get('trigger_type') or '').upper(),
             'false_alarm': (alert.get('alert_status') or '').upper() == 'CANCELLED',
+            'reason': ac.REASONS.get(alert.get('reason') or '', ''),
+            'condition': (alert.get('medical_condition') or '')
+            if alert.get('reason') == 'MEDICAL' else '',
         })
 
     _CACHE.update(at=time.time(), alerts=alerts, barangay_of=barangay_of)
     return alerts, barangay_of
 
 
-def aggregate(alerts, barangay_of, barangay=''):
-    """Counts only. [alerts] items: {when, elder_id, trigger, false_alarm}."""
+PERIODS = {'today': 'Today', 'week': 'This week', 'month': 'This month',
+           'year': 'This year', 'all': 'All time', 'custom': 'Custom range'}
+
+
+def period_range(period, start_text='', end_text=''):
+    """(start_date, end_date, label) in PH time; None = no limit.
+    Returns None for an invalid custom range."""
+    today = datetime.now(ac.PH_TIME).date()
+    if period == 'today':
+        return today, today, 'Today'
+    if period == 'week':                          # Monday to today
+        return today - timedelta(days=today.weekday()), today, 'This week'
+    if period == 'month':
+        return today.replace(day=1), today, today.strftime('%B %Y')
+    if period == 'year':
+        return today.replace(month=1, day=1), today, str(today.year)
+    if period == 'custom':
+        try:
+            start = datetime.strptime(start_text, '%Y-%m-%d').date()
+            end = datetime.strptime(end_text, '%Y-%m-%d').date()
+        except ValueError:
+            return None
+        if start > end:
+            return None
+        return start, end, f"{start.strftime('%b %d, %Y')} - {end.strftime('%b %d, %Y')}"
+    return None, None, 'All time'
+
+
+def aggregate(alerts, barangay_of, barangay='', start=None, end=None):
+    """Counts only. [alerts] items: {when, elder_id, trigger, false_alarm,
+    reason, condition}. start/end: dates (inclusive), None = no limit."""
     heat = [[0] * 8 for _ in range(7)]          # weekday x 3-hour block
     by_day, by_block = [0] * 7, [0] * 8
     monthly, ranking = Counter(), Counter()
+    reasons, conditions = Counter(), Counter()
     total = false_alarms = voice = button = 0
 
     for a in alerts:
         moment = ac.local(a['when'])
         if not moment:
+            continue
+        if (start and moment.date() < start) or (end and moment.date() > end):
             continue
         place = barangay_of.get(a['elder_id']) or ''
         if place:
@@ -143,13 +178,23 @@ def aggregate(alerts, barangay_of, barangay=''):
         by_day[day] += 1
         by_block[block] += 1
         monthly[moment.strftime('%Y-%m')] += 1
+        if not a['false_alarm']:
+            reasons[a.get('reason') or 'Not confirmed yet'] += 1
+            if a.get('condition'):
+                conditions[a['condition']] += 1
 
     months = sorted(monthly)[-12:]              # last 12 months that have data
     busiest_day = DAY_NAMES[by_day.index(max(by_day))] if total else None
     busiest_block = BLOCK_LABELS[by_block.index(
         max(by_block))] if total else None
+    confirmed = [(r, n) for r, n in reasons.most_common() if r != 'Not confirmed yet']
     return {
         'barangay': barangay or 'All Cebu City',
+        'top_reason': confirmed[0][0] if confirmed else None,
+        'reasons': [{'label': r, 'count': n} for r, n in confirmed]
+        + ([{'label': 'Not confirmed yet', 'count': reasons['Not confirmed yet']}]
+           if reasons['Not confirmed yet'] else []),
+        'conditions': [{'label': c, 'count': n} for c, n in conditions.most_common()],
         'total': total,
         'false_alarms': false_alarms,
         'false_alarm_rate': round(100 * false_alarms / total) if total else 0,
@@ -192,8 +237,17 @@ def analytics_data():
     barangay = bg.canonical(raw) or ''
     if raw and not barangay:
         return jsonify(success=False, message='Pick a barangay from the list.'), 400
+    period = request.args.get('period', 'year')
+    if period not in PERIODS:
+        period = 'year'
+    picked = period_range(period, request.args.get('start', ''),
+                          request.args.get('end', ''))
+    if picked is None:
+        return jsonify(success=False, message='Pick a valid start and end date.'), 400
+    start, end, period_label = picked
     alerts, barangay_of = _load()
-    return jsonify(success=True, **aggregate(alerts, barangay_of, barangay))
+    return jsonify(success=True, period_label=period_label,
+                   **aggregate(alerts, barangay_of, barangay, start, end))
 
 
 # ---------- MY PROFILE (same behaviour as the BHW/family page) ----------

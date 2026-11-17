@@ -95,7 +95,7 @@ def _emergency_items(user_id, role):
                    else 'Called for help')
             items.append(_item(
                 f"alert:{a['id']}", 'emergency', 'siren', 'tint-red', True,
-                who, f'{how} — still active', ac.fmt_time(
+                who, f'{ac.notif_reason(a)} · {how} — still active', ac.fmt_time(
                     a.get('date_triggered')),
                 inbox.to_ms(a.get('date_triggered')),
                 url_for('bhw.alerts', alert=a['id']), pinned=True))
@@ -109,7 +109,7 @@ def _emergency_items(user_id, role):
                 'full_name') or 'Unknown resident'
             items.append(_item(
                 f'alert:{aid}', 'emergency', 'siren', 'tint-red', True,
-                who, f"{ac.type_label('emergency')} — still active",
+                who, f"{ac.notif_reason(a)} — still active",
                 ac.fmt_time(a.get('date_triggered')),
                 inbox.to_ms(a.get('date_triggered')),
                 url_for('admin.emergency_logs'), pinned=True))

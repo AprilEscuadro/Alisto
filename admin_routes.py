@@ -240,7 +240,7 @@ def _open_alert_items():
         elder = elders.get(a.get('elder_id'), {})
         out.append({
             'name': elder.get('full_name') or 'Unknown resident',
-            'type_label': ac.type_label('emergency'),
+            'type_label': ac.notif_reason(a),
             'time': ac.fmt_time(a.get('date_triggered')),
             'created_at': a.get('date_triggered'),
         })
@@ -542,6 +542,11 @@ def _rows_from_alerts(alerts, lookups=True):
             'full_time': ac.local(alert.get('date_triggered')).strftime('%b %d, %Y %I:%M %p')
             if ac.local(alert.get('date_triggered')) else '—',
             'notes': alert.get('resolution_note') or '',
+            'reason': ac.reason_text(alert)[0],
+            'reason_confirmed': ac.reason_text(alert)[1],
+            'reason_guess': ac.reason_guess(alert),
+            'reason_key': alert.get('reason') if alert.get('reason') in ac.REASONS else '',
+            'medical_condition': alert.get('medical_condition') or '',
             'trigger_phrase': phrases.get(alert.get('phrase_id'), ''),
             'response_minutes': ac.response_minutes(alert),
             'response_text': _fmt_minutes(ac.response_minutes(alert)),
@@ -1006,7 +1011,7 @@ def _send_approval_email(user, approved):
         ]
         text = '\n\n'.join(paragraphs)
         html = mailer.simple_html(heading, paragraphs)
-    return mailer.send(user.get('email'), subject, text, html)
+        return mailer.send(user.get('email'), subject, text, html, background=False)
 
 
 @admin_bp.route('/users/<user_id>/archive', methods=['POST'])
@@ -1158,6 +1163,34 @@ def _delete_elder(elder_id):
         return redirect(url_for('admin.users'))
 
     flash(f'{name} was permanently deleted and their device was unregistered.', 'success')
+    return redirect(url_for('admin.users'))
+
+
+@admin_bp.route('/users/bulk-delete', methods=['POST'])
+@admin_required
+def bulk_delete_users():
+    """Permanently deletes every ticked row on the Users page. Each value is
+    "type:id"; elders go through _delete_elder(), everyone else through
+    delete_user(). Their per-user flashes are collapsed into one summary."""
+    before = len(session.get('_flashes', []))
+    for picked in request.form.getlist('picked'):
+        kind, _, user_id = picked.partition(':')
+        if not user_id:
+            continue
+        if kind == 'elderly':
+            _delete_elder(user_id)
+        else:
+            delete_user(user_id)
+
+    flashes = session.get('_flashes', [])
+    new, kept = flashes[before:], flashes[:before]
+    deleted = sum(1 for category, _ in new if category == 'success')
+    session['_flashes'] = kept
+    if deleted:
+        flash(f'{deleted} user(s) permanently deleted.', 'success')
+    for category, message in new:
+        if category != 'success':
+            flash(message, category)
     return redirect(url_for('admin.users'))
 
 
@@ -2040,11 +2073,36 @@ def update_alert_status(alert_id, action):
         else:
             flash('Alert acknowledged. The alarm has stopped for everyone.', 'success')
     else:
+        reason = condition = None
+        if action == 'resolve':
+            reason, condition, error = ac.reason_from_form(request.form)
+            if error:
+                flash(error, 'error')
+                return redirect(back)
         ac.resolve(db, ref, alert_id, session['user_id'],
                    false_alarm=(action == 'false-alarm'),
-                   notes=(request.form.get('resolution_note') or '').strip()[:300] or None)
+                   notes=(request.form.get('resolution_note') or '').strip()[:300] or None,
+                   reason=reason, condition=condition)
         flash('Alert marked as a false alarm.' if action == 'false-alarm'
               else 'Alert resolved.', 'success')
+    return redirect(back)
+
+
+@admin_bp.route('/emergency-logs/<alert_id>/reason', methods=['POST'])
+@admin_required
+def set_alert_reason(alert_id):
+    """Sets or corrects the reason of an already-resolved alert."""
+    back = request.referrer or url_for('admin.emergency_logs')
+    ref = db.collection(ac.ALERT_COLLECTION).document(alert_id)
+    if not ref.get().exists:
+        flash('That alert no longer exists.', 'error')
+        return redirect(back)
+    reason, condition, error = ac.reason_from_form(request.form)
+    if error:
+        flash(error, 'error')
+    else:
+        ac.set_reason(ref, reason, condition)
+        flash('Reason saved.', 'success')
     return redirect(back)
 
 
@@ -2056,10 +2114,10 @@ def download_logs():
     buffer = io.StringIO()
     writer = csv.writer(buffer)
     writer.writerow(['Alert ID', 'Device', 'Resident', 'Age', 'Location', 'Barangay',
-                     'Type', 'Severity', 'Status', 'Date & Time', 'Response (minutes)', 'Notes'])
+                     'Type', 'Reason', 'Severity', 'Status', 'Date & Time', 'Response (minutes)', 'Notes'])
     for r in rows:
         writer.writerow([r['code'], r['device'], r['name'], r['age'] or '', r['location'],
-                         r['barangay'], r['type_label'], r['severity'].title(
+                         r['barangay'], r['type_label'], r['reason'], r['severity'].title(
         ), r['status_label'],
             r['full_time'],
             '' if r['response_minutes'] is None else round(
@@ -2301,7 +2359,21 @@ def _report_data(range_key, place='', query=''):
     type_breakdown = [{'label': o['label'], 'count': o['count'], 'pct': o['pct'],
                        'colour': o['colour']} for o in outcomes if o['count']]
 
+    # Reasons (confirmed by BHW/admin on Resolve). False alarms left out.
+    real = [r for r in rows if r['status'] != 'false_alarm']
+    reason_count = Counter(ac.REASONS.get(r['reason_key'], 'Not confirmed yet') for r in real)
+    reasons = [{'label': k, 'count': n, 'pct': _report_pct(n, len(real))}
+               for k, n in reason_count.most_common() if k != 'Not confirmed yet']
+    if reason_count['Not confirmed yet']:
+        reasons.append({'label': 'Not confirmed yet', 'count': reason_count['Not confirmed yet'],
+                        'pct': _report_pct(reason_count['Not confirmed yet'], len(real))})
+    medical = [r['medical_condition'] for r in real
+               if r['reason_key'] == 'MEDICAL' and r['medical_condition']]
+    conditions = [{'label': k, 'count': n, 'pct': _report_pct(n, len(medical))}
+                  for k, n in Counter(medical).most_common()]
+
     return {
+        'reasons': reasons, 'conditions': conditions,
         'rows': rows, 'stats': stats, 'chart': chart, 'outcomes': outcomes,
         'buckets': buckets, 'most_missed': most_missed, 'top_places': top_places,
         'barangay_rows': barangay_rows, 'type_breakdown': type_breakdown,

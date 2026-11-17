@@ -1,0 +1,62 @@
+{# Reason picker for resolving an emergency (BHW + admin).
+   Use: {% with guess=detail.reason_guess, current=detail.medical_condition %}{% include '_reason_fields.html' %}{% endwith %} #}
+<div class="reason-fields">
+  <label class="reason-label">
+    <span>Reason for the emergency</span>
+    <select name="reason" class="reason-select" required>
+      <option value="" disabled {% if not guess %}selected{% endif %}>Choose a reason</option>
+      {% for key, label in reason_options.items() %}
+      <option value="{{ key }}" {% if guess == key %}selected{% endif %}>{{ label }}</option>
+      {% endfor %}
+    </select>
+  </label>
+  <label class="reason-label reason-condition" {% if guess != 'MEDICAL' %}hidden{% endif %}>
+    <span>Medical condition</span>
+    <select name="medical_condition">
+      <option value="" disabled {% if current not in medical_conditions %}selected{% endif %}>Choose a condition</option>
+      {% for c in medical_conditions %}
+      <option value="{{ c }}" {% if current == c %}selected{% endif %}>{{ c }}</option>
+      {% endfor %}
+      <option value="Other">Other</option>
+    </select>
+  </label>
+  <label class="reason-label reason-other" hidden>
+    <span>Type the reason</span>
+    <input type="text" name="condition_other" maxlength="60" placeholder="e.g. Asthma attack" />
+  </label>
+</div>
+
+<style>
+  .reason-fields { display: grid; gap: 10px; margin-bottom: 12px; text-align: left; }
+  .reason-label { display: grid; gap: 4px; font-size: 13px; font-weight: 600; }
+  .reason-label[hidden] { display: none; }
+  .reason-label select, .reason-label input {
+    width: 100%; padding: 9px 10px; border: 1px solid #d0d5dd; border-radius: 8px;
+    font: inherit; font-weight: 400; background: #fff; color: #111827;
+  }
+</style>
+<script>
+  (function () {
+    if (window.__reasonFields) return;
+    window.__reasonFields = true;
+    function sync(box) {
+      var reason = box.querySelector('[name="reason"]').value;
+      var cond = box.querySelector('.reason-condition');
+      var other = box.querySelector('.reason-other');
+      var condValue = box.querySelector('[name="medical_condition"]').value;
+      cond.hidden = reason !== 'MEDICAL';
+      cond.querySelector('select').required = reason === 'MEDICAL';
+      var needOther = reason === 'OTHER' || (reason === 'MEDICAL' && condValue === 'Other');
+      other.hidden = !needOther;
+      other.querySelector('input').required = needOther;
+    }
+    document.addEventListener('change', function (e) {
+      var box = e.target.closest('.reason-fields');
+      if (box) sync(box);
+    });
+    document.addEventListener('DOMContentLoaded', function () {
+      document.querySelectorAll('.reason-fields').forEach(sync);
+    });
+    window.syncReasonFields = sync;
+  })();
+</script>

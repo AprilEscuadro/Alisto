@@ -75,6 +75,12 @@ TEMP_LOCATION = {
 
 
 @app.context_processor
+def inject_reason_options():
+    """Choices for the emergency Reason picker (templates/_reason_fields.html)."""
+    return {'reason_options': ac.REASONS, 'medical_conditions': ac.MEDICAL_CONDITIONS}
+
+
+@app.context_processor
 def inject_account():
     if 'user_id' not in session:
         return {}
@@ -367,6 +373,7 @@ def register():
             if not relationship:
                 return jsonify(success=False, message='Please specify your relationship to the elder.'), 400
 
+        _free_rejected_email(email)
         existing_user = list(
             db.collection('user_account').where(
                 'email', '==', email).limit(1).stream()
@@ -439,6 +446,28 @@ def register():
         responder_agencies=RESPONDER_AGENCIES,
     )
 
+def _free_rejected_email(email):
+    """A rejected BHW/responder can register again with the same email:
+    their old rejected account (login, profile, valid ID) is removed first."""
+    for doc in db.collection('user_account').where('email', '==', email).stream():
+        user = doc.to_dict() or {}
+        if user.get('approval_status') != 'rejected' or user.get('role') not in ('bhw', 'responder'):
+            continue
+        try:
+            firebase_auth.delete_user(doc.id)
+        except firebase_auth.UserNotFoundError:
+            pass
+        except Exception as e:
+            print(f'[register] could not remove old rejected login {doc.id}: {e}')
+            continue
+        for col in ('bhw_profile', 'responder_profile'):
+            for profile in db.collection(col).where('user_id', '==', doc.id).stream():
+                profile.reference.delete()
+        try:
+            valid_id_store.delete(doc.id)
+        except Exception:
+            pass
+        doc.reference.delete()
 
 def _register_bhw(full_name, email, password, contact_number, barangay_assigned):
     dob = request.form.get('bhw_dob', '').strip()
@@ -468,6 +497,7 @@ def _register_bhw(full_name, email, password, contact_number, barangay_assigned)
     except ValueError:
         return jsonify(success=False, message='Please enter a valid date of birth.'), 400
 
+    _free_rejected_email(email)
     if list(db.collection('user_account').where('email', '==', email).limit(1).stream()):
         return jsonify(success=False, message='An account with this email already exists.'), 400
     if list(db.collection('bhw_profile').where('bhw_id_number', '==', bhw_id_number).limit(1).stream()):
@@ -568,6 +598,7 @@ def _register_responder(full_name, email, password, contact_number):
     if not valid_id or not valid_id.filename:
         return jsonify(success=False, message='Please upload a valid ID. It is required for responders.'), 400
 
+    _free_rejected_email(email)
     if list(db.collection('user_account').where('email', '==', email).limit(1).stream()):
         return jsonify(success=False, message='An account with this email already exists.'), 400
     if list(db.collection('responder_profile').where('agency_id_number', '==', agency_id_number).limit(1).stream()):
@@ -1744,6 +1775,8 @@ def _alert_card(row, elder, locations=None, phrases=None, sms_counts=None):
         'status': label,
         'status_class': status_class,
         'reason': alert.get('resolution_note') or 'Cancelled within 5 seconds',
+        'emergency_reason': ac.reason_text(alert)[0],
+        'reason_confirmed': ac.reason_text(alert)[1],
     }
 
 

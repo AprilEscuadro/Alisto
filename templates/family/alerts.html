@@ -492,6 +492,9 @@
                         <i data-lucide="bell"></i> False Alarm
                       </span>
                       {% endif %}
+                      {% if alert.type == 'emergency' %}
+                      <small class="fa-type-sub" style="font-weight:600;{{ 'font-style:italic;font-weight:400' if not alert.reason_confirmed }}">{{ alert.emergency_reason }}</small>
+                      {% endif %}
                       <small class="fa-type-sub">{{ alert.trigger_label|title }}</small>
                     </td>
                     <td class="fa-nowrap">{{ alert.timestamp }}</td>
@@ -812,6 +815,7 @@
               row("Loved one", `${a.elder_name} (${a.relationship})`),
               row("Type", a.type === "emergency" ? "Emergency" : "False alarm"),
               row("Status", a.status),
+              row("Reason", a.emergency_reason),
               row(
                 "Trigger",
                 a.trigger_phrase
@@ -823,7 +827,7 @@
               row("Device", a.device_id),
               row("SMS sent", String(a.sms_sent_count)),
             );
-            if (a.type !== "emergency") body.append(row("Reason", a.reason));
+            if (a.type !== "emergency") body.append(row("Note", a.reason));
 
             if (a.gps_verified) {
               const link = document.createElement("a");

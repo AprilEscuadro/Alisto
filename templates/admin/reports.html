@@ -149,6 +149,41 @@
     </article>
   </section>
 
+  <!-- ============ REASONS ============ -->
+  <section class="rp-grid rp-grid-2">
+    <article class="rp-card">
+      <header class="rp-card-head"><h2>Reasons for emergencies</h2></header>
+      {% if reasons %}
+      <ul class="rp-list">
+        {% for r in reasons %}
+        <li>
+          <span>{{ r.label }}</span>
+          <span class="rp-num">{{ r.count }} <small>{{ r.pct }}%</small></span>
+        </li>
+        {% endfor %}
+      </ul>
+      {% else %}
+      <div class="rp-empty"><i data-lucide="stethoscope"></i><strong>Nothing to show yet</strong><span>Reasons appear once alerts are resolved.</span></div>
+      {% endif %}
+    </article>
+
+    <article class="rp-card">
+      <header class="rp-card-head"><h2>Medical emergencies by condition</h2></header>
+      {% if conditions %}
+      <ul class="rp-list">
+        {% for c in conditions %}
+        <li>
+          <span>{{ c.label }}</span>
+          <span class="rp-num">{{ c.count }} <small>{{ c.pct }}%</small></span>
+        </li>
+        {% endfor %}
+      </ul>
+      {% else %}
+      <div class="rp-empty"><i data-lucide="heart-pulse"></i><strong>No medical emergencies yet</strong><span>Conditions show here once a medical emergency is resolved.</span></div>
+      {% endif %}
+    </article>
+  </section>
+
   <!-- ============ ROW 2: response, medication, location ============ -->
   <section class="rp-grid rp-grid-3">
     <article class="rp-card">

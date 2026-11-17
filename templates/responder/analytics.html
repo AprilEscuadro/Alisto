@@ -32,7 +32,18 @@
   .rsp-empty { color: var(--admin-muted); font-size: 14px; padding: 6px 0; margin: 0; }
   .rsp-note { font-size: 12px; color: var(--admin-muted); text-align: center; margin: 18px 0 10px; }
   .rsp-loading { opacity: .5; pointer-events: none; }
-  @media (min-width: 700px) { .rsp-stats { grid-template-columns: repeat(4, 1fr); } .rsp-bar { grid-template-columns: 150px 1fr 40px; } }
+  .rsp-periods { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 12px; }
+  .rsp-periods button { height: 36px; padding: 0 14px; border: 1px solid var(--admin-border); border-radius: 99px;
+    background: var(--admin-card); color: var(--admin-text); font: inherit; font-size: 13px; font-weight: 600; cursor: pointer; }
+  .rsp-periods button.active { background: var(--admin-primary); border-color: var(--admin-primary); color: #fff; }
+  .rsp-custom { display: flex; flex-wrap: wrap; align-items: end; gap: 8px; margin-top: 10px; }
+  .rsp-custom[hidden] { display: none; }
+  .rsp-custom label { display: grid; gap: 4px; font-size: 12px; color: var(--admin-muted); }
+  .rsp-custom input { height: 40px; border: 1px solid var(--admin-border); border-radius: 10px; padding: 0 10px;
+    font: inherit; background: var(--admin-bg); color: var(--admin-text); }
+  .rsp-custom button { height: 40px; padding: 0 16px; border: 0; border-radius: 10px; background: var(--admin-primary);
+    color: #fff; font: inherit; font-weight: 600; cursor: pointer; }
+  @media (min-width: 700px) { .rsp-stats { grid-template-columns: repeat(5, 1fr); } .rsp-bar { grid-template-columns: 150px 1fr 40px; } }
 </style>
 {% endblock %}
 
@@ -54,6 +65,19 @@
     <datalist id="rspBarangayList">
       {% for b in barangays %}<option value="{{ b }}"></option>{% endfor %}
     </datalist>
+    <div class="rsp-periods" id="rspPeriods" role="group" aria-label="Time period">
+      <button type="button" data-period="today">Today</button>
+      <button type="button" data-period="week">This week</button>
+      <button type="button" data-period="month">This month</button>
+      <button type="button" data-period="year" class="active">This year</button>
+      <button type="button" data-period="all">All time</button>
+      <button type="button" data-period="custom">Custom</button>
+    </div>
+    <div class="rsp-custom" id="rspCustom" hidden>
+      <label>From <input type="date" id="rspFrom" /></label>
+      <label>To <input type="date" id="rspTo" /></label>
+      <button type="button" id="rspApply">Apply</button>
+    </div>
     <p class="rsp-error" id="rspError"></p>
     <p class="rsp-hint" id="rspScope">Showing: All Cebu City</p>
   </section>
@@ -63,7 +87,18 @@
     <div class="rsp-stat"><span>False alarms</span><strong id="sFalse">-</strong><small id="sFalseRate"></small></div>
     <div class="rsp-stat"><span>Busiest day</span><strong id="sDay">-</strong></div>
     <div class="rsp-stat"><span>Busiest time</span><strong id="sTime">-</strong></div>
+    <div class="rsp-stat"><span>Most common reason</span><strong id="sReason">-</strong></div>
   </div>
+
+  <section class="admin-card rsp-card">
+    <h2>Reasons for the emergencies</h2>
+    <div id="reasonWrap"></div>
+  </section>
+
+  <section class="admin-card rsp-card">
+    <h2>Medical emergencies by condition</h2>
+    <div id="conditionWrap"></div>
+  </section>
 
   <section class="admin-card rsp-card">
     <h2>Day and time (darker = more emergencies)</h2>
@@ -85,7 +120,7 @@
     <div id="rankWrap"></div>
   </section>
 
-  <p class="rsp-note">The system records when and how an alert was triggered, not the kind of emergency.</p>
+  <p class="rsp-note">Reasons are confirmed by the BHW or admin when they resolve an alert. False alarms are not counted in the reasons.</p>
 </div>
 {% endblock %}
 
@@ -128,7 +163,10 @@
     $r('sFalseRate').textContent = d.total ? d.false_alarm_rate + '% of alerts' : '';
     $r('sDay').textContent = d.busiest_day || '-';
     $r('sTime').textContent = d.busiest_block || '-';
-    $r('rspScope').textContent = 'Showing: ' + d.barangay;
+    $r('rspScope').textContent = 'Showing: ' + d.barangay + ' · ' + d.period_label;
+    $r('sReason').textContent = d.top_reason || '-';
+    $r('reasonWrap').innerHTML = bars(d.reasons, 'label');
+    $r('conditionWrap').innerHTML = bars(d.conditions, 'label');
     renderHeat(d);
     $r('triggerWrap').innerHTML = d.total
       ? bars([{ label: 'Voice', count: d.voice }, { label: 'Button', count: d.button }], 'label')
@@ -137,10 +175,15 @@
     $r('rankWrap').innerHTML = bars(d.ranking, 'barangay');
   }
 
+  var current = { barangay: '', period: 'year', start: '', end: '' };
+
   function load(barangay) {
+    if (barangay !== undefined) current.barangay = barangay;
     var err = $r('rspError'); err.style.display = 'none';
     $r('rspPage').classList.add('rsp-loading');
-    fetch(DATA_URL + '?barangay=' + encodeURIComponent(barangay || ''), { credentials: 'same-origin' })
+    var qs = '?barangay=' + encodeURIComponent(current.barangay || '') + '&period=' + current.period +
+      (current.period === 'custom' ? '&start=' + current.start + '&end=' + current.end : '');
+    fetch(DATA_URL + qs, { credentials: 'same-origin' })
       .then(function (r) { return r.json().then(function (j) { return { ok: r.ok, body: j }; }); })
       .then(function (res) {
         if (!res.ok || !res.body.success) { err.textContent = res.body.message || 'Could not load the data.'; err.style.display = 'block'; return; }
@@ -159,6 +202,30 @@
     load(v);
   });
   $r('rspResetBtn').addEventListener('click', function () { $r('rspBarangayInput').value = ''; load(''); });
+
+  // Time period: quick buttons, or Custom -> from/to dates.
+  $r('rspPeriods').addEventListener('click', function (e) {
+    var btn = e.target.closest('[data-period]');
+    if (!btn) return;
+    [].forEach.call($r('rspPeriods').children, function (b) { b.classList.toggle('active', b === btn); });
+    var custom = btn.dataset.period === 'custom';
+    $r('rspCustom').hidden = !custom;
+    if (custom) {
+      if (!$r('rspTo').value) $r('rspTo').value = new Date().toLocaleDateString('en-CA');
+      $r('rspFrom').focus();
+      return;                                   // waits for Apply
+    }
+    current.period = btn.dataset.period;
+    load();
+  });
+  $r('rspApply').addEventListener('click', function () {
+    var from = $r('rspFrom').value, to = $r('rspTo').value, err = $r('rspError');
+    if (!from || !to || from > to) {
+      err.textContent = 'Pick a start date that is on or before the end date.'; err.style.display = 'block'; return;
+    }
+    current.period = 'custom'; current.start = from; current.end = to;
+    load();
+  });
   load('');
 </script>
 {% endblock %}

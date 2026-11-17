@@ -98,6 +98,11 @@
     </button>
   </div>
   <div class="toolbar-actions">
+    <form method="POST" action="{{ url_for('admin.bulk_delete_users') }}" id="bulkDeleteUsers" hidden>
+      <button type="submit" class="btn btn-danger-solid">
+        <i data-lucide="trash-2"></i> <span>Delete (<span id="bulkDeleteCount">0</span>)</span>
+      </button>
+    </form>
     <div class="export-menu" id="exportUsers">
       <button type="button" class="btn btn-outline export-menu-btn" aria-haspopup="true" aria-expanded="false">
         <i data-lucide="download"></i> Export <i data-lucide="chevron-down"></i>
@@ -121,6 +126,7 @@
     <table class="admin-table" id="usersTable">
       <thead>
         <tr>
+          <th class="col-check"><input type="checkbox" id="userSelectAll" aria-label="Select all users"></th>
           <th>User</th>
           <th>Type</th>
           <th>Barangay</th>
@@ -157,6 +163,7 @@
           {% if row.valid_id_url %}data-valid-id-url="{{ row.valid_id_url }}" data-valid-id-name="{{ row.valid_id_name }}"{% endif %}
           {% if row.type in ('bhw', 'responder') %}data-approval-url="{{ url_for('admin.update_bhw_approval', user_id=row.id) }}"{% endif %}
         >
+          <td class="col-check"><input type="checkbox" class="user-check" name="picked" value="{{ row.type }}:{{ row.id }}" form="bulkDeleteUsers" aria-label="Select {{ row.name }}"></td>
           <td>
             <div class="user-cell">
               <span class="admin-avatar-lg avatar-{{ row.type }}">{{ row.initials }}</span>
@@ -232,7 +239,7 @@
         </tr>
         {% endfor %}
         <tr class="table-empty" id="usersEmpty" {% if rows %}hidden{% endif %}>
-          <td colspan="9">
+          <td colspan="10">
             <div class="empty-state">
               <span class="empty-icon"><i data-lucide="users-round"></i></span>
               <strong>No users found</strong>

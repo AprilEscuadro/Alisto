@@ -459,10 +459,12 @@
     // Reads the table as shown (filtered, but not paginated), so any table
     // can be exported regardless of which columns/format it needs.
     function tableData() {
-      const header = $$('thead th', table).map((th) => th.textContent.trim()).filter((t) => t !== 'Actions');
+      const header = $$('thead th', table)
+        .filter((th) => !th.classList.contains('col-check'))
+        .map((th) => th.textContent.trim()).filter((t) => t !== 'Actions');
       const rows = matches.map((row) =>
         $$('td', row)
-          .filter((td) => !td.classList.contains('col-actions'))
+          .filter((td) => !td.classList.contains('col-actions') && !td.classList.contains('col-check'))
           .map((td) => td.textContent.replace(/\s+/g, ' ').trim())
       );
       return { header, rows };
@@ -663,6 +665,56 @@
       if (!btn) return;
       $('#bulkAction').value = btn.dataset.bulk;
       bar.requestSubmit();
+    });
+
+    sync();
+  }
+
+  // ---------- Users: tick rows, then Delete them all at once ----------
+  function setupBulkDeleteUsers() {
+    const table = $('#usersTable');
+    const form = $('#bulkDeleteUsers');
+    const all = $('#userSelectAll');
+    if (!table || !form || !all) return;
+
+    const boxes = () => $$('tbody .user-check', table);
+    const visibleBoxes = () => boxes().filter((b) => !b.closest('tr').hidden);
+
+    function sync() {
+      const checked = boxes().filter((b) => b.checked);
+      form.hidden = checked.length === 0;
+      $('#bulkDeleteCount').textContent = checked.length;
+      const vis = visibleBoxes();
+      all.checked = vis.length > 0 && vis.every((b) => b.checked);
+      all.indeterminate = !all.checked && vis.some((b) => b.checked);
+      boxes().forEach((b) => b.closest('tr').classList.toggle('row-checked', b.checked));
+    }
+
+    // Select-all only ticks rows you can see (current filter + page).
+    all.addEventListener('change', () => {
+      visibleBoxes().forEach((b) => { b.checked = all.checked; });
+      sync();
+    });
+    table.addEventListener('change', (e) => {
+      if (e.target.classList.contains('user-check')) sync();
+    });
+
+    // When a filter, search or page change hides rows, un-tick them so a
+    // hidden user can never be deleted by accident.
+    new MutationObserver(() => {
+      boxes().forEach((b) => { if (b.closest('tr').hidden) b.checked = false; });
+      sync();
+    }).observe(table.tBodies[0], { attributes: true, attributeFilter: ['hidden'], subtree: true });
+
+    form.addEventListener('submit', (e) => {
+      e.preventDefault();
+      const n = boxes().filter((b) => b.checked).length;
+      if (!n) return;
+      confirmDialog({
+        title: `Delete ${n} user${n === 1 ? '' : 's'}?`,
+        message: 'Their accounts and profiles will be permanently deleted, including their Firebase logins, and elders’ devices will be unregistered. Past alerts and payment records are kept. This cannot be undone.',
+        okLabel: 'Delete permanently', danger: true,
+      }).then((ok) => { if (ok) form.submit(); });
     });
 
     sync();
@@ -1197,6 +1249,7 @@
     setupModal();
     setupAlertFilters();   // creates the hidden select the alerts table filters on
     setupBulkAlerts();
+    setupBulkDeleteUsers();
     FILTER_TABLES.forEach(setupFilterTable);
     setupAddDevices();
     setupAddUser();
@@ -1573,7 +1626,7 @@
       return;
     }
     const tr = e.target.closest('#usersTable tbody tr[data-details]');
-    if (tr && !e.target.closest('.col-actions, a, button, form, input, select, label')) { open(tr); return; }
+    if (tr && !e.target.closest('.col-actions, .col-check, a, button, form, input, select, label')) { open(tr); return; }
 
     if (modal.hidden) return;
     if (e.target.closest('[data-up-close]')) close();

@@ -330,6 +330,10 @@ def _alert_rows(alerts, elders, lookups=True):
             'gps_verified': lat is not None,
             'sms_sent_count': sms_counts.get(alert.get('id'), 0),
             'notes': alert.get('resolution_note') or '',
+            'reason': ac.reason_text(alert)[0],
+            'reason_confirmed': ac.reason_text(alert)[1],
+            'reason_guess': ac.reason_guess(alert),
+            'medical_condition': alert.get('medical_condition') or '',
             'response_minutes': ac.response_minutes(alert),
             'is_open': status in ac.OPEN_STATUSES,
             'latitude': lat,
@@ -552,14 +556,40 @@ def update_alert(alert_id, action):
             return redirect(url_for('bhw.alerts', alert=alert_id))
         flash('Alert acknowledged. You can now contact the resident.', 'success')
     else:
+        reason = condition = None
+        if action == 'resolve':
+            reason, condition, error = ac.reason_from_form(request.form)
+            if error:
+                flash(error, 'error')
+                return redirect(url_for('bhw.alerts', alert=alert_id))
         ac.resolve(
             db, ref, alert_id, session['user_id'],
             false_alarm=(action == 'false-alarm'),
             notes=request.form.get('resolution_note'),
+            reason=reason, condition=condition,
         )
         flash('Alert marked as a false alarm.' if action ==
               'false-alarm' else 'Alert resolved.', 'success')
 
+    return redirect(url_for('bhw.alerts', alert=alert_id))
+
+
+@bhw_bp.route('/alerts/<alert_id>/reason', methods=['POST'])
+@bhw_required
+def set_alert_reason(alert_id):
+    """Sets or corrects the reason of an already-resolved alert."""
+    ref = db.collection(ac.ALERT_COLLECTION).document(alert_id)
+    doc = ref.get()
+    alert = doc.to_dict() if doc.exists else None
+    if not alert or alert.get('elder_id') not in _elders_in_barangay(g.barangay):
+        flash('That alert is not in your barangay.', 'error')
+        return redirect(url_for('bhw.alerts'))
+    reason, condition, error = ac.reason_from_form(request.form)
+    if error:
+        flash(error, 'error')
+    else:
+        ac.set_reason(ref, reason, condition)
+        flash('Reason saved.', 'success')
     return redirect(url_for('bhw.alerts', alert=alert_id))
 
 

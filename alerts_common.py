@@ -483,7 +483,92 @@ def acknowledge(db, ref, alert_id, user_id):
     return True
 
 
-def resolve(db, ref, alert_id, user_id, false_alarm=False, notes=None):
+# ---------- EMERGENCY REASON ----------
+# The device only guesses a category from the spoken words (its title is
+# e.g. "Fall Injury emergency"). The BHW/admin confirms the real reason when
+# they resolve the alert; it is saved on the alert as `reason` and, for
+# medical emergencies, `medical_condition`.
+REASONS = {
+    'MEDICAL': 'Medical',
+    'FALL_INJURY': 'Fall / Injury',
+    'FIRE': 'Fire',
+    'INTRUDER': 'Intruder / Security',
+    'MEDICATION': 'Medication problem',
+    'OTHER': 'Other',
+}
+MEDICAL_CONDITIONS = ['Heart attack', 'Stroke', 'Seizure', 'Heat stroke']
+# Device category -> the reason it most likely is (pre-selected in the form).
+_DEVICE_GUESS = {'MEDICAL_SYMPTOM': 'MEDICAL', 'FALL_INJURY': 'FALL_INJURY',
+                 'FIRE': 'FIRE', 'INTRUDER': 'INTRUDER', 'MEDICATION': 'MEDICATION'}
+
+
+def device_category(alert):
+    """'Fall Injury emergency' -> 'FALL_INJURY'. '' if unknown."""
+    title = str(alert.get('title') or '').strip()
+    if not title.lower().endswith(' emergency'):
+        return ''
+    cat = title[:-len(' emergency')].strip().upper().replace(' ', '_')
+    return '' if cat in ('UNKNOWN', 'EMERGENCY') else cat
+
+
+def reason_guess(alert):
+    """Reason key to pre-select in the Resolve form."""
+    return alert.get('reason') or _DEVICE_GUESS.get(device_category(alert), '')
+
+
+def reason_text(alert):
+    """(text, confirmed) for tables, e.g. ('Medical - Heart attack', True)
+    or ('Fall Injury (detected)', False)."""
+    reason = alert.get('reason')
+    if reason in REASONS:
+        text = REASONS[reason]
+        if reason in ('MEDICAL', 'OTHER') and alert.get('medical_condition'):
+            text = (f"{text} - {alert['medical_condition']}" if reason == 'MEDICAL'
+                    else alert['medical_condition'])
+        return text, True
+    if row_status(alert) == 'false_alarm':
+        return 'False alarm', True
+    cat = device_category(alert)
+    if cat:
+        return f"{cat.replace('_', ' ').title()} (detected)", False
+    return 'Not set yet', False
+
+
+def notif_reason(alert):
+    """Short reason for notifications, e.g. 'Fall Injury emergency'."""
+    text, confirmed = reason_text(alert)
+    if confirmed:
+        return text
+    cat = device_category(alert)
+    return f"{cat.replace('_', ' ').title()} emergency" if cat else 'Emergency'
+
+
+def reason_from_form(form):
+    """Reads the Resolve form. Returns (reason, condition, error)."""
+    reason = (form.get('reason') or '').strip().upper()
+    if reason not in REASONS:
+        return None, None, 'Please pick the reason for this emergency.'
+    condition = None
+    if reason == 'MEDICAL':
+        condition = (form.get('medical_condition') or '').strip()
+        if condition == 'Other':
+            condition = (form.get('condition_other') or '').strip()[:60]
+        if not condition:
+            return None, None, 'Please pick the medical condition.'
+    elif reason == 'OTHER':
+        condition = (form.get('condition_other') or '').strip()[:60]
+        if not condition:
+            return None, None, 'Please type the reason.'
+    return reason, condition, None
+
+
+def set_reason(ref, reason, condition):
+    ref.update({'reason': reason, 'medical_condition': condition})
+    _forget_fallback()
+
+
+def resolve(db, ref, alert_id, user_id, false_alarm=False, notes=None,
+            reason=None, condition=None):
     """Marks an alert 'RESOLVED', or 'CANCELLED' if [false_alarm]. Backfills
     acknowledged/acknowledged_at/by if nobody pressed Acknowledge first, so
     response-time reporting still has a timestamp to work with. Returns the
@@ -497,6 +582,9 @@ def resolve(db, ref, alert_id, user_id, false_alarm=False, notes=None):
         'resolved_by': user_id,
         'resolution_note': resolution_note,
     }
+    if reason and not false_alarm:
+        updates['reason'] = reason
+        updates['medical_condition'] = condition
     if not alert.get('acknowledged_at'):
         updates['acknowledged'] = True
         updates['acknowledged_at'] = firestore.SERVER_TIMESTAMP
