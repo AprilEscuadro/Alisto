@@ -222,7 +222,7 @@ SMS_FAILURE_TEXT = {
     "SIM": "Alert S M S failed. Please check the sim card.",
     "SIGNAL": "Alert S M S failed. No mobile signal.",
     "LOAD": "Alert S M S failed. Please check the sim load.",
-    "MODEM": "Alert S M S failed. The modem is not responding.",
+    "MODEM": "Alert S M S failed. Check your sim load balance.",
 }
 
 

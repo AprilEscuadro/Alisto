@@ -38,6 +38,7 @@ import serial
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "voice_detector"))
 import audio_io      # noqa: E402
 import categorize     # noqa: E402
+import phrase_clean    # noqa: E402  (readable "detected phrase" shown in the app)
 import config          # noqa: E402
 import tts               # noqa: E402
 import vad                # noqa: E402
@@ -97,6 +98,21 @@ REMINDER_CHECK_INTERVAL_S = 20  # granularity of the schedule check -- fine
 # collection (added through the app), scoped to this device's elder_id.
 
 cancel_event = threading.Event()
+# Set once the 5-second cancel window of an emergency has closed (the SMS is
+# being sent): a Cancel press is then IGNORED, because the alert can no longer
+# be taken back. Cleared when the emergency flow ends (blue listening LED back
+# on). _cancel_gate makes "window closed" and "was Cancel pressed?" one step,
+# so a press can never be half-accepted.
+cancel_blocked = threading.Event()
+_cancel_gate = threading.Lock()
+# When the last ACCEPTED Cancel press arrived (time.monotonic()). An emergency
+# remembers when it was REQUESTED (SOS pressed / phrase spoken); a Cancel that
+# arrived after that moment still counts, even if it came while the emergency
+# was waiting for the mic/transcription (see trigger_emergency).
+_last_cancel_t = {"t": 0.0}
+# A phrase counts as requested slightly before the utterance is handed over
+# for transcription (end-of-speech detection runs after the last word).
+VOICE_CANCEL_GRACE_S = 1.0
 audio_ready_event = threading.Event()
 audio_done_event = threading.Event()
 rtc_time_event = threading.Event()
@@ -180,10 +196,24 @@ def esp32_reader(ser):
         print("ESP32:", line)
 
         if line == "EVENT:CANCEL":
-            cancel_event.set()
+            with _cancel_gate:
+                accepted = not cancel_blocked.is_set()
+                if accepted:
+                    _last_cancel_t["t"] = time.monotonic()
+                    cancel_event.set()
+            if not accepted:
+                # Too late: the cancel window closed and the SMS is going out.
+                # The ESP32 already switched its emergency LED off on the
+                # press, so light it again -- the LED must keep showing that
+                # the emergency is still being sent.
+                print("Cancel ignored: the 5-second window has closed.")
+                send_command(ser, "CMD:LED_ON")
         elif line == "EVENT:SOS":
+            # `since` = when the press arrived. Lines come in the order the
+            # ESP32 sent them, so a Cancel read after this line is later.
             threading.Thread(
-                target=trigger_emergency, args=(ser, "button"), daemon=True
+                target=trigger_emergency, args=(ser, "button"),
+                kwargs={"since": time.monotonic()}, daemon=True
             ).start()
         elif line == "AUDIO_READY":
             audio_ready_event.set()
@@ -435,7 +465,8 @@ def _outbox_update(alert_id, **fields):
         print(f"outbox: could not update {alert_id}: {e}")
 
 
-def _bg_create_alert(alert_id, elder_id, own_serial, alert_title, lines, trigger_type):
+def _bg_create_alert(alert_id, elder_id, own_serial, alert_title, lines, trigger_type,
+                     detected_phrase=None, detected_phrase_raw=None):
     """The early emergency_alert write, off the critical path (see
     firestore_backend.new_alert_id()): purely so the website/app show the
     alert the instant it fires when internet is up. If it can't get through
@@ -447,30 +478,40 @@ def _bg_create_alert(alert_id, elder_id, own_serial, alert_title, lines, trigger
         lines=lines,
         trigger_type=trigger_type,
         alert_id=alert_id,
+        detected_phrase=detected_phrase,
+        detected_phrase_raw=detected_phrase_raw,
     ):
         _outbox_update(alert_id, early_created=True)
 
 
-def _send_push(elder_id, alert_id, alert_title, age_s=0.0):
+def _send_push(elder_id, alert_id, alert_title, age_s=0.0,
+               trigger_type=None, detected_phrase=None):
     """`age_s` = how long ago the emergency happened. The push is dropped if
     it can't go out within outbox.PUSH_MAX_AGE_S of the emergency itself,
-    even if the call only gets unstuck later (see send_emergency_push)."""
+    even if the call only gets unstuck later (see send_emergency_push).
+    `trigger_type`/`detected_phrase` ride along so the app's floating card can
+    say how it was triggered (SOS button, or the phrase that was heard)."""
     return firestore_backend.send_emergency_push(
         elder_id=elder_id,
         title="ALISTO Emergency Alert",
         body=f"{alert_title}. Please check immediately.",
         alert_id=alert_id,
         deadline_mono=time.monotonic() + outbox.PUSH_MAX_AGE_S - age_s,
+        trigger_type=trigger_type,
+        detected_phrase=detected_phrase,
     )
 
 
-def _bg_push(elder_id, alert_id, alert_title):
+def _bg_push(elder_id, alert_id, alert_title, trigger_type=None,
+             detected_phrase=None):
     """The immediate push, sent right when the SMS starts. If it fails
     (offline) the outbox uploader retries it after the alert is uploaded."""
     with _push_inflight_lock:
         _push_inflight.add(alert_id)
     try:
-        if _send_push(elder_id, alert_id, alert_title):
+        if _send_push(elder_id, alert_id, alert_title,
+                      trigger_type=trigger_type,
+                      detected_phrase=detected_phrase):
             _outbox_update(alert_id, push_sent=True)
     finally:
         with _push_inflight_lock:
@@ -484,7 +525,9 @@ def _outbox_push(rec):
         if rec["alert_id"] in _push_inflight:
             return False
     age_s = max(0.0, time.time() - outbox.event_time(rec).timestamp())
-    return _send_push(rec["elder_id"], rec["alert_id"], rec["title"], age_s)
+    return _send_push(rec["elder_id"], rec["alert_id"], rec["title"], age_s,
+                      trigger_type=rec.get("trigger_type"),
+                      detected_phrase=rec.get("detected_phrase"))
 
 
 def outbox_uploader_loop():
@@ -536,8 +579,16 @@ def _announce_sms_failure(ser):
         print(f"SMS-failure announcement failed: {e}")
 
 
-def trigger_emergency(ser, source, category="UNKNOWN", message=None):
+def trigger_emergency(ser, source, category="UNKNOWN", message=None,
+                      transcript=None, since=None):
+    """`transcript` = what whisper heard (voice path only). It is saved on the
+    alert as `detected_phrase` and shown by the app; the SOS button has none.
+    `since` = time.monotonic() when the emergency was REQUESTED (SOS pressed /
+    phrase spoken). A Cancel press after that moment cancels it, even if it
+    came while this was still waiting for the mic or a transcription."""
     global _emergency_in_progress
+    if since is None:
+        since = time.monotonic()
 
     with _emergency_lock:
         if _emergency_in_progress:
@@ -562,11 +613,29 @@ def trigger_emergency(ser, source, category="UNKNOWN", message=None):
         try:
             print(
                 f"\n*** EMERGENCY TRIGGERED (source={source}, category={category}) ***")
-            cancel_event.clear()
+            # Forget only presses from BEFORE this emergency was requested
+            # (idle presses, noisy button line). A press made after it -- e.g.
+            # Cancel hit right after SOS while this still waited for the lock
+            # held by a transcription -- must survive: the old unconditional
+            # clear() here wiped it and the alert went out anyway.
+            if _last_cancel_t["t"] >= since:
+                cancel_event.set()
+            else:
+                cancel_event.clear()
 
             own_serial = firestore_backend.get_own_serial()
             alert_title = f"{category.replace('_', ' ').title()} emergency"
             trigger_type = "BUTTON" if source == "button" else "VOICE"
+            # raw = exactly what whisper heard (kept as-is); detected_phrase =
+            # that cleaned for the family's app (see phrase_clean.py).
+            detected_phrase_raw = (
+                (transcript or "").strip()[:200] or None
+                if source != "button" else None
+            )
+            detected_phrase = (
+                phrase_clean.display_phrase(detected_phrase_raw, category)
+                if detected_phrase_raw else None
+            ) or None
 
             # Written immediately -- before the TTS announcement even starts
             # streaming, let alone the 5-second cancel window -- so the
@@ -596,6 +665,8 @@ def trigger_emergency(ser, source, category="UNKNOWN", message=None):
                         alert_id, elder_id=_elder_id, device_id=own_serial,
                         title=alert_title, trigger_type=trigger_type,
                         category=category, phrase_text=message,
+                        detected_phrase=detected_phrase,
+                        detected_phrase_raw=detected_phrase_raw,
                         lines=(message or DEFAULT_MESSAGE).split("\n"),
                     )
                 except Exception as e:
@@ -604,13 +675,14 @@ def trigger_emergency(ser, source, category="UNKNOWN", message=None):
                 _run_in_background(
                     _bg_create_alert, alert_id, _elder_id, own_serial,
                     alert_title, (message or DEFAULT_MESSAGE).split(
-                        "\n"), trigger_type,
+                        "\n"), trigger_type, detected_phrase, detected_phrase_raw,
                 )
 
-            if source == "voice":
+            if source == "voice" and not cancel_event.is_set():
                 # Button path already set the ESP32's own emergency state
                 # (it detects the physical press itself); voice needs to
-                # tell it.
+                # tell it. Not when Cancel was already pressed: the LED must
+                # not light up for an emergency that is already cancelled.
                 send_command(ser, "CMD:VOICE_EMERGENCY")
 
             # Announcement is synthesized live via Piper TTS (see tts.py)
@@ -619,8 +691,11 @@ def trigger_emergency(ser, source, category="UNKNOWN", message=None):
             # announcement (silent, but cancel window + SMS still run
             # normally) if TTS fails for any reason -- same
             # graceful-degradation behavior as a missing file.
-            audio_path = tts.synthesize_announcement(category)
-            if audio_path:
+            audio_path = (None if cancel_event.is_set()
+                          else tts.synthesize_announcement(category))
+            if cancel_event.is_set():
+                print("Cancel was pressed already -- skipping the announcement.")
+            elif audio_path:
                 stream_audio(ser, audio_path)
             else:
                 print("TTS announcement unavailable -- continuing without audio")
@@ -636,12 +711,24 @@ def trigger_emergency(ser, source, category="UNKNOWN", message=None):
                 # cancel during the countdown takes effect immediately.
                 if cancel_event.wait(timeout=1):
                     break
-            if cancel_event.is_set():
-                cancelled = True
+            # Window over: from here on Cancel is ignored until the flow ends.
+            # Checked under the same lock the Cancel handler uses, so a press
+            # that landed in the last instant is either counted here or
+            # ignored (and its LED restored), never lost halfway.
+            with _cancel_gate:
+                cancel_blocked.set()
+                if cancel_event.is_set():
+                    cancelled = True
 
             if cancelled:
                 print("Emergency cancelled.")
-                # ESP32 already turned its own LED off via cancelEmergency()
+                # The ESP32 normally turned its own LED off via
+                # cancelEmergency(); but a Cancel that came before its
+                # CMD:VOICE_EMERGENCY would leave the LED on, so reset it
+                # explicitly (unblock first: the reply EVENT:CANCEL must not
+                # count as a late press).
+                cancel_blocked.clear()
+                send_command(ser, "CMD:CANCEL")
                 # Flips the same doc written at trigger time to CANCELLED
                 # (no push, no SMS -- nobody needs to be notified about a
                 # false alarm) so the website's False Alarms tab has
@@ -719,7 +806,8 @@ def trigger_emergency(ser, source, category="UNKNOWN", message=None):
                         ),
                     )
                     _run_in_background(_bg_push, _elder_id,
-                                       alert_id, alert_title)
+                                       alert_id, alert_title, trigger_type,
+                                       detected_phrase)
 
                 # Real recipients (added through the app's Contacts screen)
                 # instead of the single hardcoded number -- falls back to
@@ -774,7 +862,11 @@ def trigger_emergency(ser, source, category="UNKNOWN", message=None):
                     # Nothing got through to anyone -- say so out loud, with
                     # the likely reason, instead of failing in silence.
                     _announce_sms_failure(ser)
-                # reset ESP32 state for next trigger
+                # reset ESP32 state for next trigger. The unblock comes first:
+                # the ESP32 answers this CMD:CANCEL with EVENT:CANCEL, which
+                # must not be mistaken for a late button press (it would
+                # relight the LED that is being switched off here).
+                cancel_blocked.clear()
                 send_command(ser, "CMD:CANCEL")
 
         finally:
@@ -783,6 +875,7 @@ def trigger_emergency(ser, source, category="UNKNOWN", message=None):
             # moment the flag clears the watchdog judges by the last frame
             # time -- which would look like a long stall for a moment.
             _progress["t"] = time.monotonic()
+            cancel_blocked.clear()  # Cancel works again from the next emergency on
             with _emergency_lock:
                 _emergency_in_progress = False
             _load_check_now.set()  # re-check the SIM load shortly (see load_balance_loop)
@@ -889,6 +982,9 @@ def voice_listen_loop(ser):
         if utterance is None:
             continue
 
+        # The phrase was spoken now; a Cancel pressed from here on belongs to
+        # it, even though the transcription below takes seconds.
+        requested_t = time.monotonic() - VOICE_CANCEL_GRACE_S
         duration_s = len(utterance) / config.SAMPLE_RATE
         print(f"Utterance captured ({duration_s:.2f}s) -- transcribing...")
 
@@ -938,7 +1034,8 @@ def voice_listen_loop(ser):
             # LED off for the whole emergency flow (cancel window, audio
             # announcement, SMS send), and restores both when done -- covers
             # the physical SOS button path too, not just this voice path.
-            trigger_emergency(ser, "voice", category=category, message=message)
+            trigger_emergency(ser, "voice", category=category, message=message,
+                              transcript=text, since=requested_t)
         else:
             print(f"no match: '{text[:80]}' ({elapsed_s:.1f}s)")
             # back to solid = listening again
@@ -1267,7 +1364,7 @@ def play_wifi_connected_announcement(ser):
 # Test hook: `echo SIM > /home/alisto/test_sms_failure.flag` (or SIGNAL / LOAD /
 # MODEM, empty = LOAD) makes the device speak the matching "SMS failed"
 # announcement once, so it can be heard without pulling the SIM or shutting
-# anything down. Polled by wifi_connected_watcher_loop() below; the file is
+# anything down. `echo ALL > ...` speaks every announcement of the device. Polled by wifi_connected_watcher_loop() below; the file is
 # removed as soon as it's picked up.
 SMS_FAILURE_TEST_FLAG = "/home/alisto/test_sms_failure.flag"
 
@@ -1289,6 +1386,55 @@ def play_sms_failure_test(ser, reason):
             if dropped:
                 print(
                     f"(discarded {dropped} boundary frame(s) after SMS-failure test)")
+            send_command(ser, "CMD:STATUS_LED_ON")
+
+
+def play_all_announcements_test(ser):
+    """`echo ALL > /home/alisto/test_sms_failure.flag`: speaks EVERY spoken
+    message of the device once, in this order, so they can all be checked in
+    one go (clarity, volume, "S M S" / "sim" pronunciation). Nothing is sent
+    or recorded -- it only synthesizes and plays. Order is printed to the log
+    as it goes (journalctl -u alisto-emergency -f)."""
+    items = [
+        ("emergency: FIRE", lambda: tts.synthesize_announcement("FIRE")),
+        ("emergency: INTRUDER", lambda: tts.synthesize_announcement("INTRUDER")),
+        ("emergency: MEDICATION", lambda: tts.synthesize_announcement("MEDICATION")),
+        ("emergency: FALL_INJURY", lambda: tts.synthesize_announcement("FALL_INJURY")),
+        ("emergency: MEDICAL_SYMPTOM", lambda: tts.synthesize_announcement("MEDICAL_SYMPTOM")),
+        ("emergency: GENERAL_HELP / UNKNOWN", lambda: tts.synthesize_announcement("GENERAL_HELP")),
+        ("SMS failed: SIM", lambda: tts.synthesize_sms_failure("SIM")),
+        ("SMS failed: SIGNAL", lambda: tts.synthesize_sms_failure("SIGNAL")),
+        ("SMS failed: LOAD", lambda: tts.synthesize_sms_failure("LOAD")),
+        ("SMS failed: MODEM", lambda: tts.synthesize_sms_failure("MODEM")),
+        ("low SIM load", tts.synthesize_low_load),
+        ("low battery", tts.synthesize_low_battery),
+        ("WiFi connected", tts.synthesize_wifi_connected),
+        ("WiFi removed", tts.synthesize_wifi_forgotten),
+        ("device paired", lambda: tts.synthesize_device_paired("Lemuel")),
+        ("medicine reminder", lambda: tts.synthesize_reminder("Diatabs", "1 tablet")),
+    ]
+    with _audio_state_lock:
+        if frames is not None:
+            frames.pause()
+        send_command(ser, "CMD:STATUS_LED_OFF")
+        try:
+            for n, (label, make) in enumerate(items, 1):
+                print(f"ANNOUNCEMENT TEST {n}/{len(items)}: {label}")
+                try:
+                    audio_path = make()
+                    if audio_path:
+                        stream_audio(ser, audio_path, clear_stale_cancel=True)
+                    else:
+                        print("  (no audio produced)")
+                except Exception as e:
+                    print(f"  FAILED: {e}")
+                time.sleep(1.5)  # gap so each message can be told apart
+            print("ANNOUNCEMENT TEST done.")
+        finally:
+            dropped = frames.resume() if frames is not None else 0
+            if dropped:
+                print(
+                    f"(discarded {dropped} boundary frame(s) after announcement test)")
             send_command(ser, "CMD:STATUS_LED_ON")
 
 
@@ -1317,8 +1463,12 @@ def wifi_connected_watcher_loop(ser):
                 os.remove(SMS_FAILURE_TEST_FLAG)
             except OSError:
                 pass
-            print(f"SMS-failure announcement TEST ({reason}).")
-            play_sms_failure_test(ser, reason)
+            if reason == "ALL":
+                print("ALL-announcements TEST.")
+                play_all_announcements_test(ser)
+            else:
+                print(f"SMS-failure announcement TEST ({reason}).")
+                play_sms_failure_test(ser, reason)
         time.sleep(WIFI_FLAG_CHECK_INTERVAL_S)
 
 

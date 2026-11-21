@@ -1,0 +1,42 @@
+# The 30 phrases for the user manual and the panel (5 per category), chosen from
+# the 61 tested ones: short, common, different key words, and the ones that
+# worked in every earlier take. Run as a VERIFICATION run and do not change any
+# keyword from its output:
+#   python3 phrase_test.py --file=phrases_manual30.txt --repeat=3 --verify --delay=40
+# CATEGORY|what to say
+
+FIRE|Alisto, naay sunog
+FIRE|Alisto, nasunog ang balay
+FIRE|Alisto, nasunog ang kusina
+FIRE|Alisto, naay kalayo
+FIRE|Alisto, naay nagdilaab
+
+INTRUDER|Alisto, naay kawatan
+INTRUDER|Alisto, naay tulisan
+INTRUDER|Alisto, naay nangawat
+INTRUDER|Alisto, naay nisulod nga tawo
+INTRUDER|Alisto, nakulong ko
+
+MEDICATION|Alisto, wala koy tambal
+MEDICATION|Alisto, kinahanglan nako ang tambal
+MEDICATION|Alisto, oras na sa akong tambal
+MEDICATION|Alisto, oras na sa tambal
+MEDICATION|Alisto, nakalimot ko sa tambal
+
+FALL_INJURY|Alisto, nahulog ko
+FALL_INJURY|Alisto, natumba ko
+FALL_INJURY|Alisto, nadagma ko
+FALL_INJURY|Alisto, nabali akong tiil
+FALL_INJURY|Alisto, nadulas ko
+
+MEDICAL_SYMPTOM|Alisto, naay sakit akong dughan
+MEDICAL_SYMPTOM|Alisto, lisod ko ginhawa
+MEDICAL_SYMPTOM|Alisto, nalipong ko
+MEDICAL_SYMPTOM|Alisto, huyang kaayo ko
+MEDICAL_SYMPTOM|Alisto, mahimatay ko
+
+GENERAL_HELP|Alisto, tabang
+GENERAL_HELP|Alisto, tabang kaayo
+GENERAL_HELP|Alisto, palihug tabang
+GENERAL_HELP|Alisto, emergency
+GENERAL_HELP|Alisto, naay problema

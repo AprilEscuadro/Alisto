@@ -29,6 +29,7 @@ import time
 
 import audio_io
 import categorize
+import phrase_clean
 import vad
 import whisper_asr
 from ab_test_whisper import arg_value, trim_to_speech
@@ -114,13 +115,26 @@ def main():
         print(f"  walk to your spot... starting in {left:2d} s", end="\r", flush=True)
         time.sleep(1)
 
+    verify = "--verify" in sys.argv
+    if verify:
+        print("VERIFICATION RUN: report these numbers as they are. Do NOT add or\n"
+              "change keywords from this output (that would make the numbers\n"
+              "in-sample again); swap a failing phrase out of the list instead.\n")
+
     results = []  # (category, phrase, transcript, status, got)
+    shown_ok = {}  # phrase -> how many takes the app would show it cleanly
     for i, (category, phrase) in enumerate(phrases, 1):
         text = say_and_transcribe(i, len(phrases), category, phrase)
         status, got = judge(category, text)
         results.append((category, phrase, text, status, got))
         print(f"   heard: {text!r}")
         print(f"   -> {status}" + (f" (category {got})" if status != "MISS" else ""))
+        if status != "MISS":
+            # What the family's app would show as the "Detected phrase".
+            shown = phrase_clean.display_phrase(text, got)
+            print(f"   app shows: {shown!r}")
+            if shown == phrase:
+                shown_ok[phrase] = shown_ok.get(phrase, 0) + 1
 
     print("\n=== SUMMARY per category (OK = wake word + right category)")
     print(f"{'category':<16} {'phrases':>7} {'OK':>4} {'other cat':>10} {'MISS':>5}")
@@ -133,6 +147,27 @@ def main():
         wake = sum(r[3] == "WAKE" for r in rows)
         miss = sum(r[3] == "MISS" for r in rows)
         print(f"{category:<16} {len(rows):>7} {ok:>4} {wake:>10} {miss:>5}")
+
+    # Overall figures and one line per phrase (the numbers to report).
+    n = len(results)
+    n_wake = sum(r[3] != "MISS" for r in results)
+    n_ok = sum(r[3] == "OK" for r in results)
+    n_shown = sum(shown_ok.values())
+    print(f"\n=== OVERALL ({n} takes, {len({r[1] for r in results})} phrases)")
+    print(f"  emergency would trigger (wake word heard) : {n_wake}/{n}  ({100 * n_wake / n:.1f}%)")
+    print(f"  right category                            : {n_ok}/{n}  ({100 * n_ok / n:.1f}%)")
+    print(f"  app shows the exact phrase                : {n_shown}/{n}  ({100 * n_shown / n:.1f}%)")
+    print("\n=== PER PHRASE (takes: wake / right category / shown cleanly)")
+    seen = []
+    for category, phrase, *_ in results:
+        if phrase in seen:
+            continue
+        seen.append(phrase)
+        rows = [r for r in results if r[1] == phrase]
+        t = len(rows)
+        w = sum(r[3] != "MISS" for r in rows)
+        o = sum(r[3] == "OK" for r in rows)
+        print(f"  {phrase.replace('Alisto, ', ''):<32} {category:<16} {w}/{t}  {o}/{t}  {shown_ok.get(phrase, 0)}/{t}")
 
     fixable = [r for r in results if r[3] == "WAKE"]
     if fixable:
