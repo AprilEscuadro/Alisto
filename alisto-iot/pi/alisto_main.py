@@ -788,6 +788,13 @@ def trigger_emergency(ser, source, category="UNKNOWN", message=None,
                     print(
                         "GPS: no fix at all (fresh or saved) -- sending without location")
 
+                # The words the elder said go into the SMS only (the app and
+                # website show the category, not the phrase). `final_message`
+                # stays as is: it is what the app/website show as the alert's
+                # lines. Kept within one SMS part, see sms_phrase_line().
+                sms_text = final_message + phrase_clean.sms_phrase_line(
+                    final_message, detected_phrase)
+
                 # Everything that needs Firestore (push, alert doc update,
                 # location row, logs) now runs on background threads, started
                 # BEFORE the SMS loop so the push still goes out immediately
@@ -838,7 +845,7 @@ def trigger_emergency(ser, source, category="UNKNOWN", message=None,
                         # port_lock keeps this from ever overlapping the
                         # background GPS poll's own use of the same SIM port.
                         with gps.port_lock:
-                            ok = send_sms(final_message, recipient=recipient)
+                            ok = send_sms(sms_text, recipient=recipient)
                         if ok:
                             break
                         if attempt < SMS_RETRY_ATTEMPTS:

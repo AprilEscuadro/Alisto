@@ -145,6 +145,33 @@ def fix_wake_word(text):
     return (text or "").strip(" .,")
 
 
+SMS_ONE_PART_LIMIT = 160   # characters in a single (one-credit) text message
+
+
+def sms_phrase_line(base_text, phrase, limit=SMS_ONE_PART_LIMIT):
+    """The extra line that tells the contacts what the elder said, for the SMS
+    only, a new line like  Heard: "Alisto, tabang"  -- or "" when it should
+    not be added.
+
+    A text longer than `limit` is sent as two messages (two credits per
+    contact), so the phrase is shortened to fit and, if even a short piece does
+    not fit, left out: the alert (category + location) always comes first.
+    Only plain letters/digits/punctuation are kept: any other character would
+    switch the whole message to a 70-character encoding."""
+    clean = re.sub(r"[^A-Za-z0-9 ,.'!?-]", "", phrase or "")
+    clean = re.sub(r"\s+", " ", clean).strip()
+    if not clean:
+        return ""
+    prefix, suffix = '\nHeard: "', '"'
+    room = limit - len(base_text) - len(prefix) - len(suffix)
+    if len(clean) > room:
+        room -= 3  # for "..."
+        if room < 8:   # not worth sending a cut-off scrap
+            return ""
+        clean = clean[:room].rstrip(" ,.-") + "..."
+    return f"{prefix}{clean}{suffix}"
+
+
 def display_phrase(text, category=None):
     """What the app shows as the alert's detected phrase. `category` is what
     categorize.categorize() returned for the same text."""
