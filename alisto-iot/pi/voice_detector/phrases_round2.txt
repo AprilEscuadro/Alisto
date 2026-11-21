@@ -1,0 +1,40 @@
+# Round 2: NEW phrases (none of these were in phrases.txt), with some words
+# that are not in the keyword list yet. Run it FIRST with the keywords as they
+# are: that result is the honest (held-out) accuracy. Only then add keywords.
+# CATEGORY|what to say   -- keep each under ~3 seconds.
+
+FIRE|Alisto, naay nagdilaab
+FIRE|Alisto, naay aso sa kusina
+FIRE|Alisto, nagdilaab ang kalayo
+FIRE|Alisto, naay gisunog
+FIRE|Alisto, tabang, sunog
+
+# (removed: "Alisto, naay tawo sa gawas" -- no safe keyword can recognise it)
+INTRUDER|Alisto, naay nangawat sa balay
+INTRUDER|Alisto, naay nisulod sa bintana
+INTRUDER|Alisto, naay kawatan sa sulod
+INTRUDER|Alisto, nakulong ko
+
+MEDICATION|Alisto, oras na sa tambal
+MEDICATION|Alisto, wala na akong tambal
+MEDICATION|Alisto, nakalimot ko sa tambal
+MEDICATION|Alisto, nahurot ang akong gamot
+MEDICATION|Alisto, kinahanglan nako ang gamot
+
+FALL_INJURY|Alisto, nahulog ko sa hagdan
+FALL_INJURY|Alisto, nadulas ko
+FALL_INJURY|Alisto, natumba ko sa kwarto
+FALL_INJURY|Alisto, nasamdan ko
+FALL_INJURY|Alisto, naipit akong tiil
+
+MEDICAL_SYMPTOM|Alisto, nasakit akong dughan
+MEDICAL_SYMPTOM|Alisto, nagsuka ko
+MEDICAL_SYMPTOM|Alisto, nahimatay ko
+MEDICAL_SYMPTOM|Alisto, hilanat ko
+MEDICAL_SYMPTOM|Alisto, nagkurog ko
+
+GENERAL_HELP|Alisto, tabang palihug
+GENERAL_HELP|Alisto, naa koy problema
+GENERAL_HELP|Alisto, kinahanglan nako ug tabang
+GENERAL_HELP|Alisto, emergency kini
+GENERAL_HELP|Alisto, tabangi ko

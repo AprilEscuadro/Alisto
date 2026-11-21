@@ -121,6 +121,44 @@ def send_sms(message=None, recipient=None):
         return False
 
 
+def clear_sim_messages():
+    """Deletes every message stored on the SIM (AT+CMGD=1,4). The SIM only
+    holds ~35, and the carrier's promo/load texts fill it up; once it is full
+    the modem logs "+SMS FULL" and can stop receiving. Nothing in ALISTO reads
+    incoming SMS (balance replies come over USSD, not SMS storage), so
+    deleting them is safe. Sent emergency SMS are not stored on the SIM.
+
+    Returns (used_before, used_after, total), or None if the modem didn't
+    answer or its storage reply couldn't be read. Caller must hold
+    gps.port_lock -- same single AT port as send_sms()."""
+    def _used(resp):
+        m = re.search(r'\+CPMS:\s*"[A-Za-z]+",\s*(\d+),\s*(\d+)', resp)
+        return (int(m.group(1)), int(m.group(2))) if m else None
+
+    try:
+        ser = serial.Serial(SIM_PORT, SIM_BAUD, timeout=1)
+        time.sleep(0.5)
+        try:
+            if "OK" not in _send_at(ser, "AT"):
+                return None
+            before = _used(_send_at(ser, "AT+CPMS?"))
+            if before is None:
+                return None
+            used_before, total = before
+            if used_before == 0:
+                return (0, 0, total)
+            # Deleting a full SIM takes several seconds (a 2 s wait returned
+            # only the echo in real testing), so give it a long timeout.
+            _send_at(ser, "AT+CMGD=1,4", wait_s=30)
+            after = _used(_send_at(ser, "AT+CPMS?"))
+            return (used_before, after[0] if after else used_before, total)
+        finally:
+            ser.close()
+    except Exception as e:
+        print(f"clear_sim_messages failed: {e}")
+        return None
+
+
 def read_sim_health():
     """Snapshot of what the SIM/modem can currently do, for working out WHY
     an SMS failed (and for a startup log line). Returns a dict:

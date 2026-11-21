@@ -200,6 +200,69 @@ def send_heartbeat(serial):
         print(f"firestore: failed to send heartbeat: {e}")
 
 
+def watch_device_command(serial, callback):
+    """Listens to ONE document, device_command/{serial}, where the app leaves
+    a request for the device (currently only "forget_wifi"). A listener on a
+    document nobody writes costs about one read when it connects -- unlike
+    listening to device/{serial}, which the heartbeat rewrites every 30 s and
+    would bill a read for each of those. `callback(data_dict)` is called from
+    the Firestore client's own thread for every snapshot of an existing
+    document (including the first one on connect). Returns the watch handle
+    (`.unsubscribe()`)."""
+    db = _get_db()
+    ref = db.collection("device_command").document(serial)
+
+    def _on_snapshot(doc_snapshots, changes, read_time):
+        for doc in doc_snapshots:
+            if doc.exists:
+                try:
+                    callback(doc.to_dict())
+                except Exception as e:
+                    print(f"firestore: device_command callback failed: {e}")
+
+    return ref.on_snapshot(_on_snapshot)
+
+
+def watch_family_links(elder_id, callback):
+    """Listens to the family accounts linked to this elder
+    (family_elder_link where elder_id == ...). `callback(link_dict)` is called,
+    from the Firestore client's own thread, once for every link that was NOT
+    there before -- the links that already exist when the listener connects
+    are only remembered, never reported, so a restart does not announce the
+    family again. Cost: one read per existing link when it connects (at most
+    the per-device family limit), then one per change. Returns the watch
+    handle (`.unsubscribe()`)."""
+    db = _get_db()
+    query = db.collection("family_elder_link").where("elder_id", "==", elder_id)
+    known = set()
+    first = {"done": False}
+
+    def _on_snapshot(doc_snapshots, changes, read_time):
+        if not first["done"]:
+            first["done"] = True
+            known.update(doc.id for doc in doc_snapshots)
+            return
+        for doc in doc_snapshots:
+            if doc.id in known:
+                continue
+            known.add(doc.id)
+            try:
+                callback(doc.to_dict())
+            except Exception as e:
+                print(f"firestore: family link callback failed: {e}")
+
+    return query.on_snapshot(_on_snapshot)
+
+
+def delete_device_command(serial):
+    """Removes the handled command so it can't linger. Best-effort; needs
+    internet, so callers do this BEFORE touching the WiFi."""
+    try:
+        _get_db().collection("device_command").document(serial).delete()
+    except Exception as e:
+        print(f"firestore: failed to delete device_command: {e}")
+
+
 def set_device_sim_number(serial, sim_number):
     """Best-effort push of an auto-detected SIM number (see
     alisto_sms.read_own_sim_number() for why this often can't be
@@ -369,7 +432,8 @@ def new_alert_id():
 
 def write_emergency_alert(elder_id, device_id, title, lines, trigger_type="VOICE",
                           location_id=None, phrase_id=None, alert_status="PENDING",
-                          resolution_note=None, alert_id=None):
+                          resolution_note=None, alert_id=None, detected_phrase=None,
+                          detected_phrase_raw=None):
     """Logs one emergency into emergency_alert so it shows up in the app's
     History screen, the Home screen's alert count/last-alert card, and
     the BHW/family website. `lines` is a list of short strings shown as
@@ -401,6 +465,12 @@ def write_emergency_alert(elder_id, device_id, title, lines, trigger_type="VOICE
                 "location_id": location_id,
                 "phrase_id": phrase_id,
                 "trigger_type": trigger_type,
+                # What the device heard, cleaned for display (see
+                # voice_detector/phrase_clean.py); None for the SOS button.
+                # The app shows it on the alert. The untouched speech-to-text
+                # is kept next to it.
+                "detected_phrase": detected_phrase,
+                "detected_phrase_raw": detected_phrase_raw,
                 "alert_status": alert_status,
                 "title": title,
                 "lines": lines,
@@ -496,6 +566,8 @@ def upload_alert_record(rec, when):
         "location_id": location_id,
         "phrase_id": phrase_id,
         "trigger_type": rec.get("trigger_type"),
+        "detected_phrase": rec.get("detected_phrase"),
+        "detected_phrase_raw": rec.get("detected_phrase_raw"),
         "alert_status": status,
         "title": rec.get("title"),
         "lines": rec.get("lines"),
@@ -530,7 +602,12 @@ def upload_alert_record(rec, when):
         batch.set(db.collection("voice_detection_log").document(f"{alert_id}_vlog"), {
             "device_id": device_id,
             "alert_id": alert_id,
-            "detected_phrase": rec.get("phrase_text"),
+            # The real, untouched transcript when we have it (the paper's
+            # VOICE_DETECTION_LOG.detected_phrase); older records only had the
+            # cleaned phrase or the category message in phrase_text.
+            "detected_phrase": (rec.get("detected_phrase_raw")
+                                or rec.get("detected_phrase")
+                                or rec.get("phrase_text")),
             "confidence_score": None,
             "noise_level": None,
             "recognition_timestamp": when,
@@ -767,7 +844,8 @@ def _fetch_family_fcm_tokens(elder_id):
     return tokens
 
 
-def send_emergency_push(elder_id, title, body, alert_id=None, deadline_mono=None):
+def send_emergency_push(elder_id, title, body, alert_id=None, deadline_mono=None,
+                        trigger_type=None, detected_phrase=None):
     """Pushes a notification to every family account linked to this elder,
     via the Admin SDK -- doesn't need each device's token individually
     passed in like a normal server would; firebase_admin already has full
@@ -815,6 +893,12 @@ def send_emergency_push(elder_id, title, body, alert_id=None, deadline_mono=None
     data = {"type": "emergency", "title": title, "body": body}
     if alert_id:
         data["alert_id"] = alert_id
+    # How it was triggered, for the app's floating card (FCM data values must
+    # be strings, and absent values are left out rather than sent empty).
+    if trigger_type:
+        data["trigger_type"] = str(trigger_type)
+    if detected_phrase:
+        data["detected_phrase"] = str(detected_phrase)[:200]
 
     sent = 0
     for token in tokens:

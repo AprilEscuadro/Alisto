@@ -46,7 +46,7 @@ read_meter.install(app)          # prints Firestore reads per page; /dev/reads
 
 db = firestore.client()
 
-MAX_FAMILY_PER_DEVICE = 5
+MAX_FAMILY_PER_DEVICE = 20
 FIREBASE_WEB_API_KEY = os.environ['FIREBASE_WEB_API_KEY']
 
 # ---------- BHW REGISTRATION SETTINGS ----------

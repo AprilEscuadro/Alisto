@@ -3,7 +3,7 @@
 Simplified to two words total: the wake word ("Alisto") is heard first,
 then the system listens briefly for the confirmation word ("Tabang"). The
 larger multi-keyword categorization (fire/medical/intruder/etc, one per
-71-phrase category) was dropped after repeated real-world testing showed the
+category) was dropped after repeated real-world testing showed the
 extra keywords were fragile with only a handful of enrolled samples each --
 reliability matters more than category granularity for an emergency device.
 

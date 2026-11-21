@@ -41,9 +41,15 @@ WIFI_OUTPUT_RAW = "/home/alisto/alisto_audio/wifi_announce.raw"  # own file,
 # close in time to an emergency or reminder, so it gets its own path.
 PAIRED_OUTPUT_RAW = "/home/alisto/alisto_audio/paired_announce.raw"  # own
 # file too, same reasoning as above.
+FAMILY_LINKED_OUTPUT_RAW = "/home/alisto/alisto_audio/family_linked_announce.raw"  # own
+# file too, same reasoning as above.
 SMS_FAILED_OUTPUT_RAW = "/home/alisto/alisto_audio/sms_failed_announce.raw"  # own
 # file too, same reasoning as above.
 LOW_BATTERY_OUTPUT_RAW = "/home/alisto/alisto_audio/low_battery_announce.raw"  # own
+# file too, same reasoning as above.
+LOW_LOAD_OUTPUT_RAW = "/home/alisto/alisto_audio/low_load_announce.raw"  # own
+# file too, same reasoning as above.
+WIFI_FORGOTTEN_OUTPUT_RAW = "/home/alisto/alisto_audio/wifi_forgotten_announce.raw"  # own
 # file too, same reasoning as above.
 
 # volume > 1.0 boosts loudness, but normalize_audio=True already maxes
@@ -218,7 +224,7 @@ SMS_FAILURE_TEXT = {
     "SIM": "Alert S M S failed. Please check the sim card.",
     "SIGNAL": "Alert S M S failed. No mobile signal.",
     "LOAD": "Alert S M S failed. Please check the sim load.",
-    "MODEM": "Alert S M S failed. The modem is not responding.",
+    "MODEM": "Alert S M S failed. Check your sim load balance.",
 }
 
 
@@ -249,6 +255,14 @@ def synthesize_device_paired(name):
     return _synthesize_to_file(text, PAIRED_OUTPUT_RAW)
 
 
+def synthesize_family_linked():
+    """Said every time one more family account is linked to this device in the
+    app (see alisto_main.py's family_link_watcher_loop). Plain words, no name:
+    the person next to the device only needs to know that a link happened."""
+    text = "A new family member is now connected to Alisto."
+    return _synthesize_to_file(text, FAMILY_LINKED_OUTPUT_RAW)
+
+
 def synthesize_low_battery():
     """Said when running off a power bank that's about to brown out -- see
     alisto_main.py's battery_monitor_loop() for why this is a late,
@@ -256,3 +270,20 @@ def synthesize_low_battery():
     report, just "about to die")."""
     text = "Low battery. Please charge Alisto now."
     return _synthesize_to_file(text, LOW_BATTERY_OUTPUT_RAW)
+
+
+def synthesize_wifi_forgotten():
+    """Said right after the app asked the device to forget its WiFi (see
+    wifi_forget.py): tells whoever is next to it what to do next."""
+    text = ("WiFi removed. Please connect your phone to Alisto Setup, "
+            "then add a new WiFi network in the app.")
+    return _synthesize_to_file(text, WIFI_FORGOTTEN_OUTPUT_RAW)
+
+
+def synthesize_low_load():
+    """Said when the SIM's prepaid load is nearly used up (see
+    load_alert.py and alisto_main.py's load_balance_loop()). Without load the
+    emergency S M S cannot be sent. "sim" is lowercase and "S M S" spaced
+    for the same Piper pronunciation reasons as SMS_FAILURE_TEXT."""
+    text = "Low sim load. Please reload the sim card so Alisto can send alerts."
+    return _synthesize_to_file(text, LOW_LOAD_OUTPUT_RAW)
