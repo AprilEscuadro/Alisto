@@ -223,6 +223,37 @@ def watch_device_command(serial, callback):
     return ref.on_snapshot(_on_snapshot)
 
 
+def watch_family_links(elder_id, callback):
+    """Listens to the family accounts linked to this elder
+    (family_elder_link where elder_id == ...). `callback(link_dict)` is called,
+    from the Firestore client's own thread, once for every link that was NOT
+    there before -- the links that already exist when the listener connects
+    are only remembered, never reported, so a restart does not announce the
+    family again. Cost: one read per existing link when it connects (at most
+    the per-device family limit), then one per change. Returns the watch
+    handle (`.unsubscribe()`)."""
+    db = _get_db()
+    query = db.collection("family_elder_link").where("elder_id", "==", elder_id)
+    known = set()
+    first = {"done": False}
+
+    def _on_snapshot(doc_snapshots, changes, read_time):
+        if not first["done"]:
+            first["done"] = True
+            known.update(doc.id for doc in doc_snapshots)
+            return
+        for doc in doc_snapshots:
+            if doc.id in known:
+                continue
+            known.add(doc.id)
+            try:
+                callback(doc.to_dict())
+            except Exception as e:
+                print(f"firestore: family link callback failed: {e}")
+
+    return query.on_snapshot(_on_snapshot)
+
+
 def delete_device_command(serial):
     """Removes the handled command so it can't linger. Best-effort; needs
     internet, so callers do this BEFORE touching the WiFi."""

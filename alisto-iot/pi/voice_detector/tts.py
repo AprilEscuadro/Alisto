@@ -41,6 +41,8 @@ WIFI_OUTPUT_RAW = "/home/alisto/alisto_audio/wifi_announce.raw"  # own file,
 # close in time to an emergency or reminder, so it gets its own path.
 PAIRED_OUTPUT_RAW = "/home/alisto/alisto_audio/paired_announce.raw"  # own
 # file too, same reasoning as above.
+FAMILY_LINKED_OUTPUT_RAW = "/home/alisto/alisto_audio/family_linked_announce.raw"  # own
+# file too, same reasoning as above.
 SMS_FAILED_OUTPUT_RAW = "/home/alisto/alisto_audio/sms_failed_announce.raw"  # own
 # file too, same reasoning as above.
 LOW_BATTERY_OUTPUT_RAW = "/home/alisto/alisto_audio/low_battery_announce.raw"  # own
@@ -251,6 +253,14 @@ def synthesize_device_paired(name):
     device_pairing_watcher_loop)."""
     text = f"Congratulations {name}, your device is connected successfully."
     return _synthesize_to_file(text, PAIRED_OUTPUT_RAW)
+
+
+def synthesize_family_linked():
+    """Said every time one more family account is linked to this device in the
+    app (see alisto_main.py's family_link_watcher_loop). Plain words, no name:
+    the person next to the device only needs to know that a link happened."""
+    text = "A new family member is now connected to Alisto."
+    return _synthesize_to_file(text, FAMILY_LINKED_OUTPUT_RAW)
 
 
 def synthesize_low_battery():

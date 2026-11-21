@@ -1277,6 +1277,67 @@ def device_pairing_watcher_loop(ser):
                    else DEVICE_PAIRING_CHECK_INTERVAL_S)
 
 
+_family_link_watch = None  # keeps the Firestore listener alive
+
+
+def play_family_linked_announcement(ser):
+    """Same pause-mic/status-LED-off/resume pattern as every other
+    announcement -- see play_medicine_reminder() for why _audio_state_lock
+    is required."""
+    with _audio_state_lock:
+        if frames is not None:
+            frames.pause()
+        send_command(ser, "CMD:STATUS_LED_OFF")
+        try:
+            audio_path = tts.synthesize_family_linked()
+            if audio_path:
+                stream_audio(ser, audio_path, clear_stale_cancel=True)
+            else:
+                print("Family-linked TTS unavailable -- skipping announcement")
+        finally:
+            dropped = frames.resume() if frames is not None else 0
+            if dropped:
+                print(
+                    f"(discarded {dropped} boundary frame(s) after family-linked announcement)")
+            send_command(ser, "CMD:STATUS_LED_ON")
+
+
+def _on_family_link_added(ser):
+    # Not during an emergency: that flow holds the audio lock until the SMS is
+    # sent, and a "new family member" voice minutes later would only confuse.
+    if _emergency_in_progress:
+        print("Family link: a new family member linked during an emergency -- not announcing.")
+        return
+    print("Family link: a new family member was linked -- announcing.")
+    play_family_linked_announcement(ser)
+
+
+def family_link_watcher_loop(ser):
+    """Says "A new family member is now connected to Alisto." every time one
+    more family account is linked to this device in the app (not only the
+    first one -- that is the one-time "Congratulations" announcement of
+    device_pairing_watcher_loop). Follows _elder_id: it starts once the device
+    is paired and re-subscribes if the elder ever changes."""
+    global _family_link_watch
+    watching = None
+    while True:
+        elder_id = _elder_id
+        if elder_id and elder_id != watching:
+            try:
+                if _family_link_watch is not None:
+                    _family_link_watch.unsubscribe()
+                _family_link_watch = firestore_backend.watch_family_links(
+                    elder_id,
+                    lambda link: threading.Thread(
+                        target=_on_family_link_added, args=(ser,),
+                        daemon=True).start())
+                watching = elder_id
+                print("Family link: listening for new family members.")
+            except Exception as e:
+                print(f"Family link: could not start listener ({e}) -- retrying.")
+        time.sleep(30)
+
+
 LOCATION_SYNC_INTERVAL_S = 30  # how often the cached fix is CHECKED -- matches
 # gps.py's own background poll interval
 # ...but a Firestore document is only WRITTEN when the device has actually
@@ -1411,6 +1472,7 @@ def play_all_announcements_test(ser):
         ("WiFi connected", tts.synthesize_wifi_connected),
         ("WiFi removed", tts.synthesize_wifi_forgotten),
         ("device paired", lambda: tts.synthesize_device_paired("Lemuel")),
+        ("new family member linked", tts.synthesize_family_linked),
         ("medicine reminder", lambda: tts.synthesize_reminder("Diatabs", "1 tablet")),
     ]
     with _audio_state_lock:
@@ -1925,6 +1987,8 @@ def main():
     threading.Thread(target=rtc_keeper_loop,
                      args=(ser,), daemon=True).start()
     threading.Thread(target=device_command_watcher_loop,
+                     args=(ser,), daemon=True).start()
+    threading.Thread(target=family_link_watcher_loop,
                      args=(ser,), daemon=True).start()
     threading.Thread(target=battery_monitor_loop,
                      args=(ser,), daemon=True).start()
