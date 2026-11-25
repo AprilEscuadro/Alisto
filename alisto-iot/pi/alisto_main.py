@@ -1181,7 +1181,10 @@ def medicine_reminder_loop(ser):
                 print(f"Medicine reminder: {medicine_name} at {current_time}")
                 # No dosage field in this schema -- just the name.
                 play_medicine_reminder(ser, medicine_name, None)
-                firestore_backend.mark_medicine_notified(reminder["id"])
+                # In the background: with no internet this write can block for
+                # minutes, and the loop must be back to checking the clock.
+                _run_in_background(
+                    firestore_backend.mark_medicine_notified, reminder["id"])
 
         time.sleep(REMINDER_CHECK_INTERVAL_S)
 

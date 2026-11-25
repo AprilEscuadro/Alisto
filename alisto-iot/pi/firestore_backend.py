@@ -722,62 +722,95 @@ MEDICINE_REFRESH_S = 120
 _med_cache = {"elder_id": None, "at": 0.0, "rows": []}
 
 
+MEDICINE_READ_WAIT_S = 5   # the most the reminder loop waits for Firestore
+_med_refresh = {"running": False}
+
+
+def _fetch_medicine_reminders(elder_id):
+    """Reads the schedule from Firestore and saves it in memory and on disk.
+    Raises if Firestore cannot be reached."""
+    db = _get_db()
+    docs = (
+        db.collection("medication_reminder")
+        .where("elder_id", "==", elder_id)
+        .where("is_active", "==", True)
+        .get()
+    )
+    reminders = [
+        {
+            "id": d.id,
+            "medicine_name": d.to_dict().get("medicine_name", ""),
+            "reminder_time": d.to_dict().get("reminder_time", ""),
+            # schedule_type: 'daily' (default) | 'every_hours' |
+            # 'every_days' -- see alisto_main.py's _should_fire_now()
+            # for how each is interpreted.
+            "schedule_type": d.to_dict().get("schedule_type") or "daily",
+            "interval_value": d.to_dict().get("interval_value"),
+            "start_date": d.to_dict().get("start_date"),
+        }
+        for d in docs
+    ]
+    try:
+        with open(MEDICINE_CACHE_PATH, "w") as f:
+            json.dump(reminders, f)
+    except OSError as e:
+        print(f"firestore: failed to cache medicine reminders locally: {e}")
+    _med_cache.update(elder_id=elder_id, at=time.monotonic(), rows=reminders)
+    return reminders
+
+
+def _cached_medicine_reminders(elder_id):
+    """The last schedule we know: the one in memory, else the one on disk."""
+    if _med_cache["elder_id"] == elder_id:
+        return _med_cache["rows"]
+    try:
+        with open(MEDICINE_CACHE_PATH) as f:
+            return json.load(f)
+    except (OSError, ValueError):
+        return []
+
+
 def get_active_medicine_reminders(elder_id):
-    """Returns a list of {id, medicine_name, reminder_time} for every
+    """Returns a list of {id, medicine_name, reminder_time, ...} for every
     active ('is_active': True) reminder under this elder -- the device's
     real schedule, added through the app, replacing any hardcoded list.
 
-    medicine_reminder_loop() calls this fresh every ~20s rather than
-    reading a schedule loaded once at startup, so reminders added/edited/
-    deleted through the app take effect on the next check. That design
-    means a live Firestore read is normally required at the EXACT minute
-    a reminder is due -- if WiFi happens to be down right then, the
-    reminder would otherwise be silently skipped even though it was
-    successfully fetched plenty of times earlier. To guard against that,
-    every successful read is cached to disk, and a failed read falls back
-    to that cache instead of returning nothing."""
+    medicine_reminder_loop() calls this every ~20s. The schedule is kept in
+    memory and re-read from Firestore every MEDICINE_REFRESH_S, and every
+    successful read is also saved to disk.
+
+    This must NEVER hold the reminder loop up. With no internet the Firestore
+    read does not fail fast: it keeps retrying for minutes (real testing, see
+    get_emergency_contacts()). Called straight from the loop it froze the loop
+    through the minute a reminder was due, so with the WiFi removed the
+    reminder was never spoken. So the read runs in a background thread; the
+    loop waits at most MEDICINE_READ_WAIT_S for it and otherwise uses the last
+    schedule it knows (memory, then disk). Only one read is ever in flight."""
     if (_med_cache["elder_id"] == elder_id
             and time.monotonic() - _med_cache["at"] < MEDICINE_REFRESH_S):
         return _med_cache["rows"]
-    try:
-        db = _get_db()
-        docs = (
-            db.collection("medication_reminder")
-            .where("elder_id", "==", elder_id)
-            .where("is_active", "==", True)
-            .get()
-        )
-        reminders = [
-            {
-                "id": d.id,
-                "medicine_name": d.to_dict().get("medicine_name", ""),
-                "reminder_time": d.to_dict().get("reminder_time", ""),
-                # schedule_type: 'daily' (default) | 'every_hours' |
-                # 'every_days' -- see alisto_main.py's _should_fire_now()
-                # for how each is interpreted.
-                "schedule_type": d.to_dict().get("schedule_type") or "daily",
-                "interval_value": d.to_dict().get("interval_value"),
-                "start_date": d.to_dict().get("start_date"),
-            }
-            for d in docs
-        ]
+    if _med_refresh["running"]:
+        return _cached_medicine_reminders(elder_id)
+
+    box = {}
+
+    def runner():
         try:
-            with open(MEDICINE_CACHE_PATH, "w") as f:
-                json.dump(reminders, f)
-        except OSError as e:
-            print(
-                f"firestore: failed to cache medicine reminders locally: {e}")
-        _med_cache.update(elder_id=elder_id,
-                          at=time.monotonic(), rows=reminders)
-        return reminders
-    except Exception as e:
-        print(
-            f"firestore: failed to read medicine reminders ({e}) -- falling back to local cache")
-        try:
-            with open(MEDICINE_CACHE_PATH) as f:
-                return json.load(f)
-        except (OSError, ValueError):
-            return []
+            box["rows"] = _fetch_medicine_reminders(elder_id)
+        except Exception as e:
+            print(f"firestore: failed to read medicine reminders ({e}) "
+                  "-- using the cached schedule")
+        finally:
+            _med_refresh["running"] = False
+
+    _med_refresh["running"] = True
+    threading.Thread(target=runner, daemon=True).start()
+    deadline = time.monotonic() + MEDICINE_READ_WAIT_S
+    while "rows" not in box and _med_refresh["running"]             and time.monotonic() < deadline:
+        time.sleep(0.05)
+    if "rows" in box:
+        return box["rows"]
+    return _cached_medicine_reminders(elder_id)
 
 
 def mark_medicine_notified(reminder_id):
