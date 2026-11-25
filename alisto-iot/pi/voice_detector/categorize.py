@@ -48,8 +48,12 @@ _CATEGORY_KEYWORDS = [
          "gisuno",  # round-2 test: "gisunog" -> "gisuno." ("suno" is whole-word only)
          "sunub",   # live test: "sunog" -> "alistot, sunub." (no keyword matched)
          # Pieces of the fire words themselves (>= 4-5 letters), so a transcript
-         # where whisper garbled one END of the word still matches something:
-         "unog", "kalay", "alayo", "dilaa", "ilaab", "ayaso",
+         # where whisper garbled one END of the word still matches something.
+         # NOT "alayo" (a piece of "kalayo"): it is inside the ordinary words
+         # "nalayo", "malayo", "palayo", "palayok" (far / pot), which then
+         # became FIRE alerts. "kalayo", "kalayu" and "kalay" still catch the
+         # real word.
+         "unog", "kalay", "dilaa", "ilaab", "ayaso",
          ],
     ),
     (

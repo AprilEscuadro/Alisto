@@ -1,0 +1,19 @@
+# The 8 phrases that scored below 2 of 3 in the Round 3 verification
+# (phrases_manual30.txt). Run them again as a VERIFICATION run, after the
+# keyword "alayo" was removed, and do not change any keyword from its output:
+#   sudo systemctl stop alisto-emergency.service
+#   python3 phrase_test.py --file=phrases_failing8.txt --repeat=3 --verify --delay=40
+#   sudo systemctl start alisto-emergency.service
+# CATEGORY|what to say
+
+FIRE|Alisto, naay sunog
+FIRE|Alisto, naay nagdilaab
+
+INTRUDER|Alisto, nakulong ko
+
+MEDICATION|Alisto, kinahanglan nako ang tambal
+MEDICATION|Alisto, oras na sa akong tambal
+MEDICATION|Alisto, oras na sa tambal
+MEDICATION|Alisto, nakalimot ko sa tambal
+
+GENERAL_HELP|Alisto, palihug tabang
