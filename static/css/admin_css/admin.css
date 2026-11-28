@@ -4861,3 +4861,17 @@ html[data-theme="dark"] .reason-label input {
   border-color: #374151;
   color: #e5e7eb;
 }
+/* Admin > Users: device online/offline next to the device count */
+.device-state-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 4px;
+  white-space: nowrap;
+}
+.device-state-badge .device-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: currentColor;
+}

@@ -410,8 +410,23 @@ function resetScannerHint() {
     hint.classList.remove('scan-success');
 }
 
+// The browser's built-in QR reader (Chrome/Edge on Android, Safari 17+) is
+// faster and reads small or blurry codes better; jsQR is the fallback.
+let nativeDetector = null;
+try {
+    if ('BarcodeDetector' in window) nativeDetector = new BarcodeDetector({ formats: ['qr_code'] });
+} catch (e) { nativeDetector = null; }
+
 function startCamera() {
     const video = document.getElementById('qrVideo');
+    const hint = document.getElementById('scannerHint');
+
+    // Live camera only works on HTTPS (or localhost). Over plain http on a
+    // phone, offer the photo option straight away instead of failing.
+    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia || !window.isSecureContext) {
+        hint.textContent = 'The live camera is not available here. Tap "Use a photo instead" to take a picture of the QR code.';
+        return;
+    }
 
     navigator.mediaDevices
         .getUserMedia({ video: { facingMode: 'environment' } })
@@ -423,11 +438,76 @@ function startCamera() {
             requestAnimationFrame(scanLoop);
         })
         .catch((err) => {
-            document.getElementById('scannerHint').textContent =
-                'Unable to access the camera. Please allow camera permission in your browser, or use HTTPS/localhost.';
+            hint.textContent = err && err.name === 'NotAllowedError'
+                ? 'Camera permission was blocked. Allow the camera in your browser settings, or tap "Use a photo instead".'
+                : 'Could not start the camera. Tap "Use a photo instead", or type the serial number.';
             console.error('Camera error:', err);
         });
 }
+
+// Reads a QR code from an image/canvas/video. Returns the text or null.
+async function decodeQr(source, width, height) {
+    if (nativeDetector) {
+        try {
+            const found = await nativeDetector.detect(source);
+            if (found.length && found[0].rawValue) return found[0].rawValue.trim();
+        } catch (e) { /* fall through to jsQR */ }
+    }
+    if (typeof jsQR === 'undefined') return null;
+    const canvas = document.getElementById('qrCanvas');
+    // Big photos are scaled down: jsQR is slow on 12-megapixel images.
+    const scale = Math.min(1, 1000 / Math.max(width, height));
+    canvas.width = Math.round(width * scale);
+    canvas.height = Math.round(height * scale);
+    const ctx = canvas.getContext('2d', { willReadFrequently: true });
+    ctx.drawImage(source, 0, 0, canvas.width, canvas.height);
+    const img = ctx.getImageData(0, 0, canvas.width, canvas.height);
+    const code = jsQR(img.data, img.width, img.height, { inversionAttempts: 'attemptBoth' });
+    return code && code.data ? code.data.trim() : null;
+}
+
+// Fallback when the live camera isn't available: decode a photo.
+function scanFromPhoto(input) {
+    const file = input.files && input.files[0];
+    input.value = '';
+    if (!file) return;
+    const hint = document.getElementById('scannerHint');
+    hint.classList.remove('scan-success');
+    hint.textContent = 'Reading the QR code from your photo...';
+    const img = new Image();
+    img.onload = async () => {
+        const text = await decodeQr(img, img.naturalWidth, img.naturalHeight);
+        URL.revokeObjectURL(img.src);
+        if (text) {
+            handleScanSuccess(text);
+        } else {
+            hint.textContent = 'No QR code found in that photo. Try again closer and with good light, or type the serial number.';
+        }
+    };
+    img.onerror = () => { hint.textContent = 'That file could not be opened as a photo.'; };
+    img.src = URL.createObjectURL(file);
+}
+
+// Keeps the sticker preview in step 2 showing what was typed or scanned.
+function updateStickerSerial() {
+    const input = document.getElementById('device_id');
+    const out = document.getElementById('stickerSerial');
+    if (input && out) out.textContent = input.value.trim() || '—';
+}
+document.addEventListener('DOMContentLoaded', () => {
+    const input = document.getElementById('device_id');
+    if (input) {
+        input.addEventListener('input', () => { updateStickerSerial(); clearErrors(); });
+        // Enter in the serial field = Continue (it's not the final submit).
+        input.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter') {
+                e.preventDefault();
+                nextStep(2, document.querySelector('.wizard-step[data-step="2"] .btn-submit'));
+            }
+        });
+        updateStickerSerial();
+    }
+});
 
 function stopCamera() {
     scanning = false;
@@ -437,34 +517,24 @@ function stopCamera() {
     }
 }
 
-function scanLoop() {
+async function scanLoop() {
     if (!scanning) return;
 
     const video = document.getElementById('qrVideo');
-    const canvas = document.getElementById('qrCanvas');
-
     if (video.readyState === video.HAVE_ENOUGH_DATA) {
-        canvas.width = video.videoWidth;
-        canvas.height = video.videoHeight;
-        const ctx = canvas.getContext('2d');
-        ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-
-        const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
-        const code = jsQR(imageData.data, imageData.width, imageData.height, {
-            inversionAttempts: 'dontInvert',
-        });
-
-        if (code && code.data) {
-            handleScanSuccess(code.data.trim());
+        const text = await decodeQr(video, video.videoWidth, video.videoHeight);
+        if (text && scanning) {
+            handleScanSuccess(text);
             return; // stop looping, result found
         }
     }
-
-    requestAnimationFrame(scanLoop);
+    // ~8 tries a second is plenty and keeps phones from heating up.
+    setTimeout(() => requestAnimationFrame(scanLoop), 120);
 }
 
 function handleScanSuccess(deviceId) {
     stopCamera();
+    if (navigator.vibrate) navigator.vibrate(60);   // feedback on phones
 
     const hint = document.getElementById('scannerHint');
     hint.textContent = 'QR code detected! Processing...';
@@ -476,16 +546,13 @@ function handleScanSuccess(deviceId) {
 
         const deviceInput = document.getElementById('device_id');
         deviceInput.value = deviceId;
-        deviceInput.classList.add('input-loading');
+        updateStickerSerial();
         clearErrors(); // clear any "required" error that may be showing
 
-        // simulate brief processing on the field, then auto-continue
-        setTimeout(() => {
-            deviceInput.classList.remove('input-loading');
-            const continueBtn = document.querySelector('.wizard-step[data-step="2"] .btn-submit');
-            nextStep(2, continueBtn);
-        }, 900);
-    }, 500);
+        // Like the app: check the device right away, no extra tap needed.
+        const continueBtn = document.querySelector('.wizard-step[data-step="2"] .btn-submit');
+        nextStep(2, continueBtn);
+    }, 400);
 }
 
 // ============================================================
@@ -576,16 +643,37 @@ function applyJoinMode(data) {
 
     if (nameEl) { nameEl.value = data.elder_full_name || ''; lockField(nameEl); }
     if (dobEl)  { dobEl.value  = data.elder_dob || '';       lockField(dobEl); }
+    // The join card below shows these, so the locked inputs are hidden.
+    [nameEl, dobEl].forEach(el => { const g = el && el.closest('.form-group'); if (g) g.style.display = 'none'; });
 
     const notice = document.getElementById('joinNotice');
     const noticeText = document.getElementById('joinNoticeText');
     if (notice && noticeText) {
         const who = data.elder_full_name || data.elder_display_name || 'this loved one';
         noticeText.textContent =
-            `This device is already registered to ${who}. Their details are filled in ` +
-            `for you — just tell us how you are related. ` +
-            `(${data.family_count} of ${data.family_limit} family slots used.)`;
+            `This device is already registered to ${who}. Check that this is the right ` +
+            `person, then just tell us how you are related.`;
         notice.style.display = 'flex';
+    }
+
+    // Who the device belongs to, like the app's Join screen.
+    const card = document.getElementById('joinCard');
+    if (card) {
+        const name = (data.elder_full_name || data.elder_display_name || '').trim();
+        const parts = name.split(/\s+/).filter(Boolean);
+        const initials = parts.length === 0 ? '?'
+            : parts.length === 1 ? parts[0][0]
+            : parts[0][0] + parts[parts.length - 1][0];
+        const set = (id, v) => { const el = document.getElementById(id); if (el) el.textContent = v || 'Not on file'; };
+        set('joinAvatar', initials.toUpperCase());
+        set('joinName', name || 'Your loved one');
+        set('joinSlots', `${data.family_count} of ${data.family_limit} family members linked`);
+        set('joinDob', data.elder_dob);
+        set('joinSex', data.elder_sex);
+        set('joinAddress', data.elder_address);
+        const status = { online: 'Online', weak: 'Weak signal', offline: 'Offline' }[data.device_status];
+        set('joinDevice', `${document.getElementById('device_id').value.trim()}${status ? ' · ' + status : ''}`);
+        card.style.display = 'block';
     }
 
     // Step 4 is skipped in join mode, so its fields must not block anything.
@@ -607,9 +695,12 @@ function clearJoinMode() {
 
     if (nameEl) { unlockField(nameEl); nameEl.value = ''; }
     if (dobEl)  { unlockField(dobEl);  dobEl.value = ''; }
+    [nameEl, dobEl].forEach(el => { const g = el && el.closest('.form-group'); if (g) g.style.display = ''; });
 
     const notice = document.getElementById('joinNotice');
     if (notice) notice.style.display = 'none';
+    const card = document.getElementById('joinCard');
+    if (card) card.style.display = 'none';
 
     document
         .querySelectorAll('.wizard-step[data-step="4"] input, .wizard-step[data-step="4"] select')

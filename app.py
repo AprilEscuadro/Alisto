@@ -35,6 +35,20 @@ load_dotenv()
 
 app = Flask(__name__)
 app.secret_key = os.environ['SECRET_KEY']
+
+
+@app.after_request
+def _add_busy_indicator(response):
+    """Adds static/js/busy.js (loading indicator + double-submit guard) to
+    every full HTML page, so no template has to remember to include it."""
+    if (response.mimetype == 'text/html' and response.status_code == 200
+            and not response.direct_passthrough):
+        body = response.get_data(as_text=True)
+        if '</body>' in body and 'js/busy.js' not in body:
+            tag = f'<script src="{url_for("static", filename="js/busy.js")}" defer></script>'
+            i = body.rfind('</body>')
+            response.set_data(body[:i] + tag + body[i:])
+    return response
 app.register_blueprint(admin_bp)  # admin panel at /admin
 app.register_blueprint(bhw_bp)    # BHW portal at /bhw
 app.register_blueprint(responder_bp)  # Responder analytics at /responder
@@ -244,12 +258,22 @@ def check_device():
                 message=f"This device already has the maximum of {MAX_FAMILY_PER_DEVICE} linked family members."
             )
 
+        # Same details the mobile app shows on its "Join" screen, so the
+        # family member can confirm it's the right loved one before joining.
+        from bhw_routes import _address_parts, _device_state
+        try:
+            device_status = _device_state(device)[0]
+        except Exception:
+            device_status = None
         return jsonify(
             valid=True, already_registered=True, can_join=True,
             elder_id=elder_id,
             elder_display_name=_first_name(elder.get('full_name')),
             elder_full_name=elder.get('full_name'),
             elder_dob=elder.get('date_of_birth'),
+            elder_sex=elder.get('sex') or elder.get('gender'),
+            elder_address=', '.join(_address_parts(elder.get('address'))),
+            device_status=device_status,
             family_count=family_count, family_limit=MAX_FAMILY_PER_DEVICE,
             message='This device is already linked to an ALISTO user.'
         )

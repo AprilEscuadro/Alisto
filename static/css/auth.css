@@ -128,6 +128,8 @@ body {
     display: flex;
     align-items: center;
     justify-content: space-between;
+    flex-wrap: wrap;
+    gap: 8px 16px;
     margin-bottom: 24px;
 }
 
@@ -1124,3 +1126,106 @@ input.field-locked {
     color: #6b7280;
     cursor: not-allowed;
 }
+/* ===== Device step: sticker preview (mirrors the mobile app) ===== */
+.device-sticker {
+    position: relative;
+    width: 180px;
+    height: 180px;
+    margin: 4px auto 20px;
+    border-radius: 50%;
+    border: 1.4px solid #e2e8f0;
+    background: #fff;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+.sticker-corner {
+    position: absolute;
+    width: 12px;
+    height: 12px;
+    border-radius: 3px;
+    background: rgba(30, 41, 59, 0.5);
+}
+.sticker-corner.tl { top: 22px; left: 22px; }
+.sticker-corner.tr { top: 22px; right: 22px; }
+.sticker-corner.bl { bottom: 22px; left: 22px; }
+.sticker-corner.br { bottom: 22px; right: 22px; }
+.sticker-inner {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    text-align: center;
+    line-height: 1.25;
+    color: #1e293b;
+}
+.sticker-inner strong { font-family: 'Nunito', sans-serif; font-size: 18px; }
+.sticker-inner small { font-size: 9px; color: #64748b; }
+.sticker-inner svg { width: 46px; height: 46px; margin: 6px 0 4px; }
+.sticker-serial {
+    font-size: 11px;
+    font-weight: 600;
+    max-width: 120px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.btn-scan-wide,
+.btn-scan-photo {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    width: 100%;
+    min-height: 44px;            /* comfortable touch target */
+    margin: 4px 0 16px;
+    padding: 10px 16px;
+    border: 1.5px solid var(--primary);
+    border-radius: 10px;
+    background: #fff;
+    color: var(--primary);
+    font: 600 14px 'Inter', sans-serif;
+    cursor: pointer;
+}
+.btn-scan-wide:hover,
+.btn-scan-photo:hover { background: rgba(80, 136, 254, 0.06); }
+.btn-scan-wide:focus-visible,
+.btn-scan-photo:focus-within { outline: 3px solid rgba(80, 136, 254, 0.35); outline-offset: 2px; }
+.btn-scan-wide svg,
+.btn-scan-photo svg { width: 18px; height: 18px; }
+
+.scanner-actions {
+    display: flex;
+    gap: 10px;
+    padding: 0 20px 20px;
+}
+.scanner-actions .btn-scan-photo { margin: 0; flex: 1; }
+.scanner-actions .btn-back { flex: 0 0 auto; min-height: 44px; }
+
+/* ===== Join mode: who the device belongs to ===== */
+.join-card {
+    border: 1px solid #e2e8f0;
+    border-radius: 14px;
+    padding: 16px;
+    margin-bottom: 18px;
+    background: #f8fafc;
+}
+.join-card-head { display: flex; align-items: center; gap: 12px; margin-bottom: 12px; }
+.join-avatar {
+    width: 48px;
+    height: 48px;
+    flex: 0 0 48px;
+    border-radius: 50%;
+    background: rgba(80, 136, 254, 0.12);
+    color: var(--primary);
+    font: 700 17px 'Nunito', sans-serif;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+.join-name { font-weight: 700; color: #1e293b; }
+.join-sub { font-size: 13px; color: #64748b; }
+.join-rows { margin: 0; display: grid; gap: 8px; }
+.join-rows > div { display: flex; justify-content: space-between; gap: 12px; font-size: 14px; }
+.join-rows dt { color: #64748b; flex: 0 0 auto; }
+.join-rows dd { margin: 0; color: #1e293b; font-weight: 500; text-align: right; overflow-wrap: anywhere; }

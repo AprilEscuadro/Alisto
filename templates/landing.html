@@ -383,48 +383,22 @@
             </div>
             <div class="qr-placeholder">
               <img
-                src="{{ url_for('static', filename='images/temp-qr.png') }}"
-                alt="QR Code"
+                src="{{ url_for('static', filename='images/apk-qr.png') }}"
+                alt="QR code: scan with your phone camera to open the ALISTO APK download page"
               />
             </div>
-            <a href="#" class="btn btn-download btn-apk">
+            <a
+              href="https://drive.google.com/drive/folders/11oQg0IUiy_M5KG9GE2fTB1T5HcrKmXHj"
+              class="btn btn-download btn-apk"
+              target="_blank"
+              rel="noopener"
+            >
               <i data-lucide="download"></i>
               Download APK
             </a>
-            <p class="download-meta">Version 1.0.0 &bull; 15 MB</p>
+            <p class="download-meta">Version 1.0.0 &bull; opens Google Drive in a new tab</p>
           </div>
 
-          <div class="download-card">
-            <div class="download-card-header">
-              <div class="download-icon play-icon">
-                <img
-                  src="{{ url_for('static', filename='images/googleplay-icon.png') }}"
-                  alt="Google Play"
-                />
-              </div>
-              <div>
-                <h3>Get it on Google Play</h3>
-                <p>
-                  Download the Alisto app from <br />
-                  Google Play Store.
-                </p>
-              </div>
-            </div>
-            <div class="qr-placeholder">
-              <img
-                src="{{ url_for('static', filename='images/temp-qr.png') }}"
-                alt="QR Code"
-              />
-            </div>
-            <a href="#" class="btn btn-download btn-playstore">
-              <img
-                src="{{ url_for('static', filename='images/googleplay-icon.png') }}"
-                alt=""
-                class="btn-icon-img"
-              />
-              Get on Google Play
-            </a>
-          </div>
         </div>
       </div>
     </section>

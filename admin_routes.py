@@ -699,12 +699,24 @@ def users():
     devices_per_elder = {}
     # elder_id -> [serial, ...] (the device doc ID is the serial)
     serials_per_elder = {}
+    # elder_id -> 'online' / 'weak' / 'offline' (best of their devices),
+    # same rule as the Devices page.
+    device_state_per_elder = {}
+    state_rank = {'online': 0, 'weak': 1, 'offline': 2}
     for doc in db.collection('device').stream():
-        elder_id = (doc.to_dict() or {}).get('elder_id')
+        device = doc.to_dict() or {}
+        elder_id = device.get('elder_id')
         if elder_id:
             devices_per_elder[elder_id] = devices_per_elder.get(
                 elder_id, 0) + 1
             serials_per_elder.setdefault(elder_id, []).append(doc.id)
+            try:
+                state = _device_state(device)[0]
+            except Exception:
+                state = 'offline'
+            best = device_state_per_elder.get(elder_id)
+            if best is None or state_rank.get(state, 9) < state_rank.get(best, 9):
+                device_state_per_elder[elder_id] = state
 
     elders_per_family = {}
     families_per_elder = {}  # elder_id -> [family user_id, ...]
@@ -780,6 +792,7 @@ def users():
             'name': elder.get('full_name') or 'Unnamed', 'initials': _initials(elder.get('full_name')),
             'phone': None, 'email': None,
             'devices': devices_per_elder.get(elder_id, 0),
+            'device_state': device_state_per_elder.get(elder_id),
             'plan': plan_for([elder_id]) if devices_per_elder.get(elder_id) else None,
             'status': 'archived' if elder.get('is_archived') else 'active',
             'joined': _fmt_date(elder.get('created_at')), 'sort': _sort_key(elder.get('created_at')),
@@ -790,6 +803,9 @@ def users():
                 ['Address', elder.get('address') or '—'],
                 # One name per line (the popup keeps line breaks).
                 ['Device Serial', serial_text(elder_id)],
+                ['Device Status', {'online': 'Online', 'weak': 'Weak signal',
+                                   'offline': 'Offline'}.get(
+                    device_state_per_elder.get(elder_id), 'No device')],
                 ['Linked Family', '\n'.join(n for n, _ in fam_pairs) or '—'],
                 ['Linked Family Email', '\n'.join(
                     e for _, e in fam_pairs) or '—'],

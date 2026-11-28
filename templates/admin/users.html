@@ -188,6 +188,12 @@
           <td>
             {% if row.devices %}
             <strong class="cell-strong">{{ row.devices }} Device{{ 's' if row.devices != 1 }}</strong>
+            {% if row.type == 'elderly' and row.device_state %}
+            {% set ds = {'online': ('active', 'Online'), 'weak': ('pending', 'Weak signal'), 'offline': ('rejected', 'Offline')}[row.device_state] %}
+            <span class="badge badge-{{ ds[0] }} device-state-badge" title="Device is {{ ds[1]|lower }}">
+              <span class="device-dot" aria-hidden="true"></span>{{ ds[1] }}
+            </span>
+            {% endif %}
             {% else %}
             <span class="text-muted">No device</span>
             {% endif %}

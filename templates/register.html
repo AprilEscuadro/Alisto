@@ -268,20 +268,27 @@
           <!-- STEP 2: DEVICE ID -->
           <div class="wizard-step" data-step="2">
             <div class="step-icon-header"><i data-lucide="qr-code"></i></div>
-            <h1>Enter Device ID</h1>
+            <h1>Register Device</h1>
             <p class="auth-subtitle">
-              Link your loved one's device to your account.
+              Link your loved one's ALISTO device to your account.
             </p>
 
-            <div class="qr-box">
-              <img
-                src="{{ url_for('static', filename='images/temp-qr.png') }}"
-                alt="Scan QR"
-              />
+            <!-- Live preview of the sticker under the device (same as the app) -->
+            <div class="device-sticker" aria-hidden="true">
+              <span class="sticker-corner tl"></span><span class="sticker-corner tr"></span>
+              <span class="sticker-corner bl"></span><span class="sticker-corner br"></span>
+              <div class="sticker-inner">
+                <strong>Alisto</strong>
+                <small>Help, Always Within Reach.</small>
+                <i data-lucide="qr-code"></i>
+                <span class="sticker-serial" id="stickerSerial">—</span>
+                <small>Scan to view device</small>
+              </div>
             </div>
 
-            <label class="device-id-label"
-              >Enter the Device ID of your loved one's ALISTO device.</label
+            <label class="device-id-label" for="device_id"
+              >Enter the serial number found at the bottom of your ALISTO
+              device, or scan its QR code.</label
             >
 
             <div class="form-group">
@@ -290,7 +297,10 @@
                   type="text"
                   id="device_id"
                   name="device_id"
-                  placeholder="Enter Device ID"
+                  placeholder="e.g. ALISTO-0001"
+                  autocomplete="off"
+                  autocapitalize="characters"
+                  spellcheck="false"
                   required
                 />
                 <button
@@ -298,17 +308,23 @@
                   id="scanBtn"
                   class="scan-btn"
                   onclick="openScanner()"
+                  aria-label="Scan the device QR code"
+                  title="Scan QR code"
                 >
                   <i data-lucide="scan-line"></i>
                 </button>
               </div>
             </div>
 
+            <button type="button" class="btn-scan-wide" onclick="openScanner()">
+              <i data-lucide="camera"></i> Scan QR code with camera
+            </button>
+
             <div class="info-note">
               <i data-lucide="info"></i>
               <span
-                >You can find the Device ID on the ALISTO device package or on
-                the device itself.</span
+                >The serial number and QR code are on the sticker at the bottom
+                of the device and on its box.</span
               >
             </div>
 
@@ -337,6 +353,23 @@
             <div class="join-notice" id="joinNotice" style="display: none">
               <i data-lucide="info" class="join-notice-icon"></i>
               <p id="joinNoticeText"></p>
+            </div>
+
+            <!-- Join mode: who this device belongs to, like the app's Join screen. -->
+            <div class="join-card" id="joinCard" style="display: none">
+              <div class="join-card-head">
+                <div class="join-avatar" id="joinAvatar">?</div>
+                <div>
+                  <div class="join-name" id="joinName">—</div>
+                  <div class="join-sub" id="joinSlots"></div>
+                </div>
+              </div>
+              <dl class="join-rows">
+                <div><dt>Date of Birth</dt><dd id="joinDob">—</dd></div>
+                <div><dt>Sex</dt><dd id="joinSex">—</dd></div>
+                <div><dt>Address</dt><dd id="joinAddress">—</dd></div>
+                <div><dt>Device</dt><dd id="joinDevice">—</dd></div>
+              </dl>
             </div>
 
             <div class="form-group">
@@ -1445,9 +1478,16 @@
           <canvas id="qrCanvas" style="display: none"></canvas>
           <div class="scan-frame"></div>
         </div>
-        <p class="scanner-hint" id="scannerHint">
+        <p class="scanner-hint" id="scannerHint" role="status" aria-live="polite">
           Point your camera at the QR code on the device.
         </p>
+        <div class="scanner-actions">
+          <label class="btn-scan-photo">
+            <i data-lucide="image"></i> Use a photo instead
+            <input type="file" id="qrPhotoInput" accept="image/*" capture="environment" hidden onchange="scanFromPhoto(this)" />
+          </label>
+          <button type="button" class="btn-back" onclick="closeScanner()">Cancel</button>
+        </div>
       </div>
     </div>
 

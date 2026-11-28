@@ -1311,3 +1311,192 @@ footer {
         font-size: 28px;
     }
 }
+/* ===== Mobile fixes: keep pictures centred and inside the screen ===== */
+@media (max-width: 1024px) {
+    /* The step cards were a fixed 250px inside a full-width column, so they
+       hugged the left edge on phones. */
+    .process-card {
+        width: 100%;
+        max-width: 380px;
+        height: auto;
+        margin: 0 auto;
+        justify-self: center;
+    }
+}
+
+@media (max-width: 768px) {
+    /* min-width: 460px pushed the device picture off the right edge. */
+    .hero-image {
+        min-width: 0;
+        width: 100%;
+        padding: 20px 0;
+    }
+
+    .device-showcase {
+        width: min(320px, 100%);
+        height: auto;
+        aspect-ratio: 1 / 1;
+        margin: 0 auto;
+    }
+
+    .device-showcase::before {
+        width: 80%;
+        height: 80%;
+    }
+
+    .device-img {
+        width: min(280px, 82%);
+    }
+
+    img {
+        max-width: 100%;
+        height: auto;
+    }
+}
+
+@media (max-width: 380px) {
+    .badge {
+        width: 72px;
+        font-size: 9.5px;
+    }
+}
+
+@media (max-width: 768px) {
+    /* "Our Values" was 5 columns on every screen size. */
+    .values-grid {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 8px 16px;
+    }
+
+    .value-card:not(:last-child)::after {
+        display: none;
+    }
+
+    .value-card:last-child {
+        grid-column: 1 / -1;
+    }
+}
+
+/* ===== Phones: hero icons in a tidy row, step pictures shown whole ===== */
+@media (max-width: 768px) {
+    /* The five value icons were absolutely positioned around a 460px circle,
+       so on a phone they piled on top of the device and each other. Lay them
+       out as a row of chips under the device instead. */
+    .device-showcase {
+        width: 100%;
+        max-width: 400px;
+        height: auto;
+        aspect-ratio: auto;
+        display: flex;
+        flex-wrap: wrap;
+        justify-content: center;
+        gap: 14px 4px;
+        margin: 0 auto;
+    }
+
+    .connector-ring {
+        display: none;
+    }
+
+    .device-showcase::before {
+        width: 220px;
+        height: 220px;
+        top: 0;
+        left: 50%;
+        transform: translateX(-50%);
+    }
+
+    .device-img {
+        display: block;
+        width: 100%;
+        max-width: none;
+        height: 220px;
+        object-fit: contain;
+    }
+
+    .badge,
+    .badge-top,
+    .badge-left,
+    .badge-right,
+    .badge-bottom-left,
+    .badge-bottom-right {
+        position: static;
+        transform: none;
+        width: 62px;
+        font-size: 10px;
+        gap: 6px;
+    }
+
+    .badge-text {
+        min-height: 0;
+    }
+
+    /* Step pictures were cropped to a 200px box (object-fit: cover), cutting
+       the drawings in half. Show the whole picture at its own height. */
+    .process-card {
+        overflow: visible;
+    }
+
+    .process-img {
+        height: auto;
+        flex: none;
+    }
+
+    .process-img img {
+        height: auto;
+        object-fit: contain;
+    }
+}
+
+@media (min-width: 769px) and (max-width: 1024px) {
+    .process-img {
+        height: auto;
+        flex: none;
+    }
+
+    .process-img img {
+        height: auto;
+        object-fit: contain;
+    }
+}
+
+@media (max-width: 380px) {
+    .badge,
+    .badge-top,
+    .badge-left,
+    .badge-right,
+    .badge-bottom-left,
+    .badge-bottom-right {
+        width: 58px;
+        font-size: 9.5px;
+    }
+
+    .badge-icon {
+        width: 38px;
+        height: 38px;
+    }
+}
+
+/* Only one download option now: keep the card centred, not half-width. */
+.download-grid {
+    grid-template-columns: minmax(0, 440px);
+    justify-content: center;
+}
+
+@media (max-width: 768px) {
+    /* Stack the text and the device picture on phones. */
+    .hero-inner {
+        flex-direction: column;
+        align-items: stretch;
+        gap: 24px;
+    }
+
+    .hero-text {
+        min-width: 0;
+    }
+
+    .hero-image {
+        flex: none;
+        width: 100%;
+    }
+}
